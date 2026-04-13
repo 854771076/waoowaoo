@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
+import type { Session } from 'next-auth'
 import { useTranslations } from 'next-intl'
 import LanguageSwitcher from './LanguageSwitcher'
 import { AppIcon } from '@/components/ui/icons'
@@ -14,6 +15,7 @@ import { buildAuthenticatedHomeTarget } from '@/lib/home/default-route'
 
 export default function Navbar() {
   const { data: session, status } = useSession()
+  const sessionWithRole = session as Session | null
   const t = useTranslations('nav')
   const tc = useTranslations('common')
   const { currentVersion, update, shouldPulse, showModal, openModal, dismissCurrentUpdate, checkNow } = useGithubReleaseUpdate()
@@ -125,6 +127,16 @@ export default function Navbar() {
                     <AppIcon name="userRoundCog" className="w-5 h-5" />
                     {t('profile')}
                   </Link>
+                  {sessionWithRole?.user?.role === 'admin' && (
+                    <Link
+                      href={{ pathname: '/admin' }}
+                      className="text-sm text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] font-medium transition-colors flex items-center gap-1"
+                      title={t('admin')}
+                    >
+                      <AppIcon name="settingsHex" className="w-4 h-4" />
+                      {t('admin')}
+                    </Link>
+                  )}
                   <LanguageSwitcher />
                   <a
                     href={downloadLogsHref}

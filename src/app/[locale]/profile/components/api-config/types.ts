@@ -20,8 +20,10 @@ export interface Provider {
     apiKey?: string
     hasApiKey?: boolean
     hidden?: boolean
+    description?: string
     apiMode?: 'gemini-sdk' | 'openai-official'
     gatewayRoute?: 'official' | 'openai-compat'
+    isGlobal?: boolean
 }
 
 export interface LlmCustomPricing {
@@ -62,6 +64,7 @@ export interface CustomModel {
     enabled: boolean
     capabilities?: ModelCapabilities
     customPricing?: CustomModelPricing
+    isGlobal?: boolean
 }
 
 export interface PricingDisplayItem {
@@ -205,6 +208,7 @@ export const PRESET_PROVIDERS: Omit<Provider, 'apiKey' | 'hasApiKey'>[] = [
     { id: 'minimax', name: 'MiniMax Hailuo', baseUrl: 'https://api.minimaxi.com/v1' },
     { id: 'vidu', name: 'Vidu' },
     { id: 'fal', name: 'FAL' },
+    { id: 'newapi', name: 'NewAPI', description: 'NewAPI 开源中转站，兼容 OpenAI 格式' },
 ]
 
 const ZH_PROVIDER_NAME_MAP: Record<string, string> = {
@@ -213,6 +217,7 @@ const ZH_PROVIDER_NAME_MAP: Record<string, string> = {
     vidu: '生数科技 Vidu',
     bailian: '阿里云百炼',
     siliconflow: '硅基流动',
+    newapi: 'NewAPI',
 }
 
 function isZhLocale(locale?: string): boolean {

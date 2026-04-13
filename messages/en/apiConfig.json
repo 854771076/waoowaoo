@@ -13,6 +13,7 @@
   "hide": "Hide",
   "capability": "Models",
   "default": "Default",
+  "global": "Global",
   "delete": "Delete",
   "add": "Add",
   "cancel": "Cancel",

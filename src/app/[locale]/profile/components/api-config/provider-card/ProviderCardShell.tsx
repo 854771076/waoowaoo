@@ -94,6 +94,11 @@ export function ProviderCardShell({
               {compatibilityLayerLabel}
             </span>
           )}
+          {provider.isGlobal && (
+            <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+              {t('global')}
+            </span>
+          )}
           {/* 连接状态图标 */}
           <span title={provider.hasApiKey ? t('connected') : t('notConfigured')}>
             <StatusIcon connected={!!provider.hasApiKey} />

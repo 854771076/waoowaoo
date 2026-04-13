@@ -3,8 +3,13 @@ import bcrypt from 'bcryptjs'
 import { withAdminAuth } from '@/lib/auth/withAdminAuth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
+import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 
 export const GET = apiHandler(async (request: NextRequest) => {
+  // 🔐 统一权限验证
+  const authResult = await requireUserAuth()
+  if (isErrorResponse(authResult)) return authResult
+
   return withAdminAuth(request, async () => {
     const users = await prisma.user.findMany({
       select: {
@@ -47,6 +52,10 @@ export const GET = apiHandler(async (request: NextRequest) => {
 })
 
 export const POST = apiHandler(async (request: NextRequest) => {
+  // 🔐 统一权限验证
+  const authResult = await requireUserAuth()
+  if (isErrorResponse(authResult)) return authResult
+
   return withAdminAuth(request, async () => {
     const body = await request.json()
     const { name, password, role = 'user', isDisabled = false, initialBalance = 0 } = body

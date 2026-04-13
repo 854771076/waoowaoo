@@ -370,7 +370,7 @@ function ModelRow({
 
   return (
     <div className={`group flex items-center justify-between gap-2 rounded-xl bg-[var(--glass-bg-surface)] px-3 py-2 transition-colors hover:bg-[var(--glass-bg-surface-strong)] ${rowDisabledClass}`}>
-      {state.editingModelId === model.modelKey ? (
+      {state.editingModelId === model.modelKey && !(model.isGlobal || state.isPresetModel(model.modelKey)) ? (
         <>
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <input
@@ -422,6 +422,11 @@ function ModelRow({
               <span className={`text-[12px] font-semibold ${model.enabled ? 'text-[var(--glass-text-primary)]' : 'text-[var(--glass-text-secondary)]'}`}>
                 {model.name}
               </span>
+              {model.isGlobal && (
+                <span className="shrink-0 rounded-full border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                  {t('global')}
+                </span>
+              )}
               {state.isDefaultModel(model) && model.enabled && (
                 <span className="shrink-0 rounded-md bg-[var(--glass-text-primary)] px-1.5 py-0.5 text-[10px] leading-none text-white">
                   {t('default')}
@@ -435,7 +440,7 @@ function ModelRow({
           </div>
 
           <div className="flex items-center gap-1.5">
-            {!state.isPresetModel(model.modelKey) && onUpdateModel && (
+            {!(model.isGlobal || state.isPresetModel(model.modelKey)) && onUpdateModel && (
               <button
                 onClick={() => state.handleEditModel(model)}
                 className="glass-icon-btn-sm opacity-0 transition-opacity group-hover:opacity-100"
@@ -444,12 +449,15 @@ function ModelRow({
                 <AppIcon name="edit" className="h-3.5 w-3.5" />
               </button>
             )}
-            <button
-              onClick={() => onDeleteModel(model.modelKey)}
-              className="glass-icon-btn-sm opacity-0 transition-opacity hover:text-[var(--glass-tone-danger-fg)] group-hover:opacity-100"
-            >
-              <AppIcon name="trash" className="h-3.5 w-3.5" />
-            </button>
+            {!(model.isGlobal || state.isPresetModel(model.modelKey)) && (
+              <button
+                onClick={() => onDeleteModel(model.modelKey)}
+                className="glass-icon-btn-sm opacity-0 transition-opacity hover:text-[var(--glass-tone-danger-fg)] group-hover:opacity-100"
+                title={t('delete')}
+              >
+                <AppIcon name="trash" className="h-3.5 w-3.5" />
+              </button>
+            )}
 
             <button
               onClick={() => {

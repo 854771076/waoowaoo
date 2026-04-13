@@ -382,7 +382,7 @@ export function useProviderCardState({
 
   const providerKey = getProviderKey(provider.id)
   const assistantEnabled = providerKey === 'openai-compatible'
-  const isPresetProvider = PRESET_PROVIDERS.some(
+  const isPresetProvider = provider.isGlobal ?? PRESET_PROVIDERS.some(
     (presetProvider) => presetProvider.id === provider.id,
   )
   const showBaseUrlEdit =

@@ -5,8 +5,13 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import type { AuthSession } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 
 export const PATCH = apiHandler(async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
+  // 🔐 统一权限验证
+  const authResult = await requireUserAuth()
+  if (isErrorResponse(authResult)) return authResult
+
   return withAdminAuth(request, async () => {
     const { id } = await context.params
     const body = await request.json()
@@ -28,6 +33,10 @@ export const PATCH = apiHandler(async (request: NextRequest, context: { params: 
 })
 
 export const DELETE = apiHandler(async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
+  // 🔐 统一权限验证
+  const authResult = await requireUserAuth()
+  if (isErrorResponse(authResult)) return authResult
+
   return withAdminAuth(request, async () => {
     const { id } = await context.params
 

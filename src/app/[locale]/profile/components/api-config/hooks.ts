@@ -76,6 +76,7 @@ export function mergeProvidersForDisplay(
     const merged: Provider[] = []
     const seenProviderIds = new Set<string>()
     const seenPresetKeys = new Set<string>()
+    const presetIds = new Set(presetProviders.map(p => p.id))
 
     for (const savedProvider of savedProviders) {
         if (seenProviderIds.has(savedProvider.id)) continue
@@ -96,6 +97,7 @@ export function mergeProvidersForDisplay(
                 baseUrl: providerBaseUrl,
                 apiMode: savedProvider.apiMode,
                 gatewayRoute: savedProvider.gatewayRoute,
+                isGlobal: true,
             })
             seenPresetKeys.add(providerKey)
             continue
@@ -104,6 +106,7 @@ export function mergeProvidersForDisplay(
         merged.push({
             ...savedProvider,
             hasApiKey: !!savedProvider.apiKey,
+            isGlobal: presetIds.has(savedProvider.id),
         })
     }
 
@@ -114,6 +117,7 @@ export function mergeProvidersForDisplay(
             apiKey: '',
             hasApiKey: false,
             hidden: false,
+            isGlobal: true,
         })
     }
 
@@ -328,6 +332,7 @@ export function useProviders(): UseProvidersReturn {
                         : (hasSavedModels ? (alwaysEnabledPreset || !!saved) : false),
                     price: 0,
                     capabilities: saved?.capabilities ?? preset.capabilities,
+                    isGlobal: true,
                 }
                 return applyPricingDisplay(mergedPreset, pricingDisplay)
             })
@@ -337,6 +342,7 @@ export function useProviders(): UseProvidersReturn {
                 ...applyPricingDisplay(m, pricingDisplay),
                 // 尊重服务端返回的 enabled 字段（后端对 disabled presets 会明确返回 enabled: false）
                 enabled: (m as CustomModel & { enabled?: boolean }).enabled !== false,
+                isGlobal: PRESET_MODELS.some((preset) => encodeModelKey(preset.provider, preset.modelId) === m.modelKey),
             }))
 
             setModels([...allModels, ...customModels])
@@ -603,7 +609,8 @@ export function useProviders(): UseProvidersReturn {
     }, [t, performSave])
 
     const deleteProvider = useCallback((providerId: string) => {
-        if (PRESET_PROVIDERS.find(p => p.id === providerId)) {
+        const provider = providers.find(p => p.id === providerId)
+        if (provider?.isGlobal || PRESET_PROVIDERS.find(p => p.id === providerId)) {
             alert(t('presetProviderCannotDelete'))
             return
         }
@@ -728,9 +735,10 @@ export function useProviders(): UseProvidersReturn {
     }, [performSave])
 
     const deleteModel = useCallback((modelKey: string, providerId?: string) => {
-        if (PRESET_MODELS.find((model) => {
-            const presetModelKey = encodeModelKey(model.provider, model.modelId)
-            return presetModelKey === modelKey && (providerId ? model.provider === providerId : true)
+        const model = models.find(m => m.modelKey === modelKey && (providerId ? m.provider === providerId : true))
+        if (model?.isGlobal || PRESET_MODELS.find((preset) => {
+            const presetModelKey = encodeModelKey(preset.provider, preset.modelId)
+            return presetModelKey === modelKey && (providerId ? preset.provider === providerId : true)
         })) {
             alert(t('presetModelCannotDelete'))
             return
