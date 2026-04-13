@@ -107,7 +107,8 @@
     "backup:archive-legacy-media": "tsx scripts/media-archive-legacy-refs.ts",
     "backup:unreferenced-media-index": "tsx scripts/media-build-unreferenced-index.ts",
     "lint": "eslint",
-    "clean": "rimraf .next"
+    "clean": "rimraf .next",
+    "init-admin": "tsx scripts/init-admin.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.22",
