@@ -36,6 +36,12 @@ export const authOptions: any = {
           return null
         }
 
+        if (user.isDisabled) {
+          // User is disabled by admin
+          logAuthAction('LOGIN', credentials.username, { error: 'User disabled', userId: user.id })
+          return null
+        }
+
         // 验证密码
         const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
 
