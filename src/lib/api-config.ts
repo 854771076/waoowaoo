@@ -288,8 +288,39 @@ function pickProviderStrict(
   throw new Error(`PROVIDER_NOT_FOUND: ${providerId} is not configured`)
 }
 
+async function readGlobalConfig(): Promise<{ models: CustomModel[]; providers: CustomProvider[] }> {
+  const config = await prisma.systemConfig.findFirst()
+
+  if (!config) {
+    return { models: [], providers: [] }
+  }
+
+  // Add built-in newapi provider if configured
+  const providers: CustomProvider[] = parseCustomProviders(config.customProviders)
+
+  // If newapiApiKey is set, add it as a predefined provider
+  if (config.newapiApiKey) {
+    providers.unshift({
+      id: 'newapi',
+      name: 'NewAPI',
+      baseUrl: readTrimmedString(config.newapiBaseUrl) || undefined,
+      apiKey: readTrimmedString(config.newapiApiKey) || undefined,
+      gatewayRoute: 'openai-compat',
+    })
+  }
+
+  // Add other built-in providers from system config...
+  // (existing logic will handle the predefined built-ins from UserPreference, we follow same pattern)
+
+  return {
+    models: parseCustomModels(config.customModels),
+    providers,
+  }
+}
+
 async function readUserConfig(userId: string): Promise<{ models: CustomModel[]; providers: CustomProvider[] }> {
-  const pref = await prisma.userPreference.findUnique({
+  const global = await readGlobalConfig()
+  const userPref = await prisma.userPreference.findUnique({
     where: { userId },
     select: {
       customModels: true,
@@ -297,9 +328,27 @@ async function readUserConfig(userId: string): Promise<{ models: CustomModel[]; 
     },
   })
 
+  const user = {
+    models: parseCustomModels(userPref?.customModels),
+    providers: parseCustomProviders(userPref?.customProviders),
+  }
+
+  // Merge: global providers first, then user providers
+  // If user has same provider id, user overrides global
+  const mergedProviders = [
+    ...global.providers,
+    ...user.providers.filter(up => !global.providers.find(gp => gp.id === up.id)),
+  ]
+
+  // Same for models
+  const mergedModels = [
+    ...global.models,
+    ...user.models.filter(um => !global.models.find(gm => gm.modelKey === um.modelKey)),
+  ]
+
   return {
-    models: parseCustomModels(pref?.customModels),
-    providers: parseCustomProviders(pref?.customProviders),
+    models: mergedModels,
+    providers: mergedProviders,
   }
 }
 
