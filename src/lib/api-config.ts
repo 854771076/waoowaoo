@@ -336,14 +336,14 @@ async function readUserConfig(userId: string): Promise<{ models: CustomModel[]; 
   // Merge: global providers first, then user providers
   // If user has same provider id, user overrides global
   const mergedProviders = [
-    ...global.providers,
-    ...user.providers.filter(up => !global.providers.find(gp => gp.id === up.id)),
+    ...global.providers.filter(gp => !user.providers.find(up => up.id === gp.id)),
+    ...user.providers,
   ]
 
   // Same for models
   const mergedModels = [
-    ...global.models,
-    ...user.models.filter(um => !global.models.find(gm => gm.modelKey === um.modelKey)),
+    ...global.models.filter(gm => !user.models.find(um => um.modelKey === gm.modelKey)),
+    ...user.models,
   ]
 
   return {
