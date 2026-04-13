@@ -33,6 +33,7 @@ import type {
   TaskBillingInfo,
 } from './types'
 import { BUILTIN_PRICING_VERSION } from '@/lib/model-pricing/version'
+import { ApiError } from '@/lib/api-errors'
 
 type CostInput = {
   apiType: ApiType
@@ -844,6 +845,11 @@ export async function prepareTaskBilling(task: {
     next.status = 'quoted'
     next.maxFrozenCost = quotedCost
     return next
+  }
+
+  const userBalance = await getBalance(task.userId)
+  if (userBalance.balance <= 0) {
+    throw new ApiError('INSUFFICIENT_BALANCE', { message: '余额不足，请联系管理员充值' })
   }
 
   const freezeId = await freezeBalance(task.userId, quotedCost, {

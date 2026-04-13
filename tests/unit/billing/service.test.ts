@@ -279,6 +279,7 @@ describe('billing/service', () => {
 
       modeMock.getBillingMode.mockResolvedValueOnce('ENFORCE')
       ledgerMock.freezeBalance.mockResolvedValueOnce('freeze_task_1')
+      ledgerMock.getBalance.mockResolvedValueOnce({ balance: 100 })
       const enforce = await prepareTaskBilling({
         id: 'task_enforce',
         userId: 'u1',
