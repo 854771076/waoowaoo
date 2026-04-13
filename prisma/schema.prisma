@@ -10,9 +10,9 @@ datasource db {
 model Account {
   id                String  @id @default(uuid())
   userId            String
-  type              String
-  provider          String
-  providerAccountId String
+  type              String  @db.VarChar(64)
+  provider          String  @db.VarChar(64)
+  providerAccountId String  @db.VarChar(128)
   refresh_token     String? @db.Text
   access_token      String? @db.Text
   expires_at        Int?
@@ -408,6 +408,8 @@ model User {
   password      String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @default(now()) @updatedAt
+  role          String          @default("user") // "admin" | "user"
+  isDisabled    Boolean         @default(false) // disabled users cannot login
   accounts      Account[]
   projects      Project[]
   sessions      Session[]
@@ -472,8 +474,8 @@ model UserPreference {
 }
 
 model VerificationToken {
-  identifier String
-  token      String   @unique(map: "VerificationToken_token_key")
+  identifier String  @db.VarChar(120)
+  token      String  @db.VarChar(120) @unique(map: "VerificationToken_token_key")
   expires    DateTime
 
   @@unique([identifier, token])
@@ -558,8 +560,8 @@ model BalanceFreeze {
 
 model BalanceTransaction {
   id           String   @id @default(uuid())
-  userId       String
-  type         String
+  userId       String   @db.VarChar(36)
+  type         String   @db.VarChar(32)
   amount       Decimal  @db.Decimal(18, 6)
   balanceAfter Decimal  @db.Decimal(18, 6)
   description  String?  @db.Text
@@ -586,19 +588,19 @@ model BalanceTransaction {
 
 model Task {
   id               String    @id @default(uuid())
-  userId           String
-  projectId        String
-  episodeId        String?
-  type             String
-  targetType       String
-  targetId         String
+  userId           String    @db.VarChar(36)
+  projectId        String    @db.VarChar(36)
+  episodeId        String?   @db.VarChar(36)
+  type             String    @db.VarChar(32)
+  targetType       String    @db.VarChar(32)
+  targetId         String    @db.VarChar(36)
   status           String    @default("queued")
   progress         Int       @default(0)
   attempt          Int       @default(0)
   maxAttempts      Int       @default(5)
   priority         Int       @default(0)
-  dedupeKey        String?   @unique
-  externalId       String?
+  dedupeKey        String?   @db.VarChar(120) @unique
+  externalId       String?   @db.VarChar(120)
   payload          Json?
   result           Json?
   errorCode        String?
@@ -647,15 +649,15 @@ model TaskEvent {
 
 model GraphRun {
   id                String             @id @default(uuid())
-  userId            String
-  projectId         String
-  episodeId         String?
-  workflowType      String
-  taskType          String?
-  taskId            String?            @unique
-  targetType        String
-  targetId          String
-  status            String             @default("queued")
+  userId            String             @db.VarChar(36)
+  projectId         String             @db.VarChar(36)
+  episodeId         String?            @db.VarChar(36)
+  workflowType      String             @db.VarChar(32)
+  taskType          String?            @db.VarChar(32)
+  taskId            String?            @db.VarChar(36) @unique
+  targetType        String             @db.VarChar(32)
+  targetId          String             @db.VarChar(36)
+  status            String             @db.VarChar(16) @default("queued")
   input             Json?
   output            Json?
   errorCode         String?
@@ -689,8 +691,8 @@ model GraphRun {
 
 model GraphStep {
   id               String             @id @default(uuid())
-  runId            String
-  stepKey          String
+  runId            String             @db.VarChar(36)
+  stepKey          String             @db.VarChar(64)
   stepTitle        String
   status           String             @default("pending")
   currentAttempt   Int                @default(0)
@@ -713,8 +715,8 @@ model GraphStep {
 
 model GraphStepAttempt {
   id              String     @id @default(uuid())
-  runId           String
-  stepKey         String
+  runId           String     @db.VarChar(36)
+  stepKey         String     @db.VarChar(64)
   attempt         Int
   status          String     @default("pending")
   provider        String?
@@ -763,8 +765,8 @@ model GraphEvent {
 
 model GraphCheckpoint {
   id         String   @id @default(uuid())
-  runId      String
-  nodeKey    String
+  runId      String   @db.VarChar(36)
+  nodeKey    String   @db.VarChar(64)
   version    Int
   stateJson  Json
   stateBytes Int
@@ -778,11 +780,11 @@ model GraphCheckpoint {
 
 model GraphArtifact {
   id          String   @id @default(uuid())
-  runId       String
-  stepKey     String?
-  artifactType String
-  refId       String
-  versionHash String?
+  runId       String   @db.VarChar(36)
+  stepKey     String?  @db.VarChar(64)
+  artifactType String  @db.VarChar(32)
+  refId       String   @db.VarChar(64)
+  versionHash String?  @db.VarChar(64)
   payload     Json?
   createdAt   DateTime @default(now())
   run         GraphRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -950,9 +952,9 @@ model GlobalVoice {
 
 model MediaObject {
   id         String   @id @default(uuid())
-  publicId   String   @unique
-  storageKey String   @unique @db.VarChar(512)
-  sha256     String?
+  publicId   String   @db.VarChar(128) @unique
+  storageKey String   @unique @db.VarChar(250)
+  sha256     String?  @db.VarChar(64)
   mimeType   String?
   sizeBytes  BigInt?
   width      Int?
@@ -987,15 +989,37 @@ model MediaObject {
 
 model LegacyMediaRefBackup {
   id          String   @id @default(uuid())
-  runId       String
-  tableName   String
-  rowId       String
-  fieldName   String
+  runId       String   @db.VarChar(36)
+  tableName   String   @db.VarChar(64)
+  rowId       String   @db.VarChar(36)
+  fieldName   String   @db.VarChar(64)
   legacyValue String   @db.Text
-  checksum    String
+  checksum    String   @db.VarChar(64)
   createdAt   DateTime @default(now())
 
   @@index([runId])
   @@index([tableName, fieldName])
   @@map("legacy_media_refs_backup")
+}
+
+model SystemConfig {
+  id                String    @id @default(uuid())
+  // Built-in vendor API config
+  llmBaseUrl        String?   @default("https://openrouter.ai/api/v1")
+  llmApiKey         String?   @db.Text // encrypted
+  falApiKey         String?   @db.Text
+  googleAiKey       String?   @db.Text
+  arkApiKey         String?   @db.Text
+  qwenApiKey        String?   @db.Text
+  // NewAPI vendor
+  newapiApiKey      String?   @db.Text
+  newapiBaseUrl     String?
+  // Custom models and providers
+  customModels      String?   @db.Text
+  customProviders   String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_config")
 }
