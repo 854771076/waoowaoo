@@ -33,6 +33,21 @@ export default function UserManagementTable() {
   const [loading, setLoading] = useState(true)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [editForm, setEditForm] = useState<{
+    name: string
+    password: string
+    role: string
+    balance: number
+    isDisabled: boolean
+  }>({
+    name: '',
+    password: '',
+    role: 'user',
+    balance: 0,
+    isDisabled: false,
+  })
   const [newUser, setNewUser] = useState<CreateUserRequest>({
     name: '',
     password: '',
@@ -111,6 +126,42 @@ export default function UserManagementTable() {
     } catch (error) {
       console.error('Failed to delete user:', error)
       alert(t('deleteUserFailed'))
+    }
+  }
+
+  const handleEditClick = (user: User) => {
+    setEditingUser(user)
+    setEditForm({
+      name: user.name,
+      password: '',
+      role: user.role,
+      balance: user.balance,
+      isDisabled: user.isDisabled,
+    })
+    setShowEditDialog(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingUser) return
+    if (!editForm.name) {
+      alert(t('fillRequiredFields'))
+      return
+    }
+    setActionLoading(true)
+    try {
+      await apiFetch(`/api/admin/users/${editingUser.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      })
+      setShowEditDialog(false)
+      setEditingUser(null)
+      await fetchUsers()
+    } catch (error) {
+      console.error('Failed to edit user:', error)
+      alert(t('editUserFailed'))
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -207,6 +258,12 @@ export default function UserManagementTable() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleEditClick(user)}
+                      className="rounded bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-500/20"
+                    >
+                      {t('edit')}
+                    </button>
                     <button
                       onClick={() => handleToggleDisable(user)}
                       className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
@@ -321,6 +378,95 @@ export default function UserManagementTable() {
             disabled={actionLoading}
           >
             {actionLoading ? tc('loading') : t('createUser')}
+          </GlassButton>
+        </div>
+      </GlassModalShell>
+
+      {/* Edit User Dialog */}
+      <GlassModalShell
+        open={showEditDialog}
+        onClose={() => setShowEditDialog(false)}
+        title={t('editUser')}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+              {t('username')}
+            </label>
+            <input
+              type="text"
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              className="glass-input-base w-full px-3 py-2.5 text-sm"
+              placeholder={t('usernamePlaceholder')}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+              {t('password')}
+            </label>
+            <input
+              type="password"
+              value={editForm.password}
+              onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+              className="glass-input-base w-full px-3 py-2.5 text-sm"
+              placeholder={t('passwordOptional')}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+              {t('role')}
+            </label>
+            <select
+              value={editForm.role}
+              onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+              className="glass-select-base w-full cursor-pointer appearance-none px-3 py-2.5 pr-8 text-sm"
+            >
+              <option value="user">{t('roleUser')}</option>
+              <option value="admin">{t('roleAdmin')}</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+              {t('balance')}
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={editForm.balance}
+              onChange={(e) => setEditForm({ ...editForm, balance: parseFloat(e.target.value) || 0 })}
+              className="glass-input-base w-full px-3 py-2.5 text-sm"
+              placeholder="0.00"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="editIsDisabled"
+              checked={editForm.isDisabled}
+              onChange={(e) => setEditForm({ ...editForm, isDisabled: e.target.checked })}
+              className="h-4 w-4 rounded border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)]"
+            />
+            <label htmlFor="editIsDisabled" className="text-sm text-[var(--glass-text-primary)]">
+              {t('disabled')}
+            </label>
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <GlassButton
+            onClick={() => setShowEditDialog(false)}
+            variant="secondary"
+            disabled={actionLoading}
+          >
+            {tc('cancel')}
+          </GlassButton>
+          <GlassButton
+            onClick={handleSaveEdit}
+            variant="primary"
+            disabled={actionLoading}
+          >
+            {actionLoading ? tc('loading') : t('saveChanges')}
           </GlassButton>
         </div>
       </GlassModalShell>

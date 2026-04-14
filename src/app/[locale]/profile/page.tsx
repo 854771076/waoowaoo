@@ -6,6 +6,7 @@ import Navbar from '@/components/Navbar'
 import ApiConfigTab from './components/ApiConfigTab'
 import { AppIcon } from '@/components/ui/icons'
 import { useRouter } from '@/i18n/navigation'
+import { apiFetch } from '@/lib/api-fetch'
 
 export default function ProfilePage() {
   const { data: session, status } = useSession()
@@ -15,6 +16,22 @@ export default function ProfilePage() {
 
   // 主要分区：扣费记录 / API配置
   const [activeSection, setActiveSection] = useState<'billing' | 'apiConfig'>('apiConfig')
+
+  const [balance, setBalance] = useState<{ balance: number; totalSpent: number } | null>(null)
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const res = await apiFetch('/api/user/balance')
+        const data = await res.json()
+        setBalance({ balance: data.balance, totalSpent: data.totalSpent })
+      } catch (error) {
+        console.error('Failed to fetch balance:', error)
+        setBalance({ balance: 0, totalSpent: 0 })
+      }
+    }
+    fetchBalance()
+  }, [])
 
   useEffect(() => {
     if (status === 'loading') return
@@ -52,7 +69,9 @@ export default function ProfilePage() {
                 {/* 余额卡片 */}
                 <div className="glass-surface-soft rounded-2xl border border-[var(--glass-stroke-base)] p-4">
                   <div className="text-xs font-medium text-[var(--glass-text-secondary)]">{t('availableBalance')}</div>
-                  <div className="mt-2 text-base font-semibold text-[var(--glass-text-primary)]">{noBillingText}</div>
+                  <div className="mt-2 text-base font-semibold text-[var(--glass-text-primary)]">
+                    {balance !== null ? `${balance.balance.toFixed(2)}` : '...'}
+                  </div>
                 </div>
               </div>
 
@@ -100,7 +119,19 @@ export default function ProfilePage() {
               ) : (
                 <div className="flex h-full flex-col items-center justify-center px-6 text-center">
                   <AppIcon name="receipt" className="mb-4 h-12 w-12 text-[var(--glass-text-tertiary)]" />
-                  <p className="text-base font-semibold text-[var(--glass-text-primary)]">{noBillingText}</p>
+                  {balance === null ? (
+                    <p className="text-base text-[var(--glass-text-secondary)]">{tc('loading')}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-base font-semibold text-[var(--glass-text-primary)]">
+                        {t('totalSpent')}: {balance.totalSpent.toFixed(2)}
+                      </p>
+                      <p className="text-sm text-[var(--glass-text-secondary)]">
+                        {/* Transaction list will be added in future iteration */}
+                        {balance.totalSpent === 0 ? t('noTransactions') : t('comingSoon')}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

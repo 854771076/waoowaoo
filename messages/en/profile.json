@@ -5,6 +5,8 @@
   "openSourceNoBilling": "Open-source edition, no billing required",
   "frozen": "Frozen",
   "totalSpent": "Total Spent",
+  "noTransactions": "No transactions yet",
+  "comingSoon": "Transaction history coming soon",
   "apiConfig": "API Configuration",
   "rechargeRecords": "Recharge Records",
   "billingRecords": "Billing Records",
