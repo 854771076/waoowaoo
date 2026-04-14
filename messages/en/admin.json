@@ -33,5 +33,10 @@
   "saveConfig": "Save Configuration",
   "systemConfigDescription": "Configure global API keys that will be used for all users",
   "failedToLoadConfig": "Failed to load system configuration",
-  "customConfiguration": "Custom Configuration"
+  "customConfiguration": "Custom Configuration",
+  "edit": "Edit",
+  "editUser": "Edit User",
+  "saveChanges": "Save Changes",
+  "editUserFailed": "Edit User Failed",
+  "passwordOptional": "Password (leave empty to keep unchanged)"
 }

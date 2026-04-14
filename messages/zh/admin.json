@@ -33,5 +33,10 @@
   "saveConfig": "保存配置",
   "systemConfigDescription": "配置全局API密钥，将对所有用户生效",
   "failedToLoadConfig": "加载系统配置失败",
-  "customConfiguration": "自定义配置"
+  "customConfiguration": "自定义配置",
+  "edit": "编辑",
+  "editUser": "编辑用户",
+  "saveChanges": "保存修改",
+  "editUserFailed": "编辑用户失败",
+  "passwordOptional": "密码（留空不修改）"
 }
