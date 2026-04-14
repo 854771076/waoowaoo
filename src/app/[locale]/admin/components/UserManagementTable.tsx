@@ -18,6 +18,12 @@ interface User {
   createdAt: string
 }
 
+interface UserStats {
+  totalUsers: number
+  totalBalance: number
+  totalSpent: number
+}
+
 interface CreateUserRequest {
   name: string
   password: string
@@ -56,12 +62,14 @@ export default function UserManagementTable() {
     isDisabled: false,
   })
   const [actionLoading, setActionLoading] = useState(false)
+  const [stats, setStats] = useState<UserStats | null>(null)
 
   const fetchUsers = async () => {
     try {
       const res = await apiFetch('/api/admin/users')
       const data = await res.json()
       setUsers(data.users)
+      setStats(data.stats)
     } catch (error) {
       console.error('Failed to fetch users:', error)
     } finally {
@@ -189,6 +197,24 @@ export default function UserManagementTable() {
           {t('createUser')}
         </GlassButton>
       </div>
+
+      {/* Statistics Cards */}
+      {stats && (
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="glass-surface-soft rounded-xl border border-[var(--glass-stroke-base)] p-4">
+            <div className="text-xs font-medium text-[var(--glass-text-secondary)]">{t('statsTotalUsers')}</div>
+            <div className="mt-1 text-2xl font-bold text-[var(--glass-text-primary)]">{stats.totalUsers}</div>
+          </div>
+          <div className="glass-surface-soft rounded-xl border border-[var(--glass-stroke-base)] p-4">
+            <div className="text-xs font-medium text-[var(--glass-text-secondary)]">{t('statsTotalBalance')}</div>
+            <div className="mt-1 text-2xl font-bold text-[var(--glass-text-primary)]">{stats.totalBalance.toFixed(2)}</div>
+          </div>
+          <div className="glass-surface-soft rounded-xl border border-[var(--glass-stroke-base)] p-4">
+            <div className="text-xs font-medium text-[var(--glass-text-secondary)]">{t('statsTotalSpent')}</div>
+            <div className="mt-1 text-2xl font-bold text-[var(--glass-text-primary)]">{stats.totalSpent.toFixed(2)}</div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-x-auto">

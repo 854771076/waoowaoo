@@ -38,5 +38,8 @@
   "editUser": "编辑用户",
   "saveChanges": "保存修改",
   "editUserFailed": "编辑用户失败",
-  "passwordOptional": "密码（留空不修改）"
+  "passwordOptional": "密码（留空不修改）",
+  "statsTotalUsers": "普通用户数",
+  "statsTotalBalance": "总余额",
+  "statsTotalSpent": "总消费"
 }

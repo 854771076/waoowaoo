@@ -36,20 +36,16 @@ export const GET = apiHandler(async (request: NextRequest) => {
     })
 
     // Calculate aggregate statistics for regular users (role = 'user')
-    const stats = await prisma.user.aggregate({
+    const statsQuery = await prisma.user.findMany({
       where: { role: 'user' },
-      _count: { id: true },
-      _sum: {
-        balance: {
-          balance: true,
-          totalSpent: true,
-        },
+      include: {
+        balance: true,
       },
     })
 
-    const totalUsers = stats._count.id
-    const totalBalance = stats._sum?.balance?.balance?.toNumber() ?? 0
-    const totalSpent = stats._sum?.balance?.totalSpent?.toNumber() ?? 0
+    const totalUsers = statsQuery.length
+    const totalBalance = statsQuery.reduce((sum, user) => sum + (user.balance?.balance.toNumber() ?? 0), 0)
+    const totalSpent = statsQuery.reduce((sum, user) => sum + (user.balance?.totalSpent.toNumber() ?? 0), 0)
 
     // Format response with aggregated stats
     const formattedUsers = users.map(user => ({

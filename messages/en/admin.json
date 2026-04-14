@@ -38,5 +38,8 @@
   "editUser": "Edit User",
   "saveChanges": "Save Changes",
   "editUserFailed": "Edit User Failed",
-  "passwordOptional": "Password (leave empty to keep unchanged)"
+  "passwordOptional": "Password (leave empty to keep unchanged)",
+  "statsTotalUsers": "Regular Users",
+  "statsTotalBalance": "Total Balance",
+  "statsTotalSpent": "Total Consumption"
 }
