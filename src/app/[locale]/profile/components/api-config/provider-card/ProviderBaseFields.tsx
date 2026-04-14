@@ -80,7 +80,6 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                         <AppIcon name="eyeOff" className="h-4 w-4" />
                       )}
                     </button>
-                    {!state.isPresetProvider && (
                       <button
                         onClick={state.startEditKey}
                         className="glass-icon-btn-sm"
@@ -88,11 +87,9 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                       >
                         <AppIcon name="edit" className="h-4 w-4" />
                       </button>
-                    )}
                   </div>
                 </>
               ) : (
-                !state.isPresetProvider ? (
                   <button
                     onClick={state.startEditKey}
                     className="glass-btn-base glass-btn-tone-info h-7 px-2.5 text-[12px] font-semibold"
@@ -100,7 +97,6 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                     <AppIcon name="plus" className="h-3.5 w-3.5" />
                     <span>{t('connect')}</span>
                   </button>
-                ) : null
               )}
             </div>
           )}
@@ -261,7 +257,6 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                       {provider.baseUrl}
                     </span>
                     <div className="flex shrink-0 items-center gap-1">
-                      {!state.isPresetProvider && (
                         <button
                           onClick={state.startEditUrl}
                           className="glass-icon-btn-sm"
@@ -269,11 +264,9 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                         >
                           <AppIcon name="edit" className="h-4 w-4" />
                         </button>
-                      )}
                     </div>
                   </>
                 ) : (
-                  !state.isPresetProvider ? (
                     <button
                       onClick={state.startEditUrl}
                       className="glass-btn-base glass-btn-tone-info h-7 px-2.5 text-[12px] font-semibold"
@@ -281,7 +274,6 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                       <AppIcon name="plus" className="h-3.5 w-3.5" />
                       <span>{t('configureBaseUrl')}</span>
                     </button>
-                  ) : null
                 )}
               </div>
             )}

@@ -55,6 +55,7 @@ export const authOptions: any = {
         return {
           id: user.id,
           name: user.name,
+          role: user.role,
         }
       }
     })
@@ -70,6 +71,17 @@ export const authOptions: any = {
     async jwt({ token, user }: any) {
       if (user) {
         token.id = user.id
+        token.role = user.role
+      }
+      // If token doesn't have role (existing tokens before this fix), fetch it from DB
+      if (!token.role && token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { role: true }
+        })
+        if (dbUser) {
+          token.role = dbUser.role
+        }
       }
       return token
     },
@@ -77,6 +89,20 @@ export const authOptions: any = {
     async session({ session, token }: any) {
       if (token && session.user) {
         session.user.id = token.id as string
+        // Ensure role is always present in session
+        if (token.role) {
+          session.user.role = token.role as string
+        } else if (token.id) {
+          // Fallback: fetch from database if role missing from token
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { role: true }
+          })
+          if (dbUser) {
+            session.user.role = dbUser.role
+            token.role = dbUser.role
+          }
+        }
       }
       return session
     }

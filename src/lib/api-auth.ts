@@ -22,6 +22,7 @@ export interface AuthSession {
         id: string
         name?: string | null
         email?: string | null
+        role?: string
     }
 }
 

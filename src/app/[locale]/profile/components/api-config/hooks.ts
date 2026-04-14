@@ -132,7 +132,7 @@ function composePricingDisplayKey(type: CustomModel['type'], provider: string, m
     return `${type}::${provider}::${modelId}`
 }
 
-function parsePricingDisplayMap(raw: unknown): PricingDisplayMap {
+export function parsePricingDisplayMap(raw: unknown): PricingDisplayMap {
     if (!isRecord(raw)) return {}
 
     const map: PricingDisplayMap = {}
@@ -155,13 +155,13 @@ function parsePricingDisplayMap(raw: unknown): PricingDisplayMap {
     return map
 }
 
-const DEFAULT_WORKFLOW_CONCURRENCY: WorkflowConcurrency = {
+export const DEFAULT_WORKFLOW_CONCURRENCY: WorkflowConcurrency = {
     analysis: DEFAULT_ANALYSIS_WORKFLOW_CONCURRENCY,
     image: DEFAULT_IMAGE_WORKFLOW_CONCURRENCY,
     video: DEFAULT_VIDEO_WORKFLOW_CONCURRENCY,
 }
 
-function parseWorkflowConcurrency(raw: unknown): WorkflowConcurrency {
+export function parseWorkflowConcurrency(raw: unknown): WorkflowConcurrency {
     if (!isRecord(raw)) return DEFAULT_WORKFLOW_CONCURRENCY
     return {
         analysis: normalizeWorkflowConcurrencyValue(
@@ -210,7 +210,7 @@ function resolvePricingDisplay(
     return null
 }
 
-function applyPricingDisplay(model: CustomModel, map: PricingDisplayMap): CustomModel {
+export function applyPricingDisplay(model: CustomModel, map: PricingDisplayMap): CustomModel {
     const pricing = resolvePricingDisplay(map, model.type, model.provider, model.modelId)
     if (!pricing) {
         // Preserve existing server-provided pricing fields (e.g. from customPricing)

@@ -84,6 +84,7 @@
   "customProviderTip": "This project is currently in beta. Due to varying custom API formats across providers, custom API compatibility is still limited. We recommend using the built-in official APIs. Future updates will expand compatibility with more providers.",
   "providerPool": "Provider Pool",
   "providerPoolDesc": "Configure and use a rich selection of models from global providers",
+  "providerPoolDescGlobal": "Global default provider pool, all users and new projects will use the providers configured here by default",
   "dragToSort": "Drag to sort",
   "dragToSortHint": "Drag the top-left handle on each card to reorder providers",
   "hideProvider": "Hide provider",

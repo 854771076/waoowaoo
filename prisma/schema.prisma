@@ -1004,19 +1004,26 @@ model LegacyMediaRefBackup {
 
 model SystemConfig {
   id                String    @id @default(uuid())
-  // Built-in vendor API config
+  // Built-in vendor API config (legacy - kept for migration)
   llmBaseUrl        String?   @default("https://openrouter.ai/api/v1")
   llmApiKey         String?   @db.Text // encrypted
   falApiKey         String?   @db.Text
   googleAiKey       String?   @db.Text
   arkApiKey         String?   @db.Text
   qwenApiKey        String?   @db.Text
-  // NewAPI vendor
+  // NewAPI vendor (legacy)
   newapiApiKey      String?   @db.Text
   newapiBaseUrl     String?
-  // Custom models and providers
+  // Legacy custom models and providers (kept for migration)
   customModels      String?   @db.Text
   customProviders   String?   @db.Text
+
+  // Modern provider-based configuration
+  providers         String?   @db.Text // JSON: Provider[] encrypted API keys
+  models            String?   @db.Text // JSON: CustomModel[]
+  defaultModels     String?   @db.Text // JSON: default model selection for each capability
+  workflowConcurrency String? @db.Text // JSON: concurrency limits per workflow type
+  capabilityDefaults String?  @db.Text // JSON: default capability parameter values
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

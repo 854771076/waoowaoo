@@ -33,6 +33,7 @@ export interface CustomModel {
   compatMediaTemplateSource?: OpenAICompatMediaTemplateSource
   // Non-authoritative display field; billing uses unified server pricing catalog.
   price: number
+  isGlobal?: boolean
 }
 
 export type ModelMediaType = 'llm' | 'image' | 'video' | 'audio' | 'lipsync'
@@ -55,6 +56,7 @@ interface CustomProvider {
   apiKey?: string
   apiMode?: 'gemini-sdk' | 'openai-official'
   gatewayRoute?: GatewayRouteType
+  isGlobal?: boolean
 }
 
 type LlmProtocolType = 'responses' | 'chat-completions'
@@ -288,18 +290,49 @@ function pickProviderStrict(
   throw new Error(`PROVIDER_NOT_FOUND: ${providerId} is not configured`)
 }
 
-async function readGlobalConfig(): Promise<{ models: CustomModel[]; providers: CustomProvider[] }> {
+export async function readGlobalConfig(): Promise<{ models: CustomModel[]; providers: CustomProvider[] }> {
   const config = await prisma.systemConfig.findFirst()
 
   if (!config) {
     return { models: [], providers: [] }
   }
 
-  // Add built-in newapi provider if configured
-  const providers: CustomProvider[] = parseCustomProviders(config.customProviders)
+  let providers: CustomProvider[] = []
+  let models: CustomModel[] = []
 
-  // If newapiApiKey is set, add it as a predefined provider
-  if (config.newapiApiKey) {
+  // Priority: use modern provider-based configuration from admin if available
+  if (config.providers) {
+    let parsedProvidersUnknown: unknown
+    try {
+      parsedProvidersUnknown = JSON.parse(config.providers)
+    } catch {
+      parsedProvidersUnknown = []
+    }
+    if (Array.isArray(parsedProvidersUnknown)) {
+      providers = parseCustomProviders(config.providers)
+    }
+  } else {
+    // Fallback to legacy customProviders
+    providers = parseCustomProviders(config.customProviders)
+  }
+
+  if (config.models) {
+    let parsedModelsUnknown: unknown
+    try {
+      parsedModelsUnknown = JSON.parse(config.models)
+    } catch {
+      parsedModelsUnknown = []
+    }
+    if (Array.isArray(parsedModelsUnknown)) {
+      models = parseCustomModels(config.models)
+    }
+  } else {
+    // Fallback to legacy customModels
+    models = parseCustomModels(config.customModels)
+  }
+
+  // Keep backward compatibility: if legacy newapiApiKey is set, add it as a predefined provider
+  if (config.newapiApiKey && !providers.some(p => p.id === 'newapi')) {
     providers.unshift({
       id: 'newapi',
       name: 'NewAPI',
@@ -309,11 +342,8 @@ async function readGlobalConfig(): Promise<{ models: CustomModel[]; providers: C
     })
   }
 
-  // Add other built-in providers from system config...
-  // (existing logic will handle the predefined built-ins from UserPreference, we follow same pattern)
-
   return {
-    models: parseCustomModels(config.customModels),
+    models,
     providers,
   }
 }

@@ -41,8 +41,8 @@ export const GET = apiHandler(async (request: NextRequest) => {
       name: user.name,
       role: user.role,
       isDisabled: user.isDisabled,
-      balance: user.balance?.balance ?? 0,
-      totalSpent: user.balance?.totalSpent ?? 0,
+      balance: user.balance?.balance?.toNumber() ?? 0,
+      totalSpent: user.balance?.totalSpent?.toNumber() ?? 0,
       projectCount: user._count.projects,
       createdAt: user.createdAt,
     }))

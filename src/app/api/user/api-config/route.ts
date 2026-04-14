@@ -29,6 +29,7 @@ import {
   type PricingApiType,
 } from '@/lib/model-pricing/catalog'
 import { getBillingMode } from '@/lib/billing/mode'
+import { readGlobalConfig } from '@/lib/api-config'
 import {
   DEFAULT_ANALYSIS_WORKFLOW_CONCURRENCY,
   DEFAULT_IMAGE_WORKFLOW_CONCURRENCY,
@@ -64,6 +65,7 @@ interface StoredProvider {
   hidden?: boolean
   apiMode?: ApiModeType
   gatewayRoute?: GatewayRouteType
+  isGlobal?: boolean
 }
 
 interface StoredModelLlmCustomPricing {
@@ -102,6 +104,7 @@ interface StoredModel {
   priceOutput?: number
   capabilities?: ModelCapabilities
   customPricing?: StoredModelCustomPricing
+  isGlobal?: boolean
 }
 
 interface PricingDisplayItem {
@@ -1676,14 +1679,51 @@ export const GET = apiHandler(async () => {
     },
   })
 
-  const providers = parseStoredProviders(pref?.customProviders).map((provider) => ({
-    ...provider,
-    apiKey: provider.apiKey ? decryptApiKey(provider.apiKey) : '',
-  }))
+  // Read global configuration from admin system config
+  const globalConfig = await readGlobalConfig()
+
+  // Parse user stored configuration
+  const userProviders = parseStoredProviders(pref?.customProviders)
+  const userModels = parseStoredModels(pref?.customModels)
+
+  // Merge: global first, user overrides duplicates by id/modelKey
+  // Mark global providers with isGlobal flag so frontend knows they can't be edited
+  const mergedProviders = [
+    ...globalConfig.providers
+      .filter(gp => !userProviders.find(up => up.id === gp.id))
+      .map(gp => ({ ...gp, isGlobal: true })),
+    ...userProviders,
+  ]
+
+  const mergedModels = [
+    ...globalConfig.models
+      .filter(gm => !userModels.find(um => um.modelKey === gm.modelKey))
+      .map(gm => ({ ...gm, isGlobal: true })),
+    ...userModels,
+  ]
+
+  // Decrypt API keys for client response
+  // Never expose ANY API key (even encrypted) for global providers (security: only admin should know them)
+  const providers = mergedProviders.map((provider) => {
+    if (provider.isGlobal) {
+      // For global providers: always return empty apiKey, never expose any version (encrypted or decrypted)
+      return {
+        ...provider,
+        apiKey: '',
+        hasApiKey: !!provider.apiKey,
+      };
+    } else {
+      // For user providers: decrypt normally
+      return {
+        ...provider,
+        apiKey: provider.apiKey ? decryptApiKey(provider.apiKey) : '',
+        hasApiKey: !!provider.apiKey,
+      };
+    }
+  })
 
   const billingMode = await getBillingMode()
-  const parsedModels = parseStoredModels(pref?.customModels)
-  const models = billingMode === 'OFF' ? parsedModels : sanitizeModelsForBilling(parsedModels)
+  const models = billingMode === 'OFF' ? mergedModels : sanitizeModelsForBilling(mergedModels)
   const pricingDisplay = buildPricingDisplayMap()
   const pricedModels = models.map((model) => withDisplayPricing(model, pricingDisplay))
 
