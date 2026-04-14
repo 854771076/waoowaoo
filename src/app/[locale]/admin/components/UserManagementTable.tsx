@@ -385,7 +385,10 @@ export default function UserManagementTable() {
       {/* Edit User Dialog */}
       <GlassModalShell
         open={showEditDialog}
-        onClose={() => setShowEditDialog(false)}
+        onClose={() => {
+          setShowEditDialog(false)
+          setEditingUser(null)
+        }}
         title={t('editUser')}
         size="md"
       >
@@ -455,7 +458,10 @@ export default function UserManagementTable() {
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <GlassButton
-            onClick={() => setShowEditDialog(false)}
+            onClick={() => {
+              setShowEditDialog(false)
+              setEditingUser(null)
+            }}
             variant="secondary"
             disabled={actionLoading}
           >

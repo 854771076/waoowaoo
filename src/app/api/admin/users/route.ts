@@ -35,6 +35,22 @@ export const GET = apiHandler(async (request: NextRequest) => {
       },
     })
 
+    // Calculate aggregate statistics for regular users (role = 'user')
+    const stats = await prisma.user.aggregate({
+      where: { role: 'user' },
+      _count: { id: true },
+      _sum: {
+        balance: {
+          balance: true,
+          totalSpent: true,
+        },
+      },
+    })
+
+    const totalUsers = stats._count.id
+    const totalBalance = stats._sum?.balance?.balance?.toNumber() ?? 0
+    const totalSpent = stats._sum?.balance?.totalSpent?.toNumber() ?? 0
+
     // Format response with aggregated stats
     const formattedUsers = users.map(user => ({
       id: user.id,
@@ -47,7 +63,14 @@ export const GET = apiHandler(async (request: NextRequest) => {
       createdAt: user.createdAt,
     }))
 
-    return NextResponse.json({ users: formattedUsers })
+    return NextResponse.json({
+      users: formattedUsers,
+      stats: {
+        totalUsers,
+        totalBalance,
+        totalSpent,
+      },
+    })
   })
 })
 
