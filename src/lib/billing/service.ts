@@ -398,7 +398,7 @@ async function resolveActualForSync<T>(
           metadata: params.metadata,
           customPricing: params.customPricing,
           userId: params.userId,
-          isUserOwnApiKey: !!params.customPricing,
+          isUserOwnApiKey: isUserCustomModel(params.model),
         }),
         actualQuantity,
       }
@@ -437,7 +437,7 @@ async function resolveTaskActual(
 
   const payload = options?.result && typeof options.result === 'object' ? options.result : null
   // Check if this is a user-owned custom model with their own API key
-  const isUserOwnApiKey = customPricing !== null
+  const isUserOwnApiKey = isUserCustomModel(info.model)
   const actualVideoTokens = payload
     ? asNumber((payload as Record<string, unknown>).actualVideoTokens)
     : null
@@ -546,7 +546,7 @@ async function withSyncBillingCore<T>(
     maxCost: params.maxCost,
     customPricing: params.customPricing,
     userId: params.userId,
-    isUserOwnApiKey: !!params.customPricing,
+    isUserOwnApiKey: isUserCustomModel(params.model),
   })
 
   if (quotedCost <= 0) {
@@ -965,7 +965,7 @@ export async function prepareTaskBilling(task: {
 
   const customPricing = await loadUserCustomPricing(task.userId, info.model)
   // Check if this is a user-owned custom model with their own API key
-  const isUserOwnApiKey = customPricing !== null
+  const isUserOwnApiKey = isUserCustomModel(info.model)
   let quotedCost: number
   try {
     quotedCost = await resolveCost({
@@ -1058,7 +1058,7 @@ export async function settleTaskBilling(task: {
 
   const customPricing = await loadUserCustomPricing(task.userId, info.model)
   // Check if this is a user-owned custom model with their own API key
-  const isUserOwnApiKey = customPricing !== null
+  const isUserOwnApiKey = isUserCustomModel(info.model)
   let quotedCost: number
   try {
     quotedCost = await resolveCost({
