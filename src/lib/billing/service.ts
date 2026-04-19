@@ -1141,6 +1141,38 @@ export async function settleTaskBilling(task: {
         chargedCost: 0,
       } satisfies TaskBillingInfo
     }
+    // Requirement change: Charge regardless of success or failure
+    // When model invocation fails, we still need to bill the quoted cost
+    if (mode === 'ENFORCE' && info.freezeId) {
+      try {
+        const recordModel = resolveRecordModel(info.model, undefined)
+        await confirmChargeWithRecord(
+          info.freezeId,
+          {
+            projectId: task.projectId,
+            action: info.action,
+            apiType: info.apiType,
+            model: recordModel.model,
+            quantity: info.quantity,
+            unit: info.unit,
+            metadata: {
+              ...(info.metadata || {}),
+              taskId: task.id,
+              mode: 'ENFORCE',
+              quotedCost,
+              pricingVersion: info.pricingVersion || BUILTIN_PRICING_VERSION,
+              pricingSelections: info.metadata || {},
+              billingKey: info.billingKey || task.id,
+              invocationFailed: true,
+              ...(recordModel.actualModels.length > 0 ? { actualModels: recordModel.actualModels } : {}),
+            },
+          },
+          { chargedAmount: quotedCost },
+        )
+      } catch (billingError) {
+        _ulogError('[Billing] Failed to confirm charge when handling task invocation error:', billingError)
+      }
+    }
     throw error
   }
 
