@@ -118,6 +118,7 @@ describe('billing/service', () => {
 
     await withVoiceBilling(
       'u1',
+      'index-tts2',
       5,
       { projectId: 'p1', action: 'voice_gen' },
       async () => ({ actualDurationSeconds: 50 }),
@@ -139,6 +140,7 @@ describe('billing/service', () => {
     await expect(
       withVoiceBilling(
         'u1',
+        'index-tts2',
         5,
         { projectId: 'p1', action: 'voice_gen' },
         async () => ({ actualDurationSeconds: 50 }),

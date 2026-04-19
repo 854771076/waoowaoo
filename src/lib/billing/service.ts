@@ -855,21 +855,24 @@ export async function withVideoBilling<T>(
 
 export async function withVoiceBilling<T>(
   userId: string,
+  model: string,
   maxFreezeSeconds: number,
   recordParams: BillingRecordParams,
   generateFn: () => Promise<T>,
 ): Promise<T> {
+  const customPricing = await loadUserCustomPricing(userId, model)
   return await withSyncBillingCore(
     {
       userId,
       projectId: recordParams.projectId,
       action: recordParams.action,
       apiType: 'voice',
-      model: 'index-tts2',
+      model,
       quantity: maxFreezeSeconds,
       unit: 'second',
       metadata: recordParams.metadata,
       maxCost: calcVoice(maxFreezeSeconds),
+      customPricing,
       extractActualQuantity: (result) => {
         if (!result || typeof result !== 'object') return null
         const value =
@@ -885,19 +888,22 @@ export async function withVoiceBilling<T>(
 
 export async function withVoiceDesignBilling<T>(
   userId: string,
+  model: string,
   recordParams: BillingRecordParams,
   generateFn: () => Promise<T>,
 ): Promise<T> {
+  const customPricing = await loadUserCustomPricing(userId, model)
   return await withSyncBillingCore(
     {
       userId,
       projectId: recordParams.projectId,
       action: recordParams.action,
       apiType: 'voice-design',
-      model: 'bailian',
+      model,
       quantity: 1,
       unit: 'call',
       metadata: recordParams.metadata,
+      customPricing,
     },
     recordParams,
     generateFn,
@@ -910,6 +916,7 @@ export async function withLipSyncBilling<T>(
   model = 'kling',
   generateFn: () => Promise<T>,
 ): Promise<T> {
+  const customPricing = await loadUserCustomPricing(userId, model)
   return await withSyncBillingCore(
     {
       userId,
@@ -920,6 +927,7 @@ export async function withLipSyncBilling<T>(
       quantity: 1,
       unit: 'call',
       metadata: recordParams.metadata,
+      customPricing,
     },
     recordParams,
     generateFn,
