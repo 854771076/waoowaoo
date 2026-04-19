@@ -41,5 +41,14 @@
   "passwordOptional": "Password (leave empty to keep unchanged)",
   "statsTotalUsers": "Regular Users",
   "statsTotalBalance": "Total Balance",
-  "statsTotalSpent": "Total Consumption"
+  "statsTotalSpent": "Total Consumption",
+  "platformFeeTitle": "User Custom API Platform Fee",
+  "platformFeeDescription": "Charge a fixed platform fee for each API call made with user-configured API keys. This fee is added on top of any model pricing.",
+  "platformFeeEnable": "Enable platform fee for user custom APIs",
+  "platformFeeText": "Text (per call)",
+  "platformFeeImage": "Image (per call)",
+  "platformFeeVideo": "Video (per call)",
+  "platformFeeAudio": "Audio/Voice (per call)",
+  "platformFeeLipSync": "Lip Sync (per call)",
+  "skipPlatformFee": "Skip platform fee"
 }

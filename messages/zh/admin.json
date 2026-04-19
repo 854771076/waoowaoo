@@ -41,5 +41,14 @@
   "passwordOptional": "密码（留空不修改）",
   "statsTotalUsers": "普通用户数",
   "statsTotalBalance": "总余额",
-  "statsTotalSpent": "总消费"
+  "statsTotalSpent": "总消费",
+  "platformFeeTitle": "用户自定义 API 平台服务费",
+  "platformFeeDescription": "对用户使用自己配置 API Key 的每次调用收取固定平台服务费。此费用会追加到模型定价之上。",
+  "platformFeeEnable": "启用用户自定义 API 平台服务费",
+  "platformFeeText": "文本（每次调用）",
+  "platformFeeImage": "图片（每次调用）",
+  "platformFeeVideo": "视频（每次调用）",
+  "platformFeeAudio": "语音/音频（每次调用）",
+  "platformFeeLipSync": "唇形同步（每次调用）",
+  "skipPlatformFee": "免除平台服务费"
 }
