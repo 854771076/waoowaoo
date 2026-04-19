@@ -667,32 +667,34 @@ async function withSyncBillingCore<T>(
     )
     return result
   } catch (error) {
-    // 需求变更：无论成功失败都扣费，所以失败时按预估费用扣费并记录日志
-    const pricingVersion = BUILTIN_PRICING_VERSION
-    const pricingSelections = params.metadata || {}
-    await confirmChargeWithRecord(
-      freezeId,
-      {
-        projectId: recordParams.projectId,
-        action: recordParams.action,
-        apiType: params.apiType,
-        model: params.model,
-        quantity: params.quantity,
-        unit: params.unit,
-        metadata: {
-          ...(recordParams.metadata || {}),
-          ...(params.metadata || {}),
-          mode: 'ENFORCE',
-          quotedCost,
-          pricingVersion,
-          pricingSelections,
-          billingKey,
-          requestId,
-          invocationFailed: true,
+    // Requirement change: Charge regardless of success or failure, so charge estimated cost and log when failed
+    try {
+      await confirmChargeWithRecord(
+        freezeId,
+        {
+          projectId: recordParams.projectId,
+          action: recordParams.action,
+          apiType: params.apiType,
+          model: params.model,
+          quantity: params.quantity,
+          unit: params.unit,
+          metadata: {
+            ...(recordParams.metadata || {}),
+            ...(params.metadata || {}),
+            mode: 'ENFORCE',
+            quotedCost,
+            pricingVersion,
+            pricingSelections,
+            billingKey,
+            requestId,
+            invocationFailed: true,
+          },
         },
-      },
-      { chargedAmount: quotedCost },
-    )
+        { chargedAmount: quotedCost },
+      )
+    } catch (billingError) {
+      _ulogError('[Billing] Failed to confirm charge when handling invocation error:', billingError)
+    }
     if (error instanceof BillingOperationError) {
       throw new BillingOperationError(error.code, error.message, {
         ...(error.details || {}),
@@ -938,8 +940,8 @@ export async function withVoiceDesignBilling<T>(
 
 export async function withLipSyncBilling<T>(
   userId: string,
-  model = "kling",
   recordParams: BillingRecordParams,
+  model = "kling",
   generateFn: () => Promise<T>,
 ): Promise<T> {
   const customPricing = await loadUserCustomPricing(userId, model)
