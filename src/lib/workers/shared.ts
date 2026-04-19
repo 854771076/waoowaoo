@@ -591,7 +591,9 @@ export async function withTaskLifecycle(job: Job<TaskJobData>, handler: (job: Jo
       throw (error instanceof Error ? error : new Error(normalizedError.message || 'Task failed'))
     }
 
-    if (billingInfo?.billable) {
+    // Only rollback if billing is still frozen (not yet confirmed)
+    // If the task failed after we already settled (invocation failed but billed), don't rollback again
+    if (billingInfo?.billable && billingInfo.status === 'frozen') {
       billingInfo = (await rollbackTaskBilling({
         id: taskId,
         billingInfo,
