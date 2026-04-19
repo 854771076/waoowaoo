@@ -667,12 +667,38 @@ async function withSyncBillingCore<T>(
     )
     return result
   } catch (error) {
-    await rollbackFreeze(freezeId)
+    // 需求变更：无论成功失败都扣费，所以失败时按预估费用扣费并记录日志
+    const pricingVersion = BUILTIN_PRICING_VERSION
+    const pricingSelections = params.metadata || {}
+    await confirmChargeWithRecord(
+      freezeId,
+      {
+        projectId: recordParams.projectId,
+        action: recordParams.action,
+        apiType: params.apiType,
+        model: params.model,
+        quantity: params.quantity,
+        unit: params.unit,
+        metadata: {
+          ...(recordParams.metadata || {}),
+          ...(params.metadata || {}),
+          mode: 'ENFORCE',
+          quotedCost,
+          pricingVersion,
+          pricingSelections,
+          billingKey,
+          requestId,
+          invocationFailed: true,
+        },
+      },
+      { chargedAmount: quotedCost },
+    )
     if (error instanceof BillingOperationError) {
       throw new BillingOperationError(error.code, error.message, {
         ...(error.details || {}),
         billingKey,
         pricingVersion,
+        invocationFailed: true,
       }, error)
     }
     throw error
@@ -871,7 +897,7 @@ export async function withVoiceBilling<T>(
       quantity: maxFreezeSeconds,
       unit: 'second',
       metadata: recordParams.metadata,
-      maxCost: calcVoice(maxFreezeSeconds),
+      maxCost: calcVoice(maxFreezeSeconds, customPricing),
       customPricing,
       extractActualQuantity: (result) => {
         if (!result || typeof result !== 'object') return null
@@ -912,8 +938,8 @@ export async function withVoiceDesignBilling<T>(
 
 export async function withLipSyncBilling<T>(
   userId: string,
+  model = "kling",
   recordParams: BillingRecordParams,
-  model = 'kling',
   generateFn: () => Promise<T>,
 ): Promise<T> {
   const customPricing = await loadUserCustomPricing(userId, model)
