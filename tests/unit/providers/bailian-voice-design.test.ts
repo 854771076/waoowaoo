@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createVoiceDesign } from '@/lib/providers/bailian/voice-design'
 

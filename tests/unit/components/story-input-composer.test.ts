@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'

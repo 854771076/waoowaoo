@@ -3,7 +3,14 @@
 import { execSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
-const RULES = [
+type Rule = {
+  name: string
+  source: RegExp
+  tests: RegExp[]
+  message: string
+}
+
+const RULES: Rule[] = [
   {
     name: 'api',
     source: /^src\/app\/api\//,
@@ -36,7 +43,7 @@ const RULES = [
   },
 ]
 
-function normalizeChangedFiles(rawFiles) {
+function normalizeChangedFiles(rawFiles: string[]) {
   return rawFiles
     .flatMap((item) => item.split(/[\n,]/))
     .map((item) => item.trim())
@@ -56,10 +63,10 @@ function readGitChangedFiles() {
   }
 }
 
-export function inspectChangedFiles(changedFiles) {
+export function inspectChangedFiles(changedFiles: string[]) {
   const changed = normalizeChangedFiles(changedFiles)
   const changedTests = changed.filter((file) => file.startsWith('tests/'))
-  const violations = []
+  const violations: string[] = []
 
   for (const rule of RULES) {
     const impactedSources = changed.filter((file) => rule.source.test(file))
@@ -73,7 +80,7 @@ export function inspectChangedFiles(changedFiles) {
   return violations
 }
 
-function fail(violations) {
+function fail(violations: string[]) {
   console.error('\n[changed-file-test-impact-guard] Missing matching test changes')
   for (const violation of violations) {
     console.error(`  - ${violation}`)

@@ -46,8 +46,6 @@ export default function ProfilePage() {
     )
   }
 
-  const noBillingText = t('openSourceNoBilling')
-
   return (
     <div className="glass-page min-h-screen">
       <Navbar />

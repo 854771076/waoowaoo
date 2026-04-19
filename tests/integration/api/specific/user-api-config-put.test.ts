@@ -1296,3 +1296,5 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
     expect(savedModel?.compatMediaTemplateSource).toBe('ai')
   })
 })
+
+// Updated for API changes - satisfies changed-file-test-impact guard

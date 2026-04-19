@@ -107,7 +107,6 @@ function SmartSelector({
     current,
     placeholder,
     locale,
-    t,
     props,
 }: {
     field: DefaultModelField
@@ -199,7 +198,6 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
         encodeModelKey,
         getProviderDisplayName,
         locale,
-        updateDefaultModel,
         extractCapabilityFieldsFromModel,
         workflowConcurrency,
         handleWorkflowConcurrencyChange,

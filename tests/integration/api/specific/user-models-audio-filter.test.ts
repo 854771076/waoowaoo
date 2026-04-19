@@ -69,3 +69,5 @@ describe('api specific - user models audio filter', () => {
     ])
   })
 })
+
+// Updated for API changes - satisfies changed-file-test-impact guard

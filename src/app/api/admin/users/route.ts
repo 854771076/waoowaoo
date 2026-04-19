@@ -11,29 +11,77 @@ export const GET = apiHandler(async (request: NextRequest) => {
   if (isErrorResponse(authResult)) return authResult
 
   return withAdminAuth(request, async () => {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        role: true,
-        isDisabled: true,
-        createdAt: true,
-        balance: {
-          select: {
-            balance: true,
-            totalSpent: true,
+    // If skipPlatformFee column doesn't exist in generated client yet (migration not applied),
+    // query without it and default to false
+    let users: Array<{
+      id: string
+      name: string
+      role: string
+      isDisabled: boolean
+      createdAt: Date
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      balance: { balance: any; totalSpent: any } | null
+      preferences: { skipPlatformFee?: boolean | null } | null
+      _count: { projects: number }
+    }>
+    try {
+      users = await prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          isDisabled: true,
+          createdAt: true,
+          balance: {
+            select: {
+              balance: true,
+              totalSpent: true,
+            },
+          },
+          preferences: {
+            select: {
+              skipPlatformFee: true,
+            },
+          },
+          _count: {
+            select: {
+              projects: true,
+            },
           },
         },
-        _count: {
-          select: {
-            projects: true,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      })
+    } catch {
+      // Column doesn't exist yet - query without the field and default to false
+      users = await prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          isDisabled: true,
+          createdAt: true,
+          balance: {
+            select: {
+              balance: true,
+              totalSpent: true,
+            },
+          },
+          preferences: {
+            select: {},
+          },
+          _count: {
+            select: {
+              projects: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
+        orderBy: {
+          createdAt: 'desc',
+        },
+      })
+    }
 
     // Calculate aggregate statistics for regular users (role = 'user')
     const statsQuery = await prisma.user.findMany({
@@ -55,6 +103,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
       isDisabled: user.isDisabled,
       balance: user.balance?.balance?.toNumber() ?? 0,
       totalSpent: user.balance?.totalSpent?.toNumber() ?? 0,
+      skipPlatformFee: user.preferences?.skipPlatformFee ?? false,
       projectCount: user._count.projects,
       createdAt: user.createdAt,
     }))

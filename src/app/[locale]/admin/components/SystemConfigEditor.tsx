@@ -6,11 +6,9 @@ import { GlassModalShell } from '@/components/ui/primitives'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { apiFetch } from '@/lib/api-fetch'
 import type { CapabilitySelections } from '@/lib/model-config-contract'
+import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import {
   encodeModelKey,
-  getProviderDisplayName,
-  parseModelKey,
-  useProviders,
 } from '@/app/[locale]/profile/components/api-config'
 import {
   PRESET_MODELS,
@@ -29,12 +27,27 @@ import {
 } from '@/app/[locale]/profile/components/api-config/hooks'
 import { ApiConfigToolbar } from '@/app/[locale]/profile/components/api-config-tab/ApiConfigToolbar'
 import { ApiConfigProviderList } from '@/app/[locale]/profile/components/api-config-tab/ApiConfigProviderList'
-import { DefaultModelCards } from '@/app/[locale]/profile/components/api-config-tab/DefaultModelCards'
 import { useApiConfigFilters } from '@/app/[locale]/profile/components/api-config-tab/hooks/useApiConfigFilters'
 import { AppIcon } from '@/components/ui/icons'
 import type { CapabilityValue } from '@/lib/model-config-contract'
 
 type CustomProviderType = 'gemini-compatible' | 'openai-compatible'
+
+interface DefaultModels {
+  analysisModel?: string
+  characterModel?: string
+  locationModel?: string
+  storyboardModel?: string
+  editModel?: string
+  videoModel?: string
+  audioModel?: string
+  lipSyncModel?: string
+  voiceDesignModel?: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 const Icons = {
   settings: () => (
@@ -60,47 +73,15 @@ const Icons = {
   ),
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-function isCapabilityValue(value: unknown): value is string | number | boolean {
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-}
-
-function extractCapabilityFieldsFromModel(
-  capabilities: Record<string, unknown> | undefined,
-  modelType: string,
-): Array<{ field: string; options: CapabilityValue[] }> {
-  if (!capabilities) return []
-  const namespace = capabilities[modelType]
-  if (!isRecord(namespace)) return []
-  return Object.entries(namespace)
-    .filter(([key, value]) => key.endsWith('Options') && Array.isArray(value) && value.every(isCapabilityValue))
-    .map(([key, value]) => ({
-      field: key.slice(0, -'Options'.length),
-      options: value as CapabilityValue[],
-    }))
-}
-
-function parseBySample(input: string, sample: unknown): string | number | boolean {
-  if (typeof sample === 'number') return Number(input)
-  if (typeof sample === 'boolean') return input === 'true'
-  return input
-}
-
-function toCapabilityFieldLabel(field: string): string {
-  return field.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase())
-}
-
 export default function SystemConfigEditor() {
-  const locale = useLocale()
   const {
     providers,
     models,
     defaultModels,
-    workflowConcurrency,
-    capabilityDefaults,
+    enablePlatformFeeForUserApi,
+    userApiPlatformFee,
+    setEnablePlatformFee,
+    updatePlatformFee,
     loading,
     saveStatus,
     flushConfig,
@@ -114,10 +95,6 @@ export default function SystemConfigEditor() {
     deleteModel,
     addModel,
     updateModel,
-    updateDefaultModel,
-    batchUpdateDefaultModels,
-    updateWorkflowConcurrency,
-    updateCapabilityDefault,
   } = useGlobalSystemProviders()
 
   const t = useTranslations('apiConfig')
@@ -137,7 +114,6 @@ export default function SystemConfigEditor() {
   const {
     modelProviders,
     getModelsForProvider,
-    getEnabledModelsByType,
   } = useApiConfigFilters({
     providers,
     models,
@@ -223,7 +199,7 @@ export default function SystemConfigEditor() {
       setTestSteps([{ name: 'models', status: 'fail', message: 'Network error' }])
       setTestStatus('failed')
     }
-  }, [newGeminiProvider, tp, doAddProvider, t])
+  }, [newGeminiProvider, tp, doAddProvider])
 
   const handleForceAdd = useCallback(() => {
     doAddProvider()
@@ -235,15 +211,6 @@ export default function SystemConfigEditor() {
     setTestSteps([])
     setShowAddGeminiProvider(false)
   }
-
-  const handleWorkflowConcurrencyChange = useCallback(
-    (field: 'analysis' | 'image' | 'video', rawValue: string) => {
-      const parsed = Number.parseInt(rawValue, 10)
-      if (!Number.isFinite(parsed) || parsed <= 0) return
-      updateWorkflowConcurrency(field, parsed)
-    },
-    [updateWorkflowConcurrency],
-  )
 
   if (loading) {
     return (
@@ -295,6 +262,104 @@ export default function SystemConfigEditor() {
               addGeminiProvider: t('addGeminiProvider'),
             }}
           />
+
+          {/* Platform Fee Configuration for User API */}
+          <div className="mt-8 rounded-xl border border-[var(--glass-border)] p-5">
+            <h3 className="mb-4 text-sm font-semibold text-[var(--glass-text-primary)]">
+              {ta('userApiPlatformFeeTitle')}
+            </h3>
+            <p className="mb-4 text-xs text-[var(--glass-text-secondary)]">
+              {ta('userApiPlatformFeeDescription')}
+            </p>
+
+            <div className="mb-4 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="enablePlatformFee"
+                checked={enablePlatformFeeForUserApi}
+                onChange={(e) => setEnablePlatformFee(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--glass-border)] bg-[var(--glass-bg)] text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="enablePlatformFee" className="text-sm font-medium text-[var(--glass-text-primary)]">
+                {ta('enablePlatformFeeForUserApi')}
+              </label>
+            </div>
+
+            {enablePlatformFeeForUserApi && (
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+                    {ta('platformFeeText')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={userApiPlatformFee.text ?? 0}
+                    onChange={(e) => updatePlatformFee('text', parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="glass-input-base w-full px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+                    {ta('platformFeeImage')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={userApiPlatformFee.image ?? 0}
+                    onChange={(e) => updatePlatformFee('image', parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="glass-input-base w-full px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+                    {ta('platformFeeVideo')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={userApiPlatformFee.video ?? 0}
+                    onChange={(e) => updatePlatformFee('video', parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="glass-input-base w-full px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+                    {ta('platformFeeAudio')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={userApiPlatformFee.audio ?? 0}
+                    onChange={(e) => updatePlatformFee('audio', parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="glass-input-base w-full px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[var(--glass-text-primary)]">
+                    {ta('platformFeeLipSync')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={userApiPlatformFee['lip-sync'] ?? 0}
+                    onChange={(e) => updatePlatformFee('lip-sync', parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="glass-input-base w-full px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -517,6 +582,14 @@ function useGlobalSystemProviders() {
   const [defaultModels, setDefaultModels] = useState<Record<string, string>>({})
   const [workflowConcurrency, setWorkflowConcurrency] = useState(DEFAULT_WORKFLOW_CONCURRENCY)
   const [capabilityDefaults, setCapabilityDefaults] = useState<CapabilitySelections>({})
+  const [enablePlatformFeeForUserApi, setEnablePlatformFeeForUserApi] = useState(false)
+  const [userApiPlatformFee, setUserApiPlatformFee] = useState<Record<string, number>>({
+    text: 0,
+    image: 0,
+    video: 0,
+    audio: 0,
+    'lip-sync': 0,
+  })
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -528,97 +601,138 @@ function useGlobalSystemProviders() {
   const latestDefaultModelsRef = useRef(defaultModels)
   const latestWorkflowConcurrencyRef = useRef(workflowConcurrency)
   const latestCapabilityDefaultsRef = useRef(capabilityDefaults)
+  const latestEnablePlatformFeeRef = useRef(enablePlatformFeeForUserApi)
+  const latestPlatformFeeRef = useRef(userApiPlatformFee)
 
   useEffect(() => { latestModelsRef.current = models }, [models])
   useEffect(() => { latestProvidersRef.current = providers }, [providers])
   useEffect(() => { latestDefaultModelsRef.current = defaultModels }, [defaultModels])
   useEffect(() => { latestWorkflowConcurrencyRef.current = workflowConcurrency }, [workflowConcurrency])
   useEffect(() => { latestCapabilityDefaultsRef.current = capabilityDefaults }, [capabilityDefaults])
+  useEffect(() => { latestEnablePlatformFeeRef.current = enablePlatformFeeForUserApi }, [enablePlatformFeeForUserApi])
+  useEffect(() => { latestPlatformFeeRef.current = userApiPlatformFee }, [userApiPlatformFee])
 
   // Load config
   useEffect(() => {
-    fetchConfig()
-  }, [])
-
-  async function fetchConfig() {
-    initializedRef.current = false
-    let loadedSuccessfully = false
-    try {
-      const res = await apiFetch('/api/admin/system-config')
-      if (!res.ok) {
-        throw new Error(`system-config load failed: HTTP ${res.status}`)
-      }
-
-      const data = await res.json()
-      const pricingDisplay = parsePricingDisplayMap(data.pricingDisplay || {})
-
-      // Merge preset and saved providers
-      const savedProviders: Provider[] = data.providers || []
-      setProviders(mergeProvidersForDisplay(savedProviders, presetProviders).map(p => ({ ...p, isGlobal: true })))
-
-      // Merge preset and saved models
-      const savedModelsRaw = data.models || []
-      const savedModelsNormalized = savedModelsRaw.map((m: CustomModel) => ({
-        ...m,
-        modelKey: m.modelKey || encodeModelKey(m.provider, m.modelId),
-      }))
-      const savedModels: CustomModel[] = []
-      const seen = new Set<string>()
-      for (const model of savedModelsNormalized) {
-        const key = model.modelKey
-        if (seen.has(key)) continue
-        seen.add(key)
-        savedModels.push(model)
-      }
-      const hasSavedModels = savedModels.length > 0
-      const allModels = PRESET_MODELS.map(preset => {
-        const presetModelKey = encodeModelKey(preset.provider, preset.modelId)
-        const saved = savedModels.find((m: CustomModel) => m.modelKey === presetModelKey)
-        const alwaysEnabledPreset = preset.type === 'lipsync'
-        const mergedPreset: CustomModel = {
-          ...preset,
-          modelKey: presetModelKey,
-          price: 0,
-          priceLabel: '--',
-          enabled: isPresetComingSoonModelKey(presetModelKey)
-            ? false
-            : (hasSavedModels ? (!!saved) : false),
-          isGlobal: true,
+    async function fetchConfig() {
+      initializedRef.current = false
+      let loadedSuccessfully = false
+      try {
+        const res = await apiFetch('/api/admin/system-config')
+        if (!res.ok) {
+          throw new Error(`system-config load failed: HTTP ${res.status}`)
         }
-        return applyPricingDisplay(mergedPreset, pricingDisplay)
-      })
-      const customModels = savedModels.filter((m: CustomModel) =>
-        !PRESET_MODELS.find(preset => encodeModelKey(preset.provider, preset.modelId) === m.modelKey)
-      ).map((m: CustomModel) => ({
-        ...applyPricingDisplay(m, pricingDisplay),
-        // Respect enabled from server
-        enabled: (m as CustomModel & { enabled?: boolean }).enabled !== false,
-        isGlobal: true,
-      }))
 
-      setModels([...allModels, ...customModels])
+        const data = await res.json()
+        const pricingDisplay = parsePricingDisplayMap(data.pricingDisplay || {})
 
-      // Load default model config
-      if (data.defaultModels) {
-        setDefaultModels(data.defaultModels)
-      }
-      setWorkflowConcurrency(parseWorkflowConcurrency(data.workflowConcurrency))
-      if (data.capabilityDefaults && typeof data.capabilityDefaults === 'object') {
-        setCapabilityDefaults(data.capabilityDefaults)
-      }
-      loadedSuccessfully = true
-    } catch (error) {
-      console.error('Failed to fetch global system config:', error)
-      setSaveStatus('error')
-    } finally {
-      setLoading(false)
-      if (loadedSuccessfully) {
-        setTimeout(() => {
-          initializedRef.current = true
-        }, 100)
+        // Merge preset and saved providers, keep the order of savedProviders (drag-and-drop sorting depends on it)
+        const savedProviders: Provider[] = data.providers || []
+        setProviders(mergeProvidersForDisplay(savedProviders, presetProviders))
+
+        // Merge preset and saved models
+        const savedModelsRaw = data.models || []
+        const savedModelsNormalized = savedModelsRaw.map((m: CustomModel) => ({
+          ...m,
+          modelKey: m.modelKey || encodeModelKey(m.provider, m.modelId),
+        }))
+        const savedModels: CustomModel[] = []
+        const seen = new Set<string>()
+        for (const model of savedModelsNormalized) {
+          const key = model.modelKey
+          if (seen.has(key)) continue
+          seen.add(key)
+          savedModels.push(model)
+        }
+        const hasSavedModels = savedModels.length > 0
+        const allModels = PRESET_MODELS.map(preset => {
+          const presetModelKey = encodeModelKey(preset.provider, preset.modelId)
+          const saved = savedModels.find((m: CustomModel) =>
+            m.modelKey === presetModelKey
+          )
+          const mergedPreset: CustomModel = {
+            ...preset,
+            modelKey: presetModelKey,
+            price: 0,
+            priceLabel: '--',
+            enabled: isPresetComingSoonModelKey(presetModelKey)
+              ? false
+              : (hasSavedModels ? (!!saved) : false),
+            isGlobal: true,
+          }
+          return applyPricingDisplay(mergedPreset, pricingDisplay)
+        })
+        const customModels = savedModels.filter((m: CustomModel) =>
+          !PRESET_MODELS.find(preset => encodeModelKey(preset.provider, preset.modelId) === m.modelKey)
+        ).map((m: CustomModel) => ({
+          ...applyPricingDisplay(m, pricingDisplay),
+          // Respect enabled from server (backend already returns enabled: false for disabled presets)
+          enabled: (m as CustomModel & { enabled?: boolean }).enabled !== false,
+          isGlobal: PRESET_MODELS.some((preset) => encodeModelKey(preset.provider, preset.modelId) === m.modelKey),
+        }))
+
+        setModels([...allModels, ...customModels])
+
+        // Load default model config - normalize invalid model keys to empty
+        if (data.defaultModels && isRecord(data.defaultModels)) {
+          const normalized: DefaultModels = {}
+          const possibleFields: Array<keyof DefaultModels> = [
+            'analysisModel',
+            'characterModel',
+            'locationModel',
+            'storyboardModel',
+            'editModel',
+            'videoModel',
+            'audioModel',
+            'lipSyncModel',
+            'voiceDesignModel',
+          ]
+          for (const field of possibleFields) {
+            const value = (data.defaultModels as Record<string, unknown>)[field]
+            if (typeof value === 'string' && value.trim()) {
+              // Only keep if valid format
+              if (parseModelKeyStrict(value)) {
+                normalized[field] = value
+              }
+              // else: invalid format - leave it undefined/empty
+            }
+          }
+          setDefaultModels(normalized as Record<string, string>)
+        }
+        setWorkflowConcurrency(parseWorkflowConcurrency((data as { workflowConcurrency?: unknown }).workflowConcurrency))
+        if (data.capabilityDefaults && typeof data.capabilityDefaults === 'object') {
+          setCapabilityDefaults(data.capabilityDefaults as CapabilitySelections)
+        }
+        // Load platform fee configuration
+        if (typeof data.enablePlatformFeeForUserApi === 'boolean') {
+          setEnablePlatformFeeForUserApi(data.enablePlatformFeeForUserApi)
+        }
+        if (data.userApiPlatformFee && typeof data.userApiPlatformFee === 'object') {
+          setUserApiPlatformFee({
+            text: 0,
+            image: 0,
+            video: 0,
+            audio: 0,
+            'lip-sync': 0,
+            ...data.userApiPlatformFee,
+          })
+        }
+        loadedSuccessfully = true
+      } catch (error) {
+        console.error('Failed to fetch global system config:', error)
+        setSaveStatus('error')
+      } finally {
+        setLoading(false)
+        if (loadedSuccessfully) {
+          // Delay setting initialized to ensure all state updates complete before starting listening
+          setTimeout(() => {
+            initializedRef.current = true
+          }, 100)
+        }
       }
     }
-  }
+    fetchConfig()
+  }, [presetProviders])
 
   // Core save function
   const performSave = useCallback(async (
@@ -627,7 +741,8 @@ function useGlobalSystemProviders() {
       workflowConcurrency?: typeof workflowConcurrency
       capabilityDefaults?: typeof capabilityDefaults
     },
-    optimistic = false,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _optimistic = false,
     silent = false,
   ): Promise<boolean> => {
     if (saveTimeoutRef.current) {
@@ -643,6 +758,8 @@ function useGlobalSystemProviders() {
       const currentDefaultModels = overrides?.defaultModels ?? latestDefaultModelsRef.current
       const currentWorkflowConcurrency = overrides?.workflowConcurrency ?? latestWorkflowConcurrencyRef.current
       const currentCapabilityDefaults = overrides?.capabilityDefaults ?? latestCapabilityDefaultsRef.current
+      const currentEnablePlatformFee = latestEnablePlatformFeeRef.current
+      const currentPlatformFee = latestPlatformFeeRef.current
       const enabledModels = currentModels.filter(m => m.enabled)
       const res = await apiFetch('/api/admin/system-config', {
         method: 'PUT',
@@ -653,6 +770,8 @@ function useGlobalSystemProviders() {
           defaultModels: currentDefaultModels,
           workflowConcurrency: currentWorkflowConcurrency,
           capabilityDefaults: currentCapabilityDefaults,
+          enablePlatformFeeForUserApi: currentEnablePlatformFee,
+          userApiPlatformFee: currentPlatformFee,
         }),
       })
       if (res.ok) {
@@ -1006,12 +1125,32 @@ function useGlobalSystemProviders() {
     return models.filter(m => m.type === type)
   }, [models])
 
+  // Platform fee operations
+  const setEnablePlatformFee = useCallback((enabled: boolean) => {
+    setEnablePlatformFeeForUserApi(enabled)
+    latestEnablePlatformFeeRef.current = enabled
+    void performSave(undefined, true)
+  }, [performSave])
+
+  const updatePlatformFee = useCallback((type: string, value: number) => {
+    setUserApiPlatformFee(prev => {
+      const next = { ...prev, [type]: value }
+      latestPlatformFeeRef.current = next
+      void performSave(undefined, true)
+      return next
+    })
+  }, [performSave])
+
   return {
     providers,
     models,
     defaultModels,
     workflowConcurrency,
     capabilityDefaults,
+    enablePlatformFeeForUserApi,
+    userApiPlatformFee,
+    setEnablePlatformFee,
+    updatePlatformFee,
     loading,
     saveStatus,
     flushConfig,

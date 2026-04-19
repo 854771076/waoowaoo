@@ -9,6 +9,7 @@
 
 import { prisma } from './prisma'
 import { decryptApiKey } from './crypto-utils'
+import { logError as _ulogError } from './logging/core'
 import {
   composeModelKey,
   parseModelKeyStrict,
@@ -291,7 +292,16 @@ function pickProviderStrict(
 }
 
 export async function readGlobalConfig(): Promise<{ models: CustomModel[]; providers: CustomProvider[] }> {
-  const config = await prisma.systemConfig.findFirst()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let config: any
+  try {
+    // Use any cast for compatibility when new columns have been added but prisma generate hasn't run yet
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    config = await (prisma as any).systemConfig.findFirst()
+  } catch (error) {
+    _ulogError('[api-config] Failed to read global config:', error)
+    config = null
+  }
 
   if (!config) {
     return { models: [], providers: [] }

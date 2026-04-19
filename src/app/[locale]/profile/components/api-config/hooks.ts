@@ -17,6 +17,7 @@ import {
     type PricingDisplayMap,
 } from './types'
 import type { CapabilitySelections, CapabilityValue } from '@/lib/model-config-contract'
+import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import {
     DEFAULT_ANALYSIS_WORKFLOW_CONCURRENCY,
     DEFAULT_IMAGE_WORKFLOW_CONCURRENCY,
@@ -89,10 +90,15 @@ export function mergeProvidersForDisplay(
             const providerBaseUrl = providerKey === 'minimax'
                 ? matchedPreset.baseUrl
                 : (savedProvider.baseUrl || matchedPreset.baseUrl)
+            // Preserve savedProvider.hasApiKey for global providers:
+            // For global providers, hasApiKey is already true from backend even though apiKey is empty for security
+            const hasApiKey = typeof savedProvider.hasApiKey === 'boolean'
+                ? savedProvider.hasApiKey
+                : apiKey.length > 0
             merged.push({
                 ...matchedPreset,
                 apiKey,
-                hasApiKey: apiKey.length > 0,
+                hasApiKey,
                 hidden: savedProvider.hidden === true,
                 baseUrl: providerBaseUrl,
                 apiMode: savedProvider.apiMode,
@@ -105,8 +111,12 @@ export function mergeProvidersForDisplay(
 
         merged.push({
             ...savedProvider,
-            hasApiKey: !!savedProvider.apiKey,
-            isGlobal: presetIds.has(savedProvider.id),
+            hasApiKey: typeof savedProvider.hasApiKey === 'boolean'
+                ? savedProvider.hasApiKey
+                : !!savedProvider.apiKey,
+            isGlobal: typeof savedProvider.isGlobal === 'boolean'
+                ? savedProvider.isGlobal
+                : presetIds.has(savedProvider.id),
         })
     }
 
@@ -347,9 +357,31 @@ export function useProviders(): UseProvidersReturn {
 
             setModels([...allModels, ...customModels])
 
-            // 加载默认模型配置
-            if (data.defaultModels) {
-                setDefaultModels(data.defaultModels)
+            // 加载默认模型配置 - normalize invalid model keys to empty
+            if (data.defaultModels && isRecord(data.defaultModels)) {
+                const normalized: DefaultModels = {}
+                const possibleFields: Array<keyof DefaultModels> = [
+                    'analysisModel',
+                    'characterModel',
+                    'locationModel',
+                    'storyboardModel',
+                    'editModel',
+                    'videoModel',
+                    'audioModel',
+                    'lipSyncModel',
+                    'voiceDesignModel',
+                ]
+                for (const field of possibleFields) {
+                    const value = (data.defaultModels as Record<string, unknown>)[field]
+                    if (typeof value === 'string' && value.trim()) {
+                        // Only keep if valid format
+                        if (parseModelKeyStrict(value)) {
+                            normalized[field] = value
+                        }
+                        // else: invalid format - leave it undefined/empty
+                    }
+                }
+                setDefaultModels(normalized)
             }
             setWorkflowConcurrency(parseWorkflowConcurrency((data as { workflowConcurrency?: unknown }).workflowConcurrency))
             if (data.capabilityDefaults && typeof data.capabilityDefaults === 'object') {
@@ -397,13 +429,17 @@ export function useProviders(): UseProvidersReturn {
             const currentDefaultModels = overrides?.defaultModels ?? latestDefaultModelsRef.current
             const currentWorkflowConcurrency = overrides?.workflowConcurrency ?? latestWorkflowConcurrencyRef.current
             const currentCapabilityDefaults = overrides?.capabilityDefaults ?? latestCapabilityDefaultsRef.current
-            const enabledModels = currentModels.filter(m => m.enabled)
+            // Only save user's own providers/models to user preferences - never save global providers/models
+            // This ensures that global changes are always pulled from the global config when loading
+            const userProviders = currentProviders.filter(p => !p.isGlobal)
+            const userModels = currentModels.filter(m => !m.isGlobal)
+            const enabledUserModels = userModels.filter(m => m.enabled)
             const res = await apiFetch('/api/user/api-config', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    models: enabledModels,
-                    providers: currentProviders,
+                    models: enabledUserModels,
+                    providers: userProviders,
                     defaultModels: currentDefaultModels,
                     workflowConcurrency: currentWorkflowConcurrency,
                     capabilityDefaults: currentCapabilityDefaults,
@@ -640,7 +676,7 @@ export function useProviders(): UseProvidersReturn {
                 return nextModels
             })
         }
-    }, [t, performSave])
+    }, [t, performSave, providers])
 
     const updateProviderInfo = useCallback((providerId: string, name: string, baseUrl?: string) => {
         setProviders(prev => {
@@ -766,7 +802,7 @@ export function useProviders(): UseProvidersReturn {
                 return nextModels
             })
         }
-    }, [t, performSave])
+    }, [t, performSave, models])
 
     // 过滤器
     const getModelsByType = useCallback((type: CustomModel['type']) => {

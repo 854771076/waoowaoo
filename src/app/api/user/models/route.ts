@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { readGlobalConfig } from '@/lib/api-config'
 import {
   composeModelKey,
   parseModelKeyStrict,
@@ -174,12 +175,47 @@ export const GET = apiHandler(async () => {
     select: { customModels: true, customProviders: true },
   })
 
-  const modelsRaw: StoredModel[] = parseStoredModels(pref?.customModels)
-  const providers: StoredProvider[] = parseStoredProviders(pref?.customProviders)
+  // Read global config to get global models and providers
+  const globalConfig = await readGlobalConfig()
+
+  // Convert global models to StoredModel format
+  const globalModelsRaw: StoredModel[] = globalConfig.models.map(model => ({
+    modelId: model.modelId,
+    modelKey: model.modelKey,
+    name: model.name,
+    type: model.type,
+    provider: model.provider,
+    isGlobal: true,
+  }))
+
+  // Convert global providers to StoredProvider format
+  const globalProvidersRaw: StoredProvider[] = globalConfig.providers.map(provider => ({
+    id: provider.id,
+    name: provider.name,
+    apiKey: provider.apiKey,
+    baseUrl: provider.baseUrl,
+    isGlobal: true,
+  }))
+
+  // Merge: user models override global models with same modelKey
+  const userModelsRaw: StoredModel[] = parseStoredModels(pref?.customModels)
+  const userProviders: StoredProvider[] = parseStoredProviders(pref?.customProviders)
+
+  // Combine all providers - global first, then user providers (user can override global)
+  const allProviders: StoredProvider[] = [
+    ...globalProvidersRaw,
+    ...userProviders,
+  ]
+
+  // Combine all models - global first, then user models (user can override global)
+  const allModelsRaw: StoredModel[] = [
+    ...globalModelsRaw,
+    ...userModelsRaw,
+  ]
 
   const providerNameMap = new Map<string, string>()
   const providerIdsWithApiKey = new Set<string>()
-  providers.forEach((provider) => {
+  allProviders.forEach((provider) => {
     const providerId = typeof provider?.id === 'string' ? provider.id.trim() : ''
     if (!providerId) return
 
@@ -197,9 +233,11 @@ export const GET = apiHandler(async () => {
     lipsync: [],
   }
 
-  for (const model of modelsRaw) {
+  for (const model of allModelsRaw) {
     if (!isUnifiedModelType(model.type)) continue
     if (!isUserSelectableModel(model)) continue
+    // Skip disabled models (only applies to user models, global models are enabled by default)
+    if ('enabled' in model && model.enabled === false) continue
 
     const modelType = model.type
     const modelKey = toModelKey(model)

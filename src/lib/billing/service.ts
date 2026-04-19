@@ -80,45 +80,155 @@ function normalizeMoney(value: number): number {
 
 function asNumber(value: unknown): number | null {
   const n = Number(value)
-  if (!Number.isFinite(n)) return null
-  return n
+  if (Number.isFinite(n)) return n
+  return null
 }
 
-function resolveCost(input: CostInput) {
+// Platform fee configuration cache (cached until server restart)
+let cachedEnablePlatformFee: boolean | null = null
+let cachedPlatformFees: Record<string, number> | null = null
+
+async function getPlatformFeeConfig(): Promise<{
+  enable: boolean
+  fees: Record<string, number>
+}> {
+  if (cachedEnablePlatformFee !== null && cachedPlatformFees !== null) {
+    return { enable: cachedEnablePlatformFee, fees: cachedPlatformFees }
+  }
+
+  let enable = false
+  let fees: Record<string, number> = {
+    text: 0,
+    image: 0,
+    video: 0,
+    audio: 0,
+    'lip-sync': 0,
+  }
+
+  try {
+    // Use any for migration compatibility - schema may not have the columns yet
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const config = await (prisma as any).systemConfig.findFirst({
+      select: {
+        enablePlatformFeeForUserApi: true,
+        userApiPlatformFee: true,
+      },
+    })
+
+    enable = config?.enablePlatformFeeForUserApi ?? false
+    if (config?.userApiPlatformFee) {
+      try {
+        fees = { ...fees, ...JSON.parse(config.userApiPlatformFee) }
+      } catch {
+        // ignore parse errors
+      }
+    }
+  } catch (error) {
+    // If database doesn't have the columns migrated yet, default to disabled
+    _ulogError('[Billing] Failed to load platform fee config from database, defaulting to disabled:', error)
+    enable = false
+  }
+
+  cachedEnablePlatformFee = enable
+  cachedPlatformFees = fees
+  return { enable, fees }
+}
+
+async function shouldChargePlatformFee(
+  userId: string,
+  isUserOwnApiKey: boolean,
+): Promise<boolean> {
+  if (!isUserOwnApiKey) return false
+
+  const config = await getPlatformFeeConfig()
+  if (!config.enable) return false
+
+  try {
+    // Use any for migration compatibility - skipPlatformFee may not exist in older generated client
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const userPref = await (prisma as any).userPreference.findUnique({
+      where: { userId },
+      select: { skipPlatformFee: true },
+    })
+
+    const skip = userPref?.skipPlatformFee ?? false
+    return !skip
+  } catch (error) {
+    // If query fails (missing column or missing row), default to not charging platform fee
+    _ulogError('[Billing] Failed to check user platform fee exemption, defaulting to no charge:', error)
+    return false
+  }
+}
+
+async function getPlatformFeeAmount(apiType: string): Promise<number> {
+  const config = await getPlatformFeeConfig()
+  return config.fees[apiType] ?? 0
+}
+
+async function resolveCost(
+  input: CostInput & {
+    userId?: string
+    isUserOwnApiKey?: boolean
+  },
+): Promise<number> {
   const asMoney = (value: number) => normalizeMoney(value)
 
+  // Calculate base cost
+  let baseCost: number
+
   if (typeof input.maxCost === 'number' && input.maxCost >= 0) {
-    return asMoney(input.maxCost)
+    baseCost = asMoney(input.maxCost)
+  } else if (typeof input.quotedCost === 'number' && input.quotedCost >= 0) {
+    baseCost = asMoney(input.quotedCost)
+  } else {
+    switch (input.apiType) {
+      case 'text': {
+        const inputTokens = Number(input.metadata?.inputTokens ?? Math.floor(input.quantity * 0.7))
+        const outputTokens = Number(input.metadata?.outputTokens ?? Math.max(input.quantity - inputTokens, 0))
+        baseCost = asMoney(calcText(input.model, Math.max(inputTokens, 0), Math.max(outputTokens, 0), input.customPricing))
+        break
+      }
+      case 'image':
+        baseCost = asMoney(calcImage(input.model, input.quantity, input.metadata, input.customPricing))
+        break
+      case 'video': {
+        const resolution = typeof input.metadata?.resolution === 'string' ? input.metadata.resolution : '720p'
+        if (input.unit === 'token') {
+          // actualVideoTokens path: actual tokens are given for Seedance 2.0 billing
+          const tokens = input.quantity
+          baseCost = asMoney(calcVideoByTokens(input.model, tokens, input.metadata))
+        } else {
+          baseCost = asMoney(calcVideo(input.model, resolution, input.quantity, input.metadata, input.customPricing))
+        }
+        break
+      }
+      case 'voice':
+        baseCost = asMoney(calcVoice(input.quantity))
+        break
+      case 'voice-design':
+        baseCost = asMoney(calcVoiceDesign())
+        break
+      case 'lip-sync':
+        baseCost = asMoney(calcLipSync(input.model))
+        break
+      default:
+        throw new BillingOperationError('BILLING_INVALID_API_TYPE', `Unsupported billing apiType: ${String(input.apiType)}`, {
+          apiType: input.apiType,
+          model: input.model,
+        })
+    }
   }
 
-  if (typeof input.quotedCost === 'number' && input.quotedCost >= 0) {
-    return asMoney(input.quotedCost)
+  // Add platform fee if needed
+  if (input.userId && input.isUserOwnApiKey) {
+    const shouldCharge = await shouldChargePlatformFee(input.userId, input.isUserOwnApiKey)
+    if (shouldCharge) {
+      const platformFee = await getPlatformFeeAmount(input.apiType)
+      return asMoney(baseCost + platformFee)
+    }
   }
 
-  switch (input.apiType) {
-    case 'text': {
-      const inputTokens = Number(input.metadata?.inputTokens ?? Math.floor(input.quantity * 0.7))
-      const outputTokens = Number(input.metadata?.outputTokens ?? Math.max(input.quantity - inputTokens, 0))
-      return asMoney(calcText(input.model, Math.max(inputTokens, 0), Math.max(outputTokens, 0), input.customPricing))
-    }
-    case 'image':
-      return asMoney(calcImage(input.model, input.quantity, input.metadata, input.customPricing))
-    case 'video': {
-      const resolution = typeof input.metadata?.resolution === 'string' ? input.metadata.resolution : '720p'
-      return asMoney(calcVideo(input.model, resolution, input.quantity, input.metadata, input.customPricing))
-    }
-    case 'voice':
-      return asMoney(calcVoice(input.quantity))
-    case 'voice-design':
-      return asMoney(calcVoiceDesign())
-    case 'lip-sync':
-      return asMoney(calcLipSync(input.model))
-    default:
-      throw new BillingOperationError('BILLING_INVALID_API_TYPE', `Unsupported billing apiType: ${String(input.apiType)}`, {
-        apiType: input.apiType,
-        model: input.model,
-      })
-  }
+  return asMoney(baseCost)
 }
 
 function resolveTextCostFromUsage(
@@ -242,12 +352,12 @@ async function ensureFreezeCoverage(params: {
   throw new InsufficientBalanceError(chargedCost, balance.balance)
 }
 
-function resolveActualForSync<T>(
+async function resolveActualForSync<T>(
   params: SyncBillingParams<T>,
   result: T,
   textUsage: TextUsageEntry[],
   quotedCost: number,
-): ResolvedActual {
+): Promise<ResolvedActual> {
   const textResolved = resolveTextCostFromUsage(textUsage, params.customPricing)
   if (params.apiType === 'text' && textResolved) {
     if (textResolved.actualQuantity > 0) {
@@ -266,13 +376,15 @@ function resolveActualForSync<T>(
     const actualQuantity = asNumber(params.extractActualQuantity(result))
     if (actualQuantity !== null && actualQuantity >= 0) {
       return {
-        actualCost: resolveCost({
+        actualCost: await resolveCost({
           apiType: params.apiType,
           model: params.model,
           quantity: actualQuantity,
           unit: params.unit,
           metadata: params.metadata,
           customPricing: params.customPricing,
+          userId: params.userId,
+          isUserOwnApiKey: !!params.customPricing,
         }),
         actualQuantity,
       }
@@ -285,14 +397,16 @@ function resolveActualForSync<T>(
   }
 }
 
-function resolveTaskActual(
+async function resolveTaskActual(
   info: Extract<TaskBillingInfo, { billable: true }>,
   quotedCost: number,
+  customPricing: ModelCustomPricing | null,
+  userId: string,
   options?: {
     result?: Record<string, unknown> | void
     textUsage?: TextUsageEntry[]
   },
-): ResolvedActual {
+): Promise<ResolvedActual> {
   const textResolved = resolveTextCostFromUsage(options?.textUsage || [])
   if (info.apiType === 'text' && textResolved) {
     if (textResolved.actualQuantity > 0) {
@@ -308,12 +422,24 @@ function resolveTaskActual(
   }
 
   const payload = options?.result && typeof options.result === 'object' ? options.result : null
+  // Check if this is a user-owned custom model with their own API key
+  const isUserOwnApiKey = customPricing !== null
   const actualVideoTokens = payload
     ? asNumber((payload as Record<string, unknown>).actualVideoTokens)
     : null
   if (info.apiType === 'video' && actualVideoTokens !== null && actualVideoTokens >= 0) {
+    const actualCost = await resolveCost({
+      apiType: info.apiType,
+      model: info.model,
+      quantity: actualVideoTokens,
+      unit: 'token',
+      metadata: info.metadata,
+      customPricing,
+      userId,
+      isUserOwnApiKey,
+    })
     return {
-      actualCost: calcVideoByTokens(info.model, actualVideoTokens, info.metadata),
+      actualCost,
       actualQuantity: actualVideoTokens,
       metadata: {
         actualVideoTokens,
@@ -331,25 +457,31 @@ function resolveTaskActual(
 
   if (actualQuantity !== null && actualQuantity >= 0) {
     return {
-      actualCost: resolveCost({
+      actualCost: await resolveCost({
         apiType: info.apiType,
         model: info.model,
         quantity: actualQuantity,
         unit: info.unit,
         metadata: info.metadata,
+        customPricing,
+        userId,
+        isUserOwnApiKey,
       }),
       actualQuantity,
     }
   }
 
   return {
-    actualCost: resolveCost({
+    actualCost: await resolveCost({
       apiType: info.apiType,
       model: info.model,
       quantity: info.quantity,
       unit: info.unit,
       metadata: info.metadata,
       quotedCost: info.maxFrozenCost,
+      customPricing,
+      userId,
+      isUserOwnApiKey,
     }),
     actualQuantity: info.quantity,
   }
@@ -390,7 +522,7 @@ async function withSyncBillingCore<T>(
     return await execute()
   }
 
-  const quotedCost = resolveCost({
+  const quotedCost = await resolveCost({
     apiType: params.apiType,
     model: params.model,
     quantity: params.quantity,
@@ -399,6 +531,8 @@ async function withSyncBillingCore<T>(
     quotedCost: params.quotedCost,
     maxCost: params.maxCost,
     customPricing: params.customPricing,
+    userId: params.userId,
+    isUserOwnApiKey: !!params.customPricing,
   })
 
   if (quotedCost <= 0) {
@@ -407,7 +541,7 @@ async function withSyncBillingCore<T>(
 
   if (mode === 'SHADOW') {
     const { result, textUsage } = await executeWithUsage(params.apiType, execute)
-    const actual = resolveActualForSync(params, result, textUsage, quotedCost)
+    const actual = await resolveActualForSync(params, result, textUsage, quotedCost)
     await recordShadowUsage(params.userId, {
       projectId: params.projectId,
       taskType: params.action || null,
@@ -483,7 +617,7 @@ async function withSyncBillingCore<T>(
 
   try {
     const { result, textUsage } = await executeWithUsage(params.apiType, execute)
-    const actual = resolveActualForSync(params, result, textUsage, quotedCost)
+    const actual = await resolveActualForSync(params, result, textUsage, quotedCost)
     const recordModel = resolveRecordModel(params.model, actual.metadata)
     const chargedCost = await ensureFreezeCoverage({
       freezeId,
@@ -816,9 +950,11 @@ export async function prepareTaskBilling(task: {
   }
 
   const customPricing = await loadUserCustomPricing(task.userId, info.model)
+  // Check if this is a user-owned custom model with their own API key
+  const isUserOwnApiKey = customPricing !== null
   let quotedCost: number
   try {
-    quotedCost = resolveCost({
+    quotedCost = await resolveCost({
       apiType: info.apiType,
       model: info.model,
       quantity: info.quantity,
@@ -826,6 +962,8 @@ export async function prepareTaskBilling(task: {
       metadata: info.metadata,
       quotedCost: info.maxFrozenCost,
       customPricing,
+      userId: task.userId,
+      isUserOwnApiKey,
     })
   } catch (error) {
     if (mode !== 'ENFORCE' && error instanceof BillingOperationError && error.code === 'BILLING_UNKNOWN_MODEL') {
@@ -905,9 +1043,11 @@ export async function settleTaskBilling(task: {
   }
 
   const customPricing = await loadUserCustomPricing(task.userId, info.model)
+  // Check if this is a user-owned custom model with their own API key
+  const isUserOwnApiKey = customPricing !== null
   let quotedCost: number
   try {
-    quotedCost = resolveCost({
+    quotedCost = await resolveCost({
       apiType: info.apiType,
       model: info.model,
       quantity: info.quantity,
@@ -915,6 +1055,8 @@ export async function settleTaskBilling(task: {
       metadata: info.metadata,
       quotedCost: info.maxFrozenCost,
       customPricing,
+      userId: task.userId,
+      isUserOwnApiKey,
     })
   } catch (error) {
     if (mode === 'SHADOW' && error instanceof BillingOperationError && error.code === 'BILLING_UNKNOWN_MODEL') {
@@ -939,7 +1081,7 @@ export async function settleTaskBilling(task: {
 
   let actual: ResolvedActual
   try {
-    actual = resolveTaskActual(info, quotedCost, options)
+    actual = await resolveTaskActual(info, quotedCost, customPricing, task.userId, options)
   } catch (error) {
     if (mode === 'SHADOW' && error instanceof BillingOperationError && error.code === 'BILLING_UNKNOWN_MODEL') {
       return {

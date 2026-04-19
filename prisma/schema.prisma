@@ -468,6 +468,9 @@ model UserPreference {
   // 自定义 OpenAI 兼容提供商列表（JSON，包含加密的 API Key）
   customProviders String? @db.Text
 
+  // 平台服务费配置
+  skipPlatformFee Boolean? @default(false)  // 当前用户是否免除平台服务费
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_preferences")
@@ -1024,6 +1027,10 @@ model SystemConfig {
   defaultModels     String?   @db.Text // JSON: default model selection for each capability
   workflowConcurrency String? @db.Text // JSON: concurrency limits per workflow type
   capabilityDefaults String?  @db.Text // JSON: default capability parameter values
+
+  // 用户自定义 API 平台服务费
+  enablePlatformFeeForUserApi Boolean @default(false)  // 全局是否启用用户自定义 API 平台服务费
+  userApiPlatformFee        String? @db.Text          // 各类型固定费用 JSON: { text: number, image: number, video: number, audio: number, "lip-sync": number }
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

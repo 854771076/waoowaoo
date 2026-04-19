@@ -262,6 +262,10 @@ export async function submitTask(params: {
           available: error.available,
         })
       }
+      if (error instanceof ApiError && error.code === 'INSUFFICIENT_BALANCE') {
+        await markTaskFailed(task.id, 'INSUFFICIENT_BALANCE', error.message || '余额不足')
+        throw error
+      }
       await markTaskFailed(task.id, 'INTERNAL_ERROR', error instanceof Error ? error.message : String(error))
       throw error
     }

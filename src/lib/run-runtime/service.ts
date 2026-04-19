@@ -897,35 +897,56 @@ export async function requestRunCancel(params: {
 }
 
 export async function appendRunEventWithSeq(input: RunEventInput): Promise<RunEvent> {
-  return await runtimeClient.$transaction(async (tx) => {
-    const run = await tx.graphRun.update({
-      where: { id: input.runId },
-      data: {
-        lastSeq: { increment: 1 },
-      },
-      select: {
-        id: true,
-        lastSeq: true,
-      },
-    })
+  const MAX_RETRIES = 3
 
-    const created = await tx.graphEvent.create({
-      data: {
-        runId: input.runId,
-        projectId: input.projectId,
-        userId: input.userId,
-        seq: run.lastSeq,
-        eventType: input.eventType,
-        stepKey: input.stepKey || null,
-        attempt: input.attempt || null,
-        lane: input.lane || null,
-        payload: input.payload || null,
-      },
-    })
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await runtimeClient.$transaction(async (tx) => {
+        const run = await tx.graphRun.update({
+          where: { id: input.runId },
+          data: {
+            lastSeq: { increment: 1 },
+          },
+          select: {
+            id: true,
+            lastSeq: true,
+          },
+        })
 
-    await applyRunProjection(tx, input)
-    return mapEventRow(created)
-  })
+        const created = await tx.graphEvent.create({
+          data: {
+            runId: input.runId,
+            projectId: input.projectId,
+            userId: input.userId,
+            seq: run.lastSeq,
+            eventType: input.eventType,
+            stepKey: input.stepKey || null,
+            attempt: input.attempt || null,
+            lane: input.lane || null,
+            payload: input.payload || null,
+          },
+        })
+
+        await applyRunProjection(tx, input)
+        return mapEventRow(created)
+      })
+    } catch (error) {
+      const errorMessage = (error as Error).message.toLowerCase()
+      // Check for unique constraint violation on (runId, seq)
+      if (
+        errorMessage.includes('unique constraint')
+        && errorMessage.includes('graph_events_runid_seq_key')
+        && attempt < MAX_RETRIES
+      ) {
+        // Retry on unique constraint conflict - this happens with concurrent appends
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 100 + 50))
+        continue
+      }
+      throw error
+    }
+  }
+
+  throw new Error(`appendRunEventWithSeq failed after ${MAX_RETRIES} retries`)
 }
 
 export async function listRunEventsAfterSeq(params: {

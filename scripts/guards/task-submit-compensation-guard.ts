@@ -11,7 +11,7 @@ const CREATE_PATTERN = /\.\s*create\s*\(/
 const SUBMIT_TASK_PATTERN = /\bsubmitTask\s*\(/
 const ROLLBACK_PATTERN = /rollback|compensat/i
 
-function fail(title, details = []) {
+function fail(title: string, details: string[] = []) {
   process.stderr.write(`\n[task-submit-compensation-guard] ${title}\n`)
   for (const detail of details) {
     process.stderr.write(`  - ${detail}\n`)
@@ -19,7 +19,7 @@ function fail(title, details = []) {
   process.exit(1)
 }
 
-function walk(dir, out = []) {
+function walk(dir: string, out: string[] = []) {
   if (!fs.existsSync(dir)) return out
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   for (const entry of entries) {
@@ -34,11 +34,11 @@ function walk(dir, out = []) {
   return out
 }
 
-function toRel(fullPath) {
+function toRel(fullPath: string) {
   return path.relative(root, fullPath).split(path.sep).join('/')
 }
 
-export function inspectTaskSubmitCompensation(relPath, content) {
+export function inspectTaskSubmitCompensation(relPath: string, content: string) {
   if (!CREATE_PATTERN.test(content)) return []
   if (!SUBMIT_TASK_PATTERN.test(content)) return []
   if (ROLLBACK_PATTERN.test(content)) return []
@@ -47,7 +47,7 @@ export function inspectTaskSubmitCompensation(relPath, content) {
   ]
 }
 
-export function findTaskSubmitCompensationViolations(scanRoot = root) {
+export function findTaskSubmitCompensationViolations(scanRoot: string = root) {
   const routesRoot = path.join(scanRoot, 'src', 'app', 'api')
   return walk(routesRoot)
     .map((fullPath) => {

@@ -26,6 +26,7 @@ function normalizeAssistantContext(raw: unknown): AssistantContext {
 
 async function toModelMessages(messages: UIMessage[]): Promise<Awaited<ReturnType<typeof convertToModelMessages>>> {
   const withoutIds = messages.map((message) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, ...rest } = message
     return rest
   })

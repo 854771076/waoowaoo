@@ -6,6 +6,7 @@ import { encryptApiKey } from '@/lib/crypto-utils'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { PRESET_PROVIDERS, type Provider, type CustomModel } from '@/app/[locale]/profile/components/api-config/types'
 import { DEFAULT_ANALYSIS_WORKFLOW_CONCURRENCY, DEFAULT_IMAGE_WORKFLOW_CONCURRENCY, DEFAULT_VIDEO_WORKFLOW_CONCURRENCY } from '@/lib/workflow-concurrency'
+import { logError as _ulogError } from '@/lib/logging/core'
 
 // Migrate legacy flat config to modern provider-based format
 function migrateLegacyConfig(config: {
@@ -149,7 +150,18 @@ export const GET = apiHandler(async (request: NextRequest) => {
   if (isErrorResponse(authResult)) return authResult
 
   return withAdminAuth(request, async () => {
-    let config = await prisma.systemConfig.findFirst()
+    // If the new columns don't exist in generated client yet (prisma generate not run after migration)
+    // use any cast to avoid runtime error
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let config: any
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config = await (prisma as any).systemConfig.findFirst()
+    } catch (error) {
+      // If systemConfig doesn't exist at all (should never happen), fallback to creating new
+      _ulogError('[SystemConfig] Failed to load systemConfig, creating new:', error)
+      config = null
+    }
 
     if (!config) {
       // Initialize with empty provider structure
@@ -174,6 +186,8 @@ export const GET = apiHandler(async (request: NextRequest) => {
       video: DEFAULT_VIDEO_WORKFLOW_CONCURRENCY,
     }
     let capabilityDefaults = {}
+    let enablePlatformFeeForUserApi = config.enablePlatformFeeForUserApi ?? false
+    let userApiPlatformFee = config.userApiPlatformFee ? JSON.parse(config.userApiPlatformFee) : {}
 
     if (needsMigration) {
       // Migrate legacy config
@@ -212,6 +226,8 @@ export const GET = apiHandler(async (request: NextRequest) => {
         video: DEFAULT_VIDEO_WORKFLOW_CONCURRENCY,
       }
       capabilityDefaults = config.capabilityDefaults ? JSON.parse(config.capabilityDefaults) : {}
+      enablePlatformFeeForUserApi = config.enablePlatformFeeForUserApi ?? false
+      userApiPlatformFee = config.userApiPlatformFee ? JSON.parse(config.userApiPlatformFee) : {}
     }
 
     return NextResponse.json({
@@ -220,6 +236,8 @@ export const GET = apiHandler(async (request: NextRequest) => {
       defaultModels,
       workflowConcurrency,
       capabilityDefaults,
+      enablePlatformFeeForUserApi,
+      userApiPlatformFee,
     })
   })
 })
@@ -237,6 +255,8 @@ export const PUT = apiHandler(async (request: NextRequest) => {
       defaultModels,
       workflowConcurrency,
       capabilityDefaults,
+      enablePlatformFeeForUserApi,
+      userApiPlatformFee,
     } = body
 
     // Encrypt API keys before saving
@@ -256,17 +276,29 @@ export const PUT = apiHandler(async (request: NextRequest) => {
       defaultModels: JSON.stringify(defaultModels),
       workflowConcurrency: JSON.stringify(workflowConcurrency),
       capabilityDefaults: JSON.stringify(capabilityDefaults),
+      enablePlatformFeeForUserApi,
+      userApiPlatformFee: userApiPlatformFee ? JSON.stringify(userApiPlatformFee) : null,
     }
 
-    let config = await prisma.systemConfig.findFirst()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let config: any
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config = await (prisma as any).systemConfig.findFirst()
+    } catch (error) {
+      _ulogError('[SystemConfig] Failed to load systemConfig in PUT:', error)
+      config = null
+    }
 
     if (config) {
-      config = await prisma.systemConfig.update({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config = await (prisma as any).systemConfig.update({
         where: { id: config.id },
         data: encryptedData,
       })
     } else {
-      config = await prisma.systemConfig.create({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config = await (prisma as any).systemConfig.create({
         data: encryptedData,
       })
     }

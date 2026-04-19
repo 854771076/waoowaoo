@@ -1,8 +1,7 @@
-import { NextRequest } from "next/server"
 import { logAuthAction } from '@/lib/logging/semantic'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 
-export const POST = apiHandler(async (_request: NextRequest) => {
+export const POST = apiHandler(async () => {
   // This instance is private deployment, no public registration
   logAuthAction('REGISTER_REJECTED', 'unknown', { error: 'Private deployment' })
   throw new ApiError(

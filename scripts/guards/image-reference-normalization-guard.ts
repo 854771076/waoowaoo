@@ -19,7 +19,7 @@ const ACCEPTED_NORMALIZATION_MARKERS = [
   /\bgenerateCleanImageToStorage\s*\(/,
 ]
 
-function fail(title, details = []) {
+function fail(title: string, details: string[] = []) {
   process.stderr.write(`\n[image-reference-normalization-guard] ${title}\n`)
   for (const detail of details) {
     process.stderr.write(`  - ${detail}\n`)
@@ -27,7 +27,7 @@ function fail(title, details = []) {
   process.exit(1)
 }
 
-function walk(dir, out = []) {
+function walk(dir: string, out: string[] = []) {
   if (!fs.existsSync(dir)) return out
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   for (const entry of entries) {
@@ -42,19 +42,19 @@ function walk(dir, out = []) {
   return out
 }
 
-function toRel(fullPath) {
+function toRel(fullPath: string) {
   return path.relative(root, fullPath).split(path.sep).join('/')
 }
 
-function usesGenerationReferenceImages(content) {
+function usesGenerationReferenceImages(content: string) {
   return /\bresolveImageSourceFromGeneration\s*\(/.test(content) && /\breferenceImages\s*:/.test(content)
 }
 
-function hasNormalizationMarker(content) {
+function hasNormalizationMarker(content: string) {
   return ACCEPTED_NORMALIZATION_MARKERS.some((pattern) => pattern.test(content))
 }
 
-export function inspectImageReferenceNormalization(relPath, content) {
+export function inspectImageReferenceNormalization(relPath: string, content: string) {
   if (NORMALIZATION_HELPER_ALLOWLIST.has(relPath)) return []
   if (!usesGenerationReferenceImages(content)) return []
   if (hasNormalizationMarker(content)) return []
@@ -63,7 +63,7 @@ export function inspectImageReferenceNormalization(relPath, content) {
   ]
 }
 
-export function findImageReferenceNormalizationViolations(scanRoot = root) {
+export function findImageReferenceNormalizationViolations(scanRoot: string = root) {
   const scanDir = path.join(scanRoot, 'src', 'lib', 'workers', 'handlers')
   return walk(scanDir)
     .map((fullPath) => {

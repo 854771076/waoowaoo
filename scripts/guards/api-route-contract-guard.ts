@@ -29,7 +29,7 @@ const AUTH_CALL_PATTERNS = [
   /\brequireProjectAuthLight\s*\(/,
 ]
 
-function fail(title, details = []) {
+function fail(title: string, details: string[] = []) {
   process.stderr.write(`\n[api-route-contract-guard] ${title}\n`)
   for (const detail of details) {
     process.stderr.write(`  - ${detail}\n`)
@@ -37,7 +37,7 @@ function fail(title, details = []) {
   process.exit(1)
 }
 
-function walk(dir, out = []) {
+function walk(dir: string, out: string[] = []) {
   if (!fs.existsSync(dir)) return out
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   for (const entry of entries) {
@@ -52,20 +52,20 @@ function walk(dir, out = []) {
   return out
 }
 
-function toRel(fullPath) {
+function toRel(fullPath: string) {
   return path.relative(root, fullPath).split(path.sep).join('/')
 }
 
-function hasApiHandlerWrapper(content) {
+function hasApiHandlerWrapper(content: string) {
   return /\bapiHandler\s*\(/.test(content)
 }
 
-function hasRequiredAuth(content) {
+function hasRequiredAuth(content: string) {
   return AUTH_CALL_PATTERNS.some((pattern) => pattern.test(content))
 }
 
-export function inspectRouteContract(relPath, content) {
-  const violations = []
+export function inspectRouteContract(relPath: string, content: string) {
+  const violations: string[] = []
 
   if (!API_HANDLER_ALLOWLIST.has(relPath) && !hasApiHandlerWrapper(content)) {
     violations.push(`${relPath} missing apiHandler wrapper`)
@@ -78,7 +78,7 @@ export function inspectRouteContract(relPath, content) {
   return violations
 }
 
-export function findApiRouteContractViolations(scanRoot = root) {
+export function findApiRouteContractViolations(scanRoot: string = root) {
   const routesRoot = path.join(scanRoot, 'src', 'app', 'api')
   return walk(routesRoot)
     .map((fullPath) => {

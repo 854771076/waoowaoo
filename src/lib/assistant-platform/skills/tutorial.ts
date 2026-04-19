@@ -1,6 +1,7 @@
 import type { AssistantRuntimeContext, AssistantSkillDefinition } from '../types'
 import { renderAssistantSystemPrompt } from '../system-prompts'
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function buildTutorialPrompt(_ctx: AssistantRuntimeContext): string {
   return renderAssistantSystemPrompt('tutorial')
 }

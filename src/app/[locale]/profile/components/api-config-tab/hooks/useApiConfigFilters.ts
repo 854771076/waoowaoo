@@ -48,6 +48,8 @@ function isAudioDefaultCandidate(model: CustomModel): boolean {
 
 function hasProviderApiKey(provider: Provider | undefined): boolean {
   if (!provider) return false
+  // If provider marks hasApiKey = true (global provider that is configured correctly), trust it
+  // even though we don't return the actual apiKey to the frontend for security
   if (provider.hasApiKey === true) return true
   const apiKey = typeof provider.apiKey === 'string' ? provider.apiKey.trim() : ''
   return apiKey.length > 0

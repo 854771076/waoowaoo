@@ -104,6 +104,7 @@ interface StoredModel {
   priceOutput?: number
   capabilities?: ModelCapabilities
   customPricing?: StoredModelCustomPricing
+  enabled?: boolean
   isGlobal?: boolean
 }
 
@@ -189,6 +190,12 @@ const PRICING_PROVIDER_ALIASES: Readonly<Record<string, string>> = {
   'gemini-compatible': 'google',
 }
 const OPTIONAL_PRICING_PROVIDER_KEYS = new Set([
+  'ark',
+  'google',
+  'minimax',
+  'openrouter',
+  'fal',
+  'vidu',
   'openai-compatible',
   'gemini-compatible',
   'bailian',
@@ -1264,7 +1271,12 @@ function normalizeDefaultModelsInput(rawDefaultModels: unknown): DefaultModelsPa
   const normalized: DefaultModelsPayload = {}
   for (const field of DEFAULT_MODEL_FIELDS) {
     if (rawDefaultModels[field] !== undefined) {
-      normalized[field] = validateDefaultModelKey(field, rawDefaultModels[field]) || ''
+      const validated = validateDefaultModelKey(field, rawDefaultModels[field])
+      // If validation returns null, store as undefined so it doesn't overwrite existing value with null
+      // Only set when we have a valid model key or explicit empty string for clearing
+      if (validated !== null) {
+        normalized[field] = validated
+      }
     }
   }
 
@@ -1698,7 +1710,7 @@ export const GET = apiHandler(async () => {
   const mergedModels = [
     ...globalConfig.models
       .filter(gm => !userModels.find(um => um.modelKey === gm.modelKey))
-      .map(gm => ({ ...gm, isGlobal: true })),
+      .map(gm => ({ ...gm, isGlobal: true, enabled: true })),
     ...userModels,
   ]
 

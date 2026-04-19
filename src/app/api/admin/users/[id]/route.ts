@@ -7,6 +7,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import type { AuthSession } from '@/lib/api-auth'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
+import { logError as _ulogError } from '@/lib/logging/core'
 
 export const PATCH = apiHandler(async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
   // 🔐 统一权限验证
@@ -17,7 +18,7 @@ export const PATCH = apiHandler(async (request: NextRequest, context: { params: 
     const { id } = await context.params
     const body = await request.json()
 
-    const { name, password, role, balance, isDisabled } = body
+    const { name, password, role, balance, isDisabled, skipPlatformFee } = body
 
     // Check cannot edit yourself for certain fields
     const session = await getServerSession(authOptions)
@@ -38,7 +39,12 @@ export const PATCH = apiHandler(async (request: NextRequest, context: { params: 
     }
 
     // Prevent admin from disabling themselves or changing own role
-    const updateData: any = {}
+    const updateData: {
+      name?: string
+      password?: string
+      role?: string
+      isDisabled?: boolean
+    } = {}
     if (name) updateData.name = name
     if (password) updateData.password = await bcrypt.hash(password, 12)
     if (!isSelf && role) updateData.role = role
@@ -65,6 +71,25 @@ export const PATCH = apiHandler(async (request: NextRequest, context: { params: 
             totalSpent: 0,
           },
         })
+      }
+
+      // Update skipPlatformFee preference if provided
+      // Handle case where skipPlatformFee column doesn't exist yet in generated client
+      if (typeof skipPlatformFee === 'boolean') {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (tx as any).userPreference.upsert({
+            where: { userId: id },
+            update: { skipPlatformFee },
+            create: {
+              userId: id,
+              skipPlatformFee,
+            },
+          })
+        } catch (error) {
+          // If the column doesn't exist yet, ignore the error
+          _ulogError('[Admin User PATCH] Failed to update skipPlatformFee, column does not exist yet:', error)
+        }
       }
     })
 

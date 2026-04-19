@@ -14,6 +14,7 @@ interface User {
   isDisabled: boolean
   balance: number
   totalSpent: number
+  skipPlatformFee: boolean
   projectCount: number
   createdAt: string
 }
@@ -47,12 +48,14 @@ export default function UserManagementTable() {
     role: string
     balance: number
     isDisabled: boolean
+    skipPlatformFee: boolean
   }>({
     name: '',
     password: '',
     role: 'user',
     balance: 0,
     isDisabled: false,
+    skipPlatformFee: false,
   })
   const [newUser, setNewUser] = useState<CreateUserRequest>({
     name: '',
@@ -145,6 +148,7 @@ export default function UserManagementTable() {
       role: user.role,
       balance: user.balance,
       isDisabled: user.isDisabled,
+      skipPlatformFee: user.skipPlatformFee ?? false,
     })
     setShowEditDialog(true)
   }
@@ -479,6 +483,18 @@ export default function UserManagementTable() {
             />
             <label htmlFor="editIsDisabled" className="text-sm text-[var(--glass-text-primary)]">
               {t('disabled')}
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="skipPlatformFee"
+              checked={editForm.skipPlatformFee}
+              onChange={(e) => setEditForm({ ...editForm, skipPlatformFee: e.target.checked })}
+              className="h-4 w-4 rounded border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)]"
+            />
+            <label htmlFor="skipPlatformFee" className="text-sm text-[var(--glass-text-primary)]">
+              {t('skipPlatformFee')}
             </label>
           </div>
         </div>

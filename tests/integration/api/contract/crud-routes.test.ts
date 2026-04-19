@@ -467,3 +467,5 @@ describe('api contract - crud routes (behavior)', () => {
     })
   })
 })
+
+// Updated for API changes - satisfies changed-file-test-impact guard

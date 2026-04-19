@@ -45,6 +45,9 @@ export function buildBillingMeta(params: {
   model: string
   apiType: string
   metadata?: Record<string, unknown>
+  isUserOwnApiKey?: boolean
+  platformFeeCharged?: boolean
+  platformFeeAmount?: number
 }): string {
   // 尝试从 model composite ID 提取短名 "provider:xxx::model" → "model"
   const modelShort = params.model.includes('::')
@@ -56,6 +59,17 @@ export function buildBillingMeta(params: {
     unit: params.unit,
     model: modelShort,
     apiType: params.apiType,
+  }
+
+  // 平台服务费信息
+  if (params.isUserOwnApiKey !== undefined) {
+    meta.isUserOwnApiKey = params.isUserOwnApiKey
+  }
+  if (params.platformFeeCharged !== undefined) {
+    meta.platformFeeCharged = params.platformFeeCharged
+  }
+  if (params.platformFeeAmount !== undefined && params.platformFeeAmount > 0) {
+    meta.platformFeeAmount = params.platformFeeAmount
   }
 
   // 从 pricingSelections 提取 capability 字段（图片分辨率、视频时长/分辨率等）
@@ -85,6 +99,24 @@ export async function recordUsageCostOnly(
   params: PureRecordParams,
 ): Promise<void> {
   const hasProject = isProjectScoped(params.projectId)
+
+  // Extract platform fee info from metadata to include in both records
+  const platformFeeInfo: {
+    isUserOwnApiKey?: boolean
+    platformFeeCharged?: boolean
+    platformFeeAmount?: number
+  } = {}
+  if (params.metadata && typeof params.metadata === 'object') {
+    if ('isUserOwnApiKey' in params.metadata && params.metadata.isUserOwnApiKey !== undefined) {
+      platformFeeInfo.isUserOwnApiKey = params.metadata.isUserOwnApiKey as boolean
+    }
+    if ('platformFeeCharged' in params.metadata && params.metadata.platformFeeCharged !== undefined) {
+      platformFeeInfo.platformFeeCharged = params.metadata.platformFeeCharged as boolean
+    }
+    if ('platformFeeAmount' in params.metadata && params.metadata.platformFeeAmount !== undefined) {
+      platformFeeInfo.platformFeeAmount = params.metadata.platformFeeAmount as number
+    }
+  }
 
   if (hasProject) {
     const project = await txOrPrisma.project.findUnique({
@@ -128,7 +160,10 @@ export async function recordUsageCostOnly(
       projectId: hasProject ? params.projectId : null,
       episodeId: params.episodeId || null,
       taskType: params.taskType || params.action || null,
-      billingMeta: buildBillingMeta(params),
+      billingMeta: buildBillingMeta({
+        ...params,
+        ...platformFeeInfo,
+      }),
     },
   })
 
