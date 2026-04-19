@@ -84,6 +84,20 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
+/**
+ * Check if this is a user-added custom model (user provides their own API key)
+ * that we need to charge platform fee for.
+ *
+ * Logic:
+ * - Built-in models from system config have format "provider:model" (one colon)
+ * - User-added custom models have format "provider:user-model-name" (two or more colons)
+ * - Known provider prefixes are checked first to avoid false positives
+ */
+export function isUserCustomModel(modelKey: string): boolean {
+  // User custom models use double colon separator (provider::model) as defined in parseModelKeyStrict
+  return modelKey.includes('::')
+}
+
 // Platform fee configuration cache (cached until server restart)
 let cachedEnablePlatformFee: boolean | null = null
 let cachedPlatformFees: Record<string, number> | null = null
