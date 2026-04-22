@@ -2,6 +2,7 @@
 
 import { logError as _ulogError } from '@/lib/logging/core'
 import { useState, useCallback, useEffect } from 'react'
+import { useToast } from '@/contexts/ToastContext'
 import { NovelPromotionStoryboard } from '@/types/project'
 import { usePanelCandidates } from './usePanelCandidates'
 import {
@@ -44,6 +45,7 @@ export function useStoryboardImageGeneration({
   localStoryboards,
   setLocalStoryboards,
 }: UseStoryboardImageGenerationProps) {
+  const { showToast } = useToast()
   const onSilentRefresh = useRefreshProjectAssets(projectId)
   const refreshEpisode = useRefreshEpisodeData(projectId, episodeId ?? null)
   const refreshStoryboards = useRefreshStoryboards(episodeId ?? null)
@@ -127,6 +129,7 @@ export function useStoryboardImageGeneration({
     refreshStoryboards,
     regeneratePanelMutation,
     selectPanelCandidateIndex,
+    showToast,
   })
 
   const { modifyPanelImage } = usePanelImageModification({

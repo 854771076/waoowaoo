@@ -2,6 +2,7 @@
 import { logInfo as _ulogInfo, logWarn as _ulogWarn } from '@/lib/logging/core'
 
 import { useCallback } from 'react'
+import { useToast } from '@/contexts/ToastContext'
 import type { NovelPromotionStoryboard } from '@/types/project'
 import {
   StoryboardImageMutationResult,
@@ -23,6 +24,7 @@ interface UsePanelImageRegenerationParams {
   refreshStoryboards: () => void
   regeneratePanelMutation: RegeneratePanelMutationLike
   selectPanelCandidateIndex: (panelId: string, index: number) => void
+  showToast: ReturnType<typeof useToast>['showToast']
 }
 
 export function usePanelImageRegeneration({
@@ -34,6 +36,7 @@ export function usePanelImageRegeneration({
   refreshStoryboards,
   regeneratePanelMutation,
   selectPanelCandidateIndex,
+  showToast,
 }: UsePanelImageRegenerationParams) {
   const regeneratePanelImage = useCallback(
     async (panelId: string, count: number = 1, force: boolean = false) => {
@@ -65,9 +68,11 @@ export function usePanelImageRegeneration({
         selectPanelCandidateIndex(panelId, 0)
       } catch (error: unknown) {
         if (isAbortError(error)) return
-        // Mutation errors (e.g. network failure, API 500) are transient.
-        // The task was never created in the database, so we log and let user retry.
+        // Mutation errors (e.g. network failure, API 500, insufficient balance) are transient.
+        // The task was never created in the database, so we log and show error to user.
         _ulogWarn(`[regeneratePanelImage] mutation failed for panel ${panelId}:`, error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        showToast(errorMessage, 'error', 8000)
       } finally {
         if (handoffToTaskState) return
         setSubmittingPanelImageIds((previous) => {
