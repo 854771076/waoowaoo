@@ -230,8 +230,16 @@ export const GET = apiHandler(async (request: NextRequest) => {
       userApiPlatformFee = config.userApiPlatformFee ? JSON.parse(config.userApiPlatformFee) : {}
     }
 
+    // Never expose actual encrypted API keys in GET response for security
+    // Similar to how user api config handles it: return empty apiKey, but mark hasApiKey
+    const safeProviders = providers.map((p: Provider) => ({
+      ...p,
+      apiKey: '',
+      hasApiKey: !!p.apiKey && p.apiKey.length > 0,
+    }));
+
     return NextResponse.json({
-      providers,
+      providers: safeProviders,
       models,
       defaultModels,
       workflowConcurrency,
@@ -261,7 +269,9 @@ export const PUT = apiHandler(async (request: NextRequest) => {
 
     // Encrypt API keys before saving
     const encryptedProviders = providers.map((p: Provider) => {
-      if (p.apiKey && p.apiKey.length > 0) {
+      // If hasApiKey is true but apiKey is empty, user didn't change it - keep existing encrypted value
+      // Only encrypt when apiKey is non-empty (user actually entered something new)
+      if (p.apiKey && p.apiKey.length > 0 && !(p.hasApiKey && p.apiKey === '')) {
         return {
           ...p,
           apiKey: encryptApiKey(p.apiKey),

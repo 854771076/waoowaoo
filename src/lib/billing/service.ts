@@ -189,11 +189,17 @@ async function resolveCost(
 
   // Calculate base cost
   let baseCost: number
+  // Did we recalculate from scratch, or use provided quoted/max cost?
+  // Special case: quotedCost = 0 means unknown price that needs recalculation
+  // (this happens for custom models where buildDefault can't resolve pricing)
+  const hasValidQuotedCost = typeof input.quotedCost === 'number' && input.quotedCost > 0
+  const hasValidMaxCost = typeof input.maxCost === 'number' && input.maxCost > 0
+  const isRecalculated = !hasValidMaxCost && !hasValidQuotedCost
 
-  if (typeof input.maxCost === 'number' && input.maxCost >= 0) {
-    baseCost = asMoney(input.maxCost)
-  } else if (typeof input.quotedCost === 'number' && input.quotedCost >= 0) {
-    baseCost = asMoney(input.quotedCost)
+  if (hasValidMaxCost) {
+    baseCost = asMoney(input.maxCost as number)
+  } else if (hasValidQuotedCost) {
+    baseCost = asMoney(input.quotedCost as number)
   } else {
     switch (input.apiType) {
       case 'text': {
@@ -234,7 +240,8 @@ async function resolveCost(
   }
 
   // Add platform fee if needed
-  if (input.userId && input.isUserOwnApiKey) {
+  // Only add if we actually recalculated the base cost (prepareTaskBilling already added it when using quoted/max)
+  if (isRecalculated && input.userId && input.isUserOwnApiKey) {
     const shouldCharge = await shouldChargePlatformFee(input.userId, input.isUserOwnApiKey)
     if (shouldCharge) {
       const platformFee = await getPlatformFeeAmount(input.apiType)
@@ -717,38 +724,74 @@ async function loadUserCustomPricing(
   const parsed = parseModelKeyStrict(model)
   if (!parsed) return null
 
-  const pref = await prisma.userPreference.findUnique({
+  // First check user's own custom models
+  const userPref = await prisma.userPreference.findUnique({
     where: { userId },
     select: { customModels: true },
   })
-  if (!pref?.customModels) return null
-
-  let models: Array<{ modelKey: string; customPricing?: unknown }>
-  try {
-    models = JSON.parse(pref.customModels) as typeof models
-  } catch {
-    return null
+  if (userPref?.customModels) {
+    let models: Array<{ modelKey: string; customPricing?: unknown }> = []
+    let parseSuccess = false
+    try {
+      models = JSON.parse(userPref.customModels) as typeof models
+      parseSuccess = true
+    } catch {
+      // fall through
+    }
+    if (parseSuccess && Array.isArray(models)) {
+      const target = models.find((m) => m.modelKey === parsed.modelKey)
+      const raw = target?.customPricing
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        return extractModelCustomPricing(raw as Record<string, unknown>)
+      }
+    }
   }
-  if (!Array.isArray(models)) return null
 
-  const target = models.find((m) => m.modelKey === parsed.modelKey)
-  const raw = target?.customPricing
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const pricing = raw as Record<string, unknown>
+  // If not found in user custom models, check global system config custom models
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const systemConfig = await (prisma as any).systemConfig.findFirst({
+      select: { models: true },
+    })
+    if (systemConfig?.models) {
+      let globalModels: Array<{ modelKey: string; customPricing?: unknown }> = []
+      let parseSuccess = false
+      try {
+        globalModels = JSON.parse(systemConfig.models) as typeof globalModels
+        parseSuccess = true
+      } catch {
+        return null
+      }
+      if (parseSuccess && Array.isArray(globalModels)) {
+        const target = globalModels.find((m) => m.modelKey === parsed.modelKey)
+        const raw = target?.customPricing
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+          return extractModelCustomPricing(raw as Record<string, unknown>)
+        }
+      }
+    }
+  } catch (error) {
+    // If table not migrated yet, ignore
+  }
 
+  return null
+}
+
+function extractModelCustomPricing(raw: Record<string, unknown>): ModelCustomPricing | null {
+  const pricing = raw
   const llmRaw = (pricing.llm && typeof pricing.llm === 'object' && !Array.isArray(pricing.llm))
     ? (pricing.llm as Record<string, unknown>)
     : pricing
 
   const inputPerMillion = typeof llmRaw.inputPerMillion === 'number'
     ? llmRaw.inputPerMillion
-    : typeof pricing.input === 'number'
-      ? pricing.input
+    : typeof llmRaw.input === 'number'
+      ? llmRaw.input
       : undefined
   const outputPerMillion = typeof llmRaw.outputPerMillion === 'number'
     ? llmRaw.outputPerMillion
-    : typeof pricing.output === 'number'
-      ? pricing.output
+    : typeof llmRaw.output === 'number'
+      ? llmRaw.output
       : undefined
 
   const normalizeMedia = (value: unknown): ModelCustomPricing['image'] | undefined => {
@@ -1001,7 +1044,9 @@ export async function prepareTaskBilling(task: {
 
   const customPricing = await loadUserCustomPricing(task.userId, info.model)
   // Check if this is a user-owned custom model with their own API key
-  const isUserOwnApiKey = isUserCustomModel(info.model)
+  // Only user-added models (found in their customModels) need platform fee
+  // Global admin-added custom models don't need platform fee
+  const isUserOwnApiKey = customPricing !== null && isUserCustomModel(info.model)
   let quotedCost: number
   try {
     quotedCost = await resolveCost({
@@ -1094,7 +1139,9 @@ export async function settleTaskBilling(task: {
 
   const customPricing = await loadUserCustomPricing(task.userId, info.model)
   // Check if this is a user-owned custom model with their own API key
-  const isUserOwnApiKey = isUserCustomModel(info.model)
+  // Only user-added models (found in their customModels) need platform fee
+  // Global admin-added custom models don't need platform fee
+  const isUserOwnApiKey = customPricing !== null && isUserCustomModel(info.model)
   let quotedCost: number
   try {
     quotedCost = await resolveCost({
@@ -1239,6 +1286,7 @@ export async function settleTaskBilling(task: {
         model: recordModel.model,
         quantity: actual.actualQuantity,
         unit: info.unit,
+        taskType: info.taskType || null,
         metadata: {
           ...(info.metadata || {}),
           ...(actual.metadata || {}),

@@ -75,9 +75,10 @@ type BuildCustomPricingResult =
   | { ok: true; customPricing?: AddModelCustomPricing }
   | { ok: false; reason: 'invalid' }
 
-interface ProviderConnectionPayload {
-  apiType: string
-  apiKey: string
+export interface ProviderConnectionPayload {
+  apiType?: string
+  providerId?: string
+  apiKey?: string
   baseUrl?: string
   llmModel?: string
 }
@@ -167,8 +168,10 @@ function pickConfiguredLlmModel(params: {
 }
 
 export function buildProviderConnectionPayload(params: {
+  providerId: string
   providerKey: string
   apiKey: string
+  hasApiKey: boolean
   baseUrl?: string
   llmModel?: string
 }): ProviderConnectionPayload {
@@ -177,6 +180,19 @@ export function buildProviderConnectionPayload(params: {
   const llmModel = params.llmModel?.trim()
   const isCompatibleProvider =
     params.providerKey === 'openai-compatible' || params.providerKey === 'gemini-compatible'
+
+  // If hasApiKey is true but apiKey is empty, this means it's already saved in database
+  // (for global config, we don't return encrypted apiKey to frontend for security)
+  // Send providerId to let backend read it from database
+  if (params.hasApiKey && !apiKey) {
+    const payload: ProviderConnectionPayload = {
+      providerId: params.providerId,
+      apiType: params.providerKey,
+      baseUrl: compatibleBaseUrl,
+      ...(llmModel ? { llmModel } : {}),
+    }
+    return payload
+  }
 
   if (isCompatibleProvider && compatibleBaseUrl) {
     return {
@@ -463,8 +479,10 @@ export function useProviderCardState({
         defaultAnalysisModel: defaultModels.analysisModel,
       })
       const payload = buildProviderConnectionPayload({
+        providerId: provider.id,
         providerKey,
         apiKey: tempKey,
+        hasApiKey: provider.hasApiKey ?? false,
         baseUrl: provider.baseUrl,
         llmModel: fallbackLlmModel,
       })
@@ -489,7 +507,7 @@ export function useProviderCardState({
       setKeyTestSteps([{ name: 'models', status: 'fail', message: 'Network error' }])
       setKeyTestStatus('failed')
     }
-  }, [defaultModels.analysisModel, doSaveKey, models, provider.baseUrl, providerKey, tempKey])
+  }, [defaultModels.analysisModel, doSaveKey, models, provider.id, provider.hasApiKey, provider.baseUrl, providerKey, tempKey])
 
   const handleForceSaveKey = useCallback(() => {
     doSaveKey()
@@ -505,8 +523,10 @@ export function useProviderCardState({
         defaultAnalysisModel: defaultModels.analysisModel,
       })
       const payload = buildProviderConnectionPayload({
+        providerId: provider.id,
         providerKey,
         apiKey: provider.apiKey || '',
+        hasApiKey: provider.hasApiKey ?? false,
         baseUrl: provider.baseUrl,
         llmModel: fallbackLlmModel,
       })
@@ -522,7 +542,7 @@ export function useProviderCardState({
       setKeyTestSteps([{ name: 'models', status: 'fail', message: 'Network error' }])
       setKeyTestStatus('failed')
     }
-  }, [defaultModels.analysisModel, models, provider.apiKey, provider.baseUrl, providerKey])
+  }, [defaultModels.analysisModel, models, provider.id, provider.apiKey, provider.hasApiKey, provider.baseUrl, providerKey])
 
   const handleDismissTest = useCallback(() => {
     setKeyTestStatus('idle')

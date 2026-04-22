@@ -26,6 +26,11 @@ class SharedSubscriber {
     })
 
     this.subscriber.on('error', (error) => {
+      // Skip harmless error when reconnecting a subscriber connection
+      // Connection already marked as subscriber mode, SELECT fails but doesn't matter
+      if (error?.message === 'Connection in subscriber mode, only subscriber commands may be used') {
+        return
+      }
       _ulogError(`[SSE:shared] redis error: ${error?.message || 'unknown'}`)
     })
   }

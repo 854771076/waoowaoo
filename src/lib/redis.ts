@@ -35,7 +35,14 @@ function buildBaseConfig() {
 
 function onConnectLog(scope: string, client: Redis) {
   client.on('connect', () => _ulogDebug(`[Redis:${scope}] connected ${REDIS_HOST}:${REDIS_PORT}`))
-  client.on('error', (err) => _ulogError(`[Redis:${scope}] error:`, err.message))
+  client.on('error', (err) => {
+    // Skip harmless error when reconnecting a subscriber connection
+    // Connection already marked as subscriber mode, SELECT fails but doesn't matter
+    if (err.message === 'Connection in subscriber mode, only subscriber commands may be used') {
+      return
+    }
+    _ulogError(`[Redis:${scope}] error:`, err.message)
+  })
 }
 
 function createAppRedis() {

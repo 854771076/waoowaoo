@@ -392,6 +392,15 @@
   {
     "apiType": "image",
     "provider": "ark",
+    "modelId": "doubao-seedream-5-0-260128",
+    "pricing": {
+      "mode": "flat",
+      "flatAmount": 0.25
+    }
+  },
+  {
+    "apiType": "image",
+    "provider": "ark",
     "modelId": "doubao-seedream-4-0-250828",
     "pricing": {
       "mode": "flat",

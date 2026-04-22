@@ -715,7 +715,8 @@ export function calcVideoByTokens(
   return calcSeedance2VideoCostFromTokens(model, totalTokens, metadata)
 }
 
-export function calcVoice(durationSeconds: number, customPricing?: ModelCustomPricing | null): number {
+export function calcVoice(durationSeconds: number, // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _customPricing?: ModelCustomPricing | null): number {
   const seconds = Math.max(0, Number(durationSeconds) || 0)
   // TODO: Custom pricing support for voice
   const unitPrice = resolveModelPriceStrict({
@@ -725,7 +726,7 @@ export function calcVoice(durationSeconds: number, customPricing?: ModelCustomPr
   return unitPrice * seconds * getMarkup('voice')
 }
 
-export function calcVoiceDesign(customPricing?: ModelCustomPricing | null): number {
+export function calcVoiceDesign(): number {
   // TODO: Custom pricing support for voice design
   const unitPrice = resolveModelPriceStrict({
     apiType: 'voice-design',
@@ -734,7 +735,7 @@ export function calcVoiceDesign(customPricing?: ModelCustomPricing | null): numb
   return unitPrice * getMarkup('voiceDesign')
 }
 
-export function calcLipSync(model = DEFAULT_LIP_SYNC_MODEL_ID, customPricing?: ModelCustomPricing | null): number {
+export function calcLipSync(model = DEFAULT_LIP_SYNC_MODEL_ID): number {
   // TODO: Custom pricing support for lip sync
   const unitPrice = resolveModelPriceStrict({
     apiType: 'lip-sync',

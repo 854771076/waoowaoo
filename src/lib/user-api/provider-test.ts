@@ -17,17 +17,7 @@ export interface TestProviderResult {
   steps: TestStep[]
 }
 
-type PresetProviderType = 'ark' | 'google' | 'openrouter' | 'minimax' | 'fal' | 'vidu'
-  | 'bailian'
-  | 'siliconflow'
-type CompatibleProviderType = 'openai-compatible' | 'gemini-compatible'
-
-type TestProviderPayload = {
-  apiType: CompatibleProviderType | PresetProviderType
-  baseUrl?: string
-  apiKey: string
-  llmModel?: string
-}
+// PresetProviderType and CompatibleProviderType removed - unused
 
 function classifyProbeFailure(status: number): { status: TestStepStatus; message: string } {
   if (status === 401 || status === 403) {
@@ -832,8 +822,40 @@ async function testBailianProvider(apiKey: string): Promise<TestProviderResult> 
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function testProviderConnection(payload: TestProviderPayload): Promise<TestProviderResult> {
-  const { apiType, baseUrl, apiKey, llmModel } = payload
+import { getProviderConfig } from '@/lib/api-config'
+
+export interface TestProviderConnectionPayload {
+  apiType?: string
+  providerId?: string
+  baseUrl?: string
+  apiKey?: string
+  llmModel?: string
+}
+
+export async function testProviderConnection(payload: TestProviderConnectionPayload): Promise<TestProviderResult> {
+  let { apiType, baseUrl, apiKey } = payload
+  const { llmModel, providerId } = payload
+
+  // If providerId is provided, get the apiKey from backend storage (for global config already saved)
+  if (providerId && !apiKey) {
+    try {
+      // Always use userId 1 for global config (system config is global shared)
+      const config = await getProviderConfig('1', providerId)
+      apiKey = config.apiKey
+      if (!baseUrl) {
+        baseUrl = config.baseUrl
+      }
+      if (!apiType) {
+        const providerKey = providerId.split(':')[0]
+        apiType = providerKey as string
+      }
+    } catch (error) {
+      return {
+        success: false,
+        steps: [{ name: 'models', status: 'fail', message: `Failed to get apiKey: ${toErrorMessage(error)}` }],
+      }
+    }
+  }
 
   if (!apiKey) {
     return {

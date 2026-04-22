@@ -4,6 +4,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import Navbar from '@/components/Navbar'
 import ApiConfigTab from './components/ApiConfigTab'
+import TransactionRecords from './components/TransactionRecords'
 import { AppIcon } from '@/components/ui/icons'
 import { useRouter } from '@/i18n/navigation'
 import { apiFetch } from '@/lib/api-fetch'
@@ -115,22 +116,7 @@ export default function ProfilePage() {
               {activeSection === 'apiConfig' ? (
                 <ApiConfigTab />
               ) : (
-                <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                  <AppIcon name="receipt" className="mb-4 h-12 w-12 text-[var(--glass-text-tertiary)]" />
-                  {balance === null ? (
-                    <p className="text-base text-[var(--glass-text-secondary)]">{tc('loading')}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-base font-semibold text-[var(--glass-text-primary)]">
-                        {t('totalSpent')}: {balance.totalSpent.toFixed(2)}
-                      </p>
-                      <p className="text-sm text-[var(--glass-text-secondary)]">
-                        {/* Transaction list will be added in future iteration */}
-                        {balance.totalSpent === 0 ? t('noTransactions') : t('comingSoon')}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                <TransactionRecords />
               )}
             </div>
           </div>
