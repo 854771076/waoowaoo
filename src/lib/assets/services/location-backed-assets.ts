@@ -158,12 +158,16 @@ export async function listProjectLocationBackedAssets(
 }
 
 export async function listGlobalLocationBackedAssets(input: {
-  userId: string
+  userId?: string
   kind: LocationBackedAssetKind
   folderId?: string | null
 }): Promise<GlobalLocationBackedAssetRecord[]> {
   const folderFilter = input.folderId
     ? Prisma.sql`AND folderId = ${input.folderId}`
+    : Prisma.empty
+  // 如果 userId 是 undefined（管理员模式），则不限制用户，否则只查询指定用户
+  const userFilter = input.userId
+    ? Prisma.sql`AND userId = ${input.userId}`
     : Prisma.empty
   const rows = await prisma.$queryRaw<GlobalLocationBackedAssetRow[]>(Prisma.sql`
     SELECT
@@ -175,7 +179,8 @@ export async function listGlobalLocationBackedAssets(input: {
       artStyle,
       assetKind
     FROM global_locations
-    WHERE userId = ${input.userId}
+    WHERE 1 = 1
+      ${userFilter}
       AND assetKind = ${input.kind}
       ${folderFilter}
     ORDER BY createdAt ASC

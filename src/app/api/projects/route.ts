@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, isAdminUser } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { toMoneyNumber } from '@/lib/billing/money'
 import { isArtStyleValue } from '@/lib/constants'
@@ -25,6 +25,7 @@ function readProjectDraftBody(body: unknown): ProjectDraftInput {
 }
 
 // GET - 获取用户的项目（支持分页和搜索）
+// 管理员可以查看所有项目
 export const GET = apiHandler(async (request: NextRequest) => {
   // 🔐 统一权限验证
   const authResult = await requireUserAuth()
@@ -37,8 +38,8 @@ export const GET = apiHandler(async (request: NextRequest) => {
   const pageSize = parseInt(searchParams.get('pageSize') || '12', 10)
   const search = searchParams.get('search') || ''
 
-  // 构建查询条件
-  const where: Record<string, unknown> = { userId: session.user.id }
+  // 构建查询条件：管理员可以查看所有项目，普通用户只能查看自己的
+  const where: Record<string, unknown> = isAdminUser(session) ? {} : { userId: session.user.id }
 
   // 如果有搜索关键词，搜索名称和描述
   // 注意：SQLite 不支持 mode: 'insensitive'，但 SQLite 的 LIKE 默认即大小写不敏感（ASCII 范围）

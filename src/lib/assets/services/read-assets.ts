@@ -56,10 +56,11 @@ async function readProjectAssets(projectId: string): Promise<AssetSummary[]> {
   return [...projectCharacters, ...projectLocations, ...projectProps]
 }
 
-async function readGlobalAssets(input: { folderId?: string | null; userId: string }): Promise<AssetSummary[]> {
+async function readGlobalAssets(input: { folderId?: string | null; userId: string; isAdmin?: boolean }): Promise<AssetSummary[]> {
   const folderFilter = input.folderId ? { folderId: input.folderId } : {}
+  // 管理员可以查看所有用户的资产，普通用户只能查看自己的
   const where = {
-    userId: input.userId,
+    ...(input.isAdmin ? {} : { userId: input.userId }),
     ...folderFilter,
   }
   const [characters, locations, props, voices] = await Promise.all([
@@ -73,12 +74,12 @@ async function readGlobalAssets(input: { folderId?: string | null; userId: strin
       orderBy: { createdAt: 'asc' },
     }),
     listGlobalLocationBackedAssets({
-      userId: input.userId,
+      userId: input.isAdmin ? undefined : input.userId,
       folderId: input.folderId,
       kind: 'location',
     }),
     listGlobalLocationBackedAssets({
-      userId: input.userId,
+      userId: input.isAdmin ? undefined : input.userId,
       folderId: input.folderId,
       kind: 'prop',
     }),
@@ -105,13 +106,14 @@ async function readGlobalAssets(input: { folderId?: string | null; userId: strin
 
 export async function readAssets(
   input: AssetQueryInput,
-  access?: { userId?: string | null },
+  access?: { userId?: string | null; isAdmin?: boolean },
 ): Promise<AssetSummary[]> {
   const assets = input.scope === 'project'
     ? await readProjectAssets(assertProjectId(input.projectId))
     : await readGlobalAssets({
       folderId: input.folderId,
       userId: assertUserId(access?.userId),
+      isAdmin: access?.isAdmin,
     })
   return filterMappedAssetsByKind(assets, input.kind as AssetKind | null | undefined)
 }

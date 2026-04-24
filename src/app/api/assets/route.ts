@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { isErrorResponse, requireProjectAuthLight, requireUserAuth } from '@/lib/api-auth'
+import { isErrorResponse, requireProjectAuthLight, requireUserAuth, isAdminUser } from '@/lib/api-auth'
 import { createAsset } from '@/lib/assets/services/asset-actions'
 import { readAssets } from '@/lib/assets/services/read-assets'
 import type { AssetKind, AssetScope } from '@/lib/assets/contracts'
@@ -47,6 +47,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
       kind: isAssetKind(kind) ? kind : null,
     }, {
       userId: authResult.session.user.id,
+      isAdmin: isAdminUser(authResult.session),
     })
     return NextResponse.json({ assets })
   }

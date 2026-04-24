@@ -253,8 +253,8 @@ export async function requireProjectAuth<T extends ProjectAuthIncludes = Project
         return notFound('Project')
     }
 
-    // 5. 所有权验证
-    if (project.userId !== session.user.id) {
+    // 5. 所有权验证（管理员可以访问任何项目）
+    if (!isAdminUser(session) && project.userId !== session.user.id) {
         return forbidden()
     }
 
@@ -317,6 +317,13 @@ export async function requireUserAuth(): Promise<{ session: AuthSession } | Next
  * 验证项目权限（不要求 NovelPromotionData）
  * 适用于某些不需要 novelPromotionData 的 API
  */
+/**
+ * 检查用户是否为管理员
+ */
+export function isAdminUser(session: AuthSession): boolean {
+    return session.user.role === 'admin'
+}
+
 export async function requireProjectAuthLight(
     projectId: string
 ): Promise<{ session: AuthSession; project: { id: string; userId: string; name: string; [key: string]: unknown } } | NextResponse> {
@@ -336,7 +343,8 @@ export async function requireProjectAuthLight(
         return notFound('Project')
     }
 
-    if (project.userId !== session.user.id) {
+    // 管理员可以访问任何项目
+    if (!isAdminUser(session) && project.userId !== session.user.id) {
         return forbidden()
     }
 
