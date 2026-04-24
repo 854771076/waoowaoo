@@ -60,7 +60,7 @@ function formatBillingDetail(
 ): string {
   if (!billingMeta) return ''
 
-  const { quantity, unit, apiType, resolution, duration, inputTokens, outputTokens } = billingMeta
+  const { quantity, unit, resolution, duration, inputTokens, outputTokens } = billingMeta
 
   if (unit === 'image' && quantity) {
     return resolution

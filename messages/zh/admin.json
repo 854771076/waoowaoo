@@ -50,5 +50,9 @@
   "platformFeeVideo": "视频（每次调用）",
   "platformFeeAudio": "语音/音频（每次调用）",
   "platformFeeLipSync": "唇形同步（每次调用）",
-  "skipPlatformFee": "免除平台服务费"
+  "skipPlatformFee": "免除平台服务费",
+  "pricingConfig": "定价配置",
+  "loading": "加载中...",
+  "cancel": "取消",
+  "saving": "保存中..."
 }

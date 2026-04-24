@@ -3,6 +3,7 @@ import {
   ArrowDownCircle,
   ArrowRight,
   AudioLines,
+  DollarSign,
   BadgeCheck,
   BarChart3,
   BookOpen,
@@ -186,6 +187,7 @@ export const iconRegistry = {
   film: Film,
   folderOpen: FolderOpen,
   gripVertical: GripVertical,
+  dollarSign: DollarSign,
 } as const satisfies Record<string, LucideIcon>
 
 export type AppIconName = keyof typeof iconRegistry

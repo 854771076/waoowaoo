@@ -747,30 +747,64 @@ async function loadUserCustomPricing(
     }
   }
 
-  // If not found in user custom models, check global system config custom models
+  // If not found in user custom models, check global admin custom pricing first
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const systemConfig = await (prisma as any).systemConfig.findFirst({
       select: { models: true },
     })
+
     if (systemConfig?.models) {
-      let globalModels: Array<{ modelKey: string; customPricing?: unknown }> = []
-      let parseSuccess = false
+      let models: Array<{ modelKey: string; customPricing?: unknown }> = []
       try {
-        globalModels = JSON.parse(systemConfig.models) as typeof globalModels
-        parseSuccess = true
+        models = JSON.parse(systemConfig.models)
       } catch {
         return null
       }
-      if (parseSuccess && Array.isArray(globalModels)) {
-        const target = globalModels.find((m) => m.modelKey === parsed.modelKey)
+
+      // Check admin custom pricing first (admin pricing takes precedence over all)
+      // Admin pricing is stored in special __admin_pricing__ entry
+      const adminEntry = models.find((m) => m.modelKey === '__admin_pricing__')
+      if (adminEntry?.customPricing && typeof adminEntry.customPricing === 'object') {
+        const adminPricing = adminEntry.customPricing as Record<string, {
+          apiType: string
+          mode: 'flat' | 'capability'
+          flatAmount?: number
+          tiers?: unknown[]
+        }>
+        const adminPrice = adminPricing[parsed.modelKey]
+        if (adminPrice) {
+          // Convert admin pricing format to ModelCustomPricing format
+          if (adminPrice.mode === 'flat' && typeof adminPrice.flatAmount === 'number') {
+            if (adminPrice.apiType === 'text') {
+              return {
+                llm: {
+                  inputPerMillion: adminPrice.flatAmount * 1_000_000,
+                  outputPerMillion: adminPrice.flatAmount * 1_000_000,
+                },
+              }
+            } else if (adminPrice.apiType === 'image') {
+              return { image: { basePrice: adminPrice.flatAmount } }
+            } else if (adminPrice.apiType === 'video') {
+              return { video: { basePrice: adminPrice.flatAmount } }
+            } else if (adminPrice.apiType === 'voice' || adminPrice.apiType === 'voice-design' || adminPrice.apiType === 'lip-sync') {
+              // Voice, voice-design, and lip-sync use video pricing structure for flat pricing
+              return { video: { basePrice: adminPrice.flatAmount } }
+            }
+          }
+        }
+      }
+
+      // Check global system config custom models (user-facing)
+      if (Array.isArray(models)) {
+        const target = models.find((m) => m.modelKey === parsed.modelKey)
         const raw = target?.customPricing
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
           return extractModelCustomPricing(raw as Record<string, unknown>)
         }
       }
     }
-  } catch (error) {
+  } catch {
     // If table not migrated yet, ignore
   }
 

@@ -8,6 +8,7 @@ import { useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import UserManagementTable from './components/UserManagementTable'
 import SystemConfigEditor from './components/SystemConfigEditor'
+import PricingConfigEditor from './components/PricingConfigEditor'
 import { AppIcon } from '@/components/ui/icons'
 import { GlassSurface } from '@/components/ui/primitives'
 
@@ -17,7 +18,7 @@ export default function AdminPage() {
   const t = useTranslations('admin')
   const tc = useTranslations('common')
 
-  const [activeTab, setActiveTab] = useState<'users' | 'systemConfig'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'systemConfig' | 'pricing'>('users')
 
   const sessionWithRole = session as Session | null
 
@@ -73,6 +74,17 @@ export default function AdminPage() {
                 <AppIcon name="settingsHex" className="w-4 h-4" />
                 {t('globalApiConfig')}
               </button>
+              <button
+                onClick={() => setActiveTab('pricing')}
+                className={`flex items-center gap-2 px-4 py-3 -mb-px text-sm font-medium transition-colors ${
+                  activeTab === 'pricing'
+                    ? 'border-b-2 border-[var(--glass-tone-info-fg)] text-[var(--glass-text-primary)] bg-[var(--glass-bg-muted)]/50'
+                    : 'text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] hover:bg-[var(--glass-bg-muted)]/30'
+                }`}
+              >
+                <AppIcon name="dollarSign" className="w-4 h-4" />
+                {t('pricingConfig')}
+              </button>
             </div>
           </div>
 
@@ -80,6 +92,8 @@ export default function AdminPage() {
           <div className="p-6">
             {activeTab === 'users' ? (
               <UserManagementTable />
+            ) : activeTab === 'pricing' ? (
+              <PricingConfigEditor />
             ) : (
               <SystemConfigEditor />
             )}

@@ -89,6 +89,7 @@ export function usePanelImageRegeneration({
       regeneratePanelMutation,
       selectPanelCandidateIndex,
       setSubmittingPanelImageIds,
+      showToast,
       submittingPanelImageIds,
     ],
   )
