@@ -1,12 +1,13 @@
 import fs from 'fs'
 import path from 'path'
-import { resolvePromptTemplate } from '@/lib/config-center/prompts/service'
+import { createScopedLogger } from '@/lib/logging/core'
 import { PROMPT_CATALOG } from './catalog'
 import type { PromptId } from './prompt-ids'
 import type { PromptLocale } from './types'
 import { PromptI18nError } from './errors'
 
 const templateCache = new Map<string, string>()
+const logger = createScopedLogger({ module: 'prompt-i18n.template-store' })
 
 function buildCacheKey(promptId: PromptId, locale: PromptLocale) {
   return `${promptId}:${locale}`
@@ -52,12 +53,23 @@ export async function getPromptTemplateAsync(
   locale: PromptLocale,
   options: { projectId?: string | null } = {},
 ): Promise<string> {
+  const { resolvePromptTemplate } = await import('@/lib/config-center/prompts/service')
   const databaseTemplate = await resolvePromptTemplate({
     promptId,
     locale,
     projectId: options.projectId,
   })
 
-  if (databaseTemplate) return databaseTemplate
+  if (databaseTemplate !== null) return databaseTemplate
+
+  logger.warn({
+    action: 'prompt_template_db_miss_fallback',
+    message: 'prompt_template_db_miss_fallback',
+    details: {
+      promptId,
+      locale,
+      projectId: options.projectId ?? null,
+    },
+  })
   return readFilePromptTemplate(promptId, locale)
 }

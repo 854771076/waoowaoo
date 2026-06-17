@@ -28,11 +28,12 @@ export async function resolvePromptTemplate(input: ResolvePromptTemplateInput): 
         locale: input.locale,
         promptDefinition: { promptId: input.promptId },
       },
-      include: { promptVersion: true },
+      select: { promptVersion: { select: { content: true } } },
     })
 
-    if (override?.promptVersion?.content) {
-      return override.promptVersion.content
+    const overrideContent = override?.promptVersion?.content
+    if (overrideContent != null) {
+      return overrideContent
     }
   }
 
@@ -43,9 +44,10 @@ export async function resolvePromptTemplate(input: ResolvePromptTemplateInput): 
       promptDefinition: { promptId: input.promptId },
     },
     orderBy: [{ publishedAt: 'desc' }, { version: 'desc' }],
+    select: { content: true },
   })
 
-  return published?.content || null
+  return published?.content ?? null
 }
 
 export async function listPromptDefinitions() {
@@ -54,6 +56,20 @@ export async function listPromptDefinitions() {
     include: {
       versions: {
         orderBy: [{ locale: 'asc' }, { version: 'desc' }],
+        select: {
+          id: true,
+          promptDefinitionId: true,
+          locale: true,
+          version: true,
+          status: true,
+          createdByUserId: true,
+          publishedByUserId: true,
+          publishedAt: true,
+          disabledAt: true,
+          changeNote: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       },
     },
   })

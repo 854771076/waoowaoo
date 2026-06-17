@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolvePromptTemplate } from '@/lib/config-center/prompts/service'
 import {
@@ -6,8 +8,24 @@ import {
   PROMPT_IDS,
 } from '@/lib/prompt-i18n'
 
-const { resolvePromptTemplateMock } = vi.hoisted(() => ({
-  resolvePromptTemplateMock: vi.fn(),
+const { createScopedLoggerMock, loggerWarnMock, resolvePromptTemplateMock } = vi.hoisted(() => {
+  const warnMock = vi.fn()
+  return {
+    loggerWarnMock: warnMock,
+    createScopedLoggerMock: vi.fn(() => ({
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: warnMock,
+      error: vi.fn(),
+      event: vi.fn(),
+      child: vi.fn(),
+    })),
+    resolvePromptTemplateMock: vi.fn(),
+  }
+})
+
+vi.mock('@/lib/logging/core', () => ({
+  createScopedLogger: createScopedLoggerMock,
 }))
 
 vi.mock('@/lib/config-center/prompts/service', () => ({
@@ -19,6 +37,16 @@ const mockedResolvePromptTemplate = vi.mocked(resolvePromptTemplate)
 describe('database prompt template store', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('keeps config center service out of template-store static imports', () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/prompt-i18n/template-store.ts'),
+      'utf8',
+    )
+
+    expect(source).not.toContain("from '@/lib/config-center/prompts/service'")
+    expect(source).toContain("await import('@/lib/config-center/prompts/service')")
   })
 
   it('returns database template before file template', async () => {
@@ -39,13 +67,37 @@ describe('database prompt template store', () => {
   it('falls back to file template when database template is absent', async () => {
     mockedResolvePromptTemplate.mockResolvedValue(null)
 
-    const template = await getPromptTemplateAsync(PROMPT_IDS.NP_SELECT_PROP, 'zh')
+    const template = await getPromptTemplateAsync(PROMPT_IDS.NP_SELECT_PROP, 'zh', {
+      projectId: 'project-1',
+    })
 
     expect(template).toContain('关键剧情道具资产分析师')
-    expect(mockedResolvePromptTemplate).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockedResolvePromptTemplate).toHaveBeenCalledWith({
       promptId: PROMPT_IDS.NP_SELECT_PROP,
       locale: 'zh',
-    }))
+      projectId: 'project-1',
+    })
+    expect(loggerWarnMock).toHaveBeenCalledTimes(1)
+    expect(loggerWarnMock).toHaveBeenCalledWith({
+      action: 'prompt_template_db_miss_fallback',
+      message: 'prompt_template_db_miss_fallback',
+      details: {
+        promptId: PROMPT_IDS.NP_SELECT_PROP,
+        locale: 'zh',
+        projectId: 'project-1',
+      },
+    })
+  })
+
+  it('returns empty database template without file fallback or miss log', async () => {
+    mockedResolvePromptTemplate.mockResolvedValue('')
+
+    const template = await getPromptTemplateAsync(PROMPT_IDS.NP_SELECT_PROP, 'zh', {
+      projectId: 'project-1',
+    })
+
+    expect(template).toBe('')
+    expect(loggerWarnMock).not.toHaveBeenCalled()
   })
 
   it('buildPromptAsync renders variables from database template', async () => {
@@ -75,5 +127,25 @@ describe('database prompt template store', () => {
     expect(prompt).toContain('{{task_id}}')
     expect(prompt).toContain('{{prompt}}')
     expect(prompt).not.toContain('{providerId}')
+  })
+
+  it('propagates database lookup errors from getPromptTemplateAsync', async () => {
+    mockedResolvePromptTemplate.mockRejectedValue(new Error('database unavailable'))
+
+    await expect(getPromptTemplateAsync(PROMPT_IDS.NP_SELECT_PROP, 'zh')).rejects.toThrow(
+      'database unavailable',
+    )
+    expect(loggerWarnMock).not.toHaveBeenCalled()
+  })
+
+  it('propagates database lookup errors from buildPromptAsync', async () => {
+    mockedResolvePromptTemplate.mockRejectedValue(new Error('database unavailable'))
+
+    await expect(buildPromptAsync({
+      promptId: PROMPT_IDS.NP_AI_STORY_EXPAND,
+      locale: 'zh',
+      variables: { input: '正文' },
+    })).rejects.toThrow('database unavailable')
+    expect(loggerWarnMock).not.toHaveBeenCalled()
   })
 })

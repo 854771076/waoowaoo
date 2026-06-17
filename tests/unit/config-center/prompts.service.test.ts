@@ -49,7 +49,31 @@ describe('prompt runtime service', () => {
         locale: 'zh',
         promptDefinition: { promptId: PROMPT_IDS.NP_SELECT_PROP },
       },
-      include: { promptVersion: true },
+      select: { promptVersion: { select: { content: true } } },
+    })
+    expect(prismaMock.promptVersion.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('returns empty project override content without querying published version', async () => {
+    prismaMock.projectPromptOverride.findFirst.mockResolvedValue({
+      promptVersion: { content: '' },
+    })
+    prismaMock.promptVersion.findFirst.mockResolvedValue({ content: 'published-template' })
+
+    const template = await resolvePromptTemplate({
+      promptId: PROMPT_IDS.NP_SELECT_PROP,
+      locale: 'zh',
+      projectId: 'project-1',
+    })
+
+    expect(template).toBe('')
+    expect(prismaMock.projectPromptOverride.findFirst).toHaveBeenCalledWith({
+      where: {
+        projectId: 'project-1',
+        locale: 'zh',
+        promptDefinition: { promptId: PROMPT_IDS.NP_SELECT_PROP },
+      },
+      select: { promptVersion: { select: { content: true } } },
     })
     expect(prismaMock.promptVersion.findFirst).not.toHaveBeenCalled()
   })
@@ -72,6 +96,29 @@ describe('prompt runtime service', () => {
         promptDefinition: { promptId: PROMPT_IDS.NP_SELECT_PROP },
       },
       orderBy: [{ publishedAt: 'desc' }, { version: 'desc' }],
+      select: { content: true },
+    })
+  })
+
+  it('returns empty latest published content as a valid template', async () => {
+    prismaMock.projectPromptOverride.findFirst.mockResolvedValue(null)
+    prismaMock.promptVersion.findFirst.mockResolvedValue({ content: '' })
+
+    const template = await resolvePromptTemplate({
+      promptId: PROMPT_IDS.NP_SELECT_PROP,
+      locale: 'zh',
+      projectId: 'project-1',
+    })
+
+    expect(template).toBe('')
+    expect(prismaMock.promptVersion.findFirst).toHaveBeenCalledWith({
+      where: {
+        locale: 'zh',
+        status: PROMPT_VERSION_STATUS.PUBLISHED,
+        promptDefinition: { promptId: PROMPT_IDS.NP_SELECT_PROP },
+      },
+      orderBy: [{ publishedAt: 'desc' }, { version: 'desc' }],
+      select: { content: true },
     })
   })
 
@@ -92,6 +139,7 @@ describe('prompt runtime service', () => {
         promptDefinition: { promptId: PROMPT_IDS.NP_SELECT_PROP },
       },
       orderBy: [{ publishedAt: 'desc' }, { version: 'desc' }],
+      select: { content: true },
     })
   })
 
@@ -127,6 +175,20 @@ describe('prompt runtime service', () => {
       include: {
         versions: {
           orderBy: [{ locale: 'asc' }, { version: 'desc' }],
+          select: {
+            id: true,
+            promptDefinitionId: true,
+            locale: true,
+            version: true,
+            status: true,
+            createdByUserId: true,
+            publishedByUserId: true,
+            publishedAt: true,
+            disabledAt: true,
+            changeNote: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         },
       },
     })
