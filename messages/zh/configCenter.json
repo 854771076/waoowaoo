@@ -113,7 +113,15 @@
       "cancel": "取消",
       "generate": "生成提示词",
       "generating": "生成中...",
-      "selectModel": "选择模型"
-    }
+      "selectModel": "选择模型",
+      "generatePreview": "生成预览图",
+      "generatingPreview": "生成中...",
+      "selectImageModel": "选择图片模型",
+      "createTitle": "创建画风",
+      "editTitle": "编辑画风"
+    },
+    "toggleFailed": "更新状态失败",
+    "updateFailed": "更新失败",
+    "createFailed": "创建失败"
   }
 }
