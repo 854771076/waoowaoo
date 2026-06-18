@@ -11,7 +11,11 @@ const prismaMock = vi.hoisted(() => ({
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
-  getProjectModels: vi.fn(async () => ({ storyboardModel: 'storyboard-model-1', artStyle: 'realistic' })),
+  getProjectModels: vi.fn(async () => ({
+    storyboardModel: 'storyboard-model-1',
+    artStyle: 'realistic',
+    artStylePrompt: null as string | null,
+  })),
   resolveImageSourceFromGeneration: vi.fn(),
   uploadImageSourceToCos: vi.fn(),
 }))
@@ -174,6 +178,23 @@ describe('worker panel-image-task-handler behavior', () => {
         candidateImages: JSON.stringify(['cos/panel-candidate-1.png', 'cos/panel-candidate-2.png']),
       },
     })
+  })
+
+  it('uses resolved artStylePrompt when building panel image prompt', async () => {
+    utilsMock.getProjectModels.mockResolvedValueOnce({
+      storyboardModel: 'storyboard-model-1',
+      artStyle: 'realistic',
+      artStylePrompt: 'custom noir storyboard style',
+    })
+
+    await handlePanelImageTask(buildJob({ candidateCount: 1 }))
+
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1',
+      variables: expect.objectContaining({
+        style: 'custom noir storyboard style',
+      }),
+    }))
   })
 
   it('regeneration branch -> keeps old image in previousImageUrl and stores candidates only', async () => {

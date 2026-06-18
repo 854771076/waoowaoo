@@ -193,6 +193,7 @@ describe('admin config center prompt API contract', () => {
       id: 'version-1',
       promptDefinitionId: 'definition-1',
       locale: 'zh',
+      content: '使用 {input} 和 {props_lib_name}',
       promptDefinition: { promptId: PROMPT_IDS.NP_SELECT_PROP },
     })
     prismaMock.promptVersion.update.mockResolvedValue(publishedVersion)
@@ -217,6 +218,30 @@ describe('admin config center prompt API contract', () => {
     })
   })
 
+  it('rejects publishing a prompt version missing required catalog variables', async () => {
+    prismaMock.promptVersion.findUnique.mockResolvedValue({
+      id: 'version-1',
+      promptDefinitionId: 'definition-1',
+      locale: 'zh',
+      content: '只包含 {input}',
+      promptDefinition: { promptId: PROMPT_IDS.NP_SELECT_PROP },
+    })
+
+    const response = await callRoute(
+      updatePromptVersionStatus,
+      'PATCH',
+      { action: 'publish' },
+      { params: { promptId: PROMPT_IDS.NP_SELECT_PROP, versionId: 'version-1' } },
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(body.error.code).toBe('INVALID_PARAMS')
+    expect(body.error.details.code).toBe('PROMPT_VARIABLES_MISSING')
+    expect(body.error.details.missing).toEqual(['props_lib_name'])
+    expect(prismaMock.promptVersion.update).not.toHaveBeenCalled()
+  })
+
   it('disables a prompt version with disabled timestamp', async () => {
     const disabledVersion = {
       id: 'version-1',
@@ -226,6 +251,7 @@ describe('admin config center prompt API contract', () => {
       id: 'version-1',
       promptDefinitionId: 'definition-1',
       locale: 'zh',
+      content: '只包含 {input}',
       promptDefinition: { promptId: PROMPT_IDS.NP_SELECT_PROP },
     })
     prismaMock.promptVersion.update.mockResolvedValue(disabledVersion)

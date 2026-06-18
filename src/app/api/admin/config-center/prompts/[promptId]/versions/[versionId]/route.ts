@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 
 import { requireAdminAuth } from '@/lib/admin/auth'
 import { ApiError, apiHandler } from '@/lib/api-errors'
+import { getCatalogVariables } from '@/lib/config-center/prompts/service'
 import { PROMPT_VERSION_STATUS } from '@/lib/config-center/prompts/types'
+import { findMissingPromptVariables } from '@/lib/config-center/prompts/validation'
 import { prisma } from '@/lib/prisma'
 
 async function readJsonBody(req: Request): Promise<Record<string, unknown>> {
@@ -32,11 +34,22 @@ export const PATCH = apiHandler(async (req, ctx) => {
     where: { id: versionId },
     select: {
       id: true,
+      content: true,
       promptDefinition: { select: { promptId: true } },
     },
   })
   if (!existing || existing.promptDefinition.promptId !== promptId) {
     throw new ApiError('NOT_FOUND')
+  }
+
+  if (body.action === 'publish') {
+    const missing = findMissingPromptVariables(existing.content, getCatalogVariables(promptId))
+    if (missing.length > 0) {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'PROMPT_VARIABLES_MISSING',
+        missing,
+      })
+    }
   }
 
   const data = body.action === 'publish'

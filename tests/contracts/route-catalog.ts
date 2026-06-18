@@ -17,6 +17,7 @@ export type RouteContractGroup =
   | 'crud-novel-promotion-routes'
   | 'task-infra-routes'
   | 'user-project-routes'
+  | 'art-styles'
   | 'auth-routes'
   | 'admin-config-center-prompts'
   | 'infra-routes'
@@ -28,10 +29,14 @@ export type RouteCatalogEntry = {
 }
 
 const ROUTE_FILES = [
+  'src/app/api/admin/config-center/art-styles/[styleId]/route.ts',
+  'src/app/api/admin/config-center/art-styles/route.ts',
   'src/app/api/admin/config-center/projects/[projectId]/prompt-overrides/route.ts',
   'src/app/api/admin/config-center/prompts/[promptId]/versions/[versionId]/route.ts',
   'src/app/api/admin/config-center/prompts/[promptId]/versions/route.ts',
   'src/app/api/admin/config-center/prompts/route.ts',
+  'src/app/api/art-styles/[styleId]/route.ts',
+  'src/app/api/art-styles/route.ts',
   'src/app/api/admin/download-logs/route.ts',
   'src/app/api/asset-hub/ai-design-character/route.ts',
   'src/app/api/asset-hub/ai-design-location/route.ts',
@@ -130,6 +135,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/speaker-voice/route.ts',
   'src/app/api/novel-promotion/[projectId]/story-to-script-stream/route.ts',
   'src/app/api/novel-promotion/[projectId]/storyboard-group/route.ts',
+  'src/app/api/novel-promotion/[projectId]/storyboard-images/route.ts',
   'src/app/api/novel-promotion/[projectId]/storyboards/route.ts',
   'src/app/api/novel-promotion/[projectId]/undo-regenerate/route.ts',
   'src/app/api/novel-promotion/[projectId]/update-appearance/route.ts',
@@ -187,13 +193,21 @@ function resolveCategory(routeFile: string): RouteCategory {
   ) {
     return 'tasks'
   }
-  if (routeFile.startsWith('src/app/api/user/') || routeFile === 'src/app/api/user-preference/route.ts') return 'user'
+  if (
+    routeFile.startsWith('src/app/api/user/')
+    || routeFile.startsWith('src/app/api/art-styles/')
+    || routeFile === 'src/app/api/user-preference/route.ts'
+  ) return 'user'
   if (routeFile.startsWith('src/app/api/auth/')) return 'auth'
   if (routeFile.startsWith('src/app/api/system/')) return 'system'
   return 'infra'
 }
 
 function resolveContractGroup(routeFile: string): RouteContractGroup {
+  if (
+    routeFile.startsWith('src/app/api/art-styles/')
+    || routeFile.startsWith('src/app/api/admin/config-center/art-styles/')
+  ) return 'art-styles'
   if (routeFile.startsWith('src/app/api/admin/config-center/')) return 'admin-config-center-prompts'
   if (
     routeFile.includes('/ai-')
@@ -225,6 +239,7 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     || routeFile.endsWith('/regenerate-panel-image/route.ts')
     || routeFile.endsWith('/regenerate-single-image/route.ts')
     || routeFile.endsWith('/regenerate-storyboard-text/route.ts')
+    || routeFile.endsWith('/storyboard-images/route.ts')
     || routeFile.endsWith('/voice-generate/route.ts')
   ) {
     return 'direct-submit-routes'
