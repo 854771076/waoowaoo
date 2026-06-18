@@ -24,6 +24,8 @@
 - 不引入首尾帧（firstlastframe）支持。StarRouter 上游未文档化首尾帧参数，本次先保守关闭。
 - 不调整 BullMQ 任务调度、计费、定价层。沿用现有视频任务流程。
 - 不为 `buildSubmitRequest` 新增单元测试（与项目当前 `starrouter/video.ts` 无覆盖测试的现状对齐；如后续需要可单独补）。
+- **不在 [`standards/pricing/image-video.pricing.json`](../../../standards/pricing/image-video.pricing.json) 中新增 starrouter 条目**。当前该文件零 starrouter 条目，本次不动它（详见 §4 边界 1）。如需为 starrouter 视频建立精细计费 tier，应另起设计。
+- 不调整 `fieldI18n`。Label / 单位 / 选项文案沿用现有渲染机制（UI 端 `toFieldLabel` + `messages/{locale}/video.json` 的 `capability.*` key），与 Ark 当前 catalog 行为一致。
 
 ---
 
@@ -86,12 +88,14 @@ catalog json  →  findBuiltinCapabilities()  →  VideoModelOption.capabilities
 ```
 
 **字段说明**：
-- `generationModeOptions: ["normal"]` —— 必须有 `"normal"` 默认值，链路依赖。不开 `"firstlastframe"`。
+- `generationModeOptions: ["normal"]` —— 必须有 `"normal"` 默认值，链路依赖。`buildPanelVideoTargets` 在 [`src/lib/novel-promotion/stages/video-stage-runtime/task-targets.ts`](../../../src/lib/novel-promotion/stages/video-stage-runtime/task-targets.ts) 与 hook 默认 `generationMode: 'normal'` 协同工作。本设计不开 `"firstlastframe"`。
 - `generateAudioOptions: [true, false]` + `supportGenerateAudio: true` —— 与 Ark Seedance 2.0 Fast 一致。
 - `durationOptions: [4..15]` —— 与 Ark Seedance 2.0 Fast 同区间。
 - `resolutionOptions: ["480p", "720p"]` —— 与 Ark Seedance 2.0 Fast 一致。
 
 加载时由 [`validateVideoCapabilities`](../../../src/lib/model-config-contract.ts) 自动校验：字段必须在 `VIDEO_ALLOWED_FIELDS` 内、值类型与数组形态合法。
+
+**注**：Ark 的 catalog 条目同样不含 `fieldI18n`，UI 通过 `toFieldLabel`（camelCase → "Generate Audio"）和 `messages/{locale}/video.json` 的 `capability.*` key 解决文案。本设计沿用，无需新增 i18n。
 
 ### 3.2 后端透传（starrouter/video.ts）
 
@@ -151,11 +155,13 @@ const allowedOptionKeys = new Set([
 
 | 场景 | 行为 |
 |------|------|
+| **starrouter 在 pricing 文件中无对应条目**（当前事实） | [`/api/user/models`](../../../src/app/api/user/models/route.ts) 不会给 `option.videoPricingTiers` 赋值，[`resolveEffectiveVideoCapabilityFields`](../../../src/lib/model-capabilities/video-effective.ts) 走 `tiers.length === 0 → options.slice()` 全集分支，UI 显示 catalog 中所有值。**计费链路若依赖 tier，需要单独验证**——本设计不解决计费精细化，等需要时另起 spec |
 | catalog 字段值非法（如 duration 数组含字符串） | 启动时 `validateVideoCapabilities` 抛 `CAPABILITY_CATALOG_INVALID`，构建失败 |
 | 用户选了 `resolution=720p`，但上游静默忽略 | 视频仍能生成，分辨率不生效；非阻塞，验收时观察 |
 | 前端传入超出能力范围的值（如 duration=20） | `usePanelVideoModel` / `normalizeVideoGenerationSelections` 已限制下拉只能选合法值，不会传到后端 |
 | 未识别字段（如 `frames`）传到 starrouter | `assertNoUnsupportedOptions` 抛 `STARSTONE_VIDEO_OPTION_UNSUPPORTED` —— 现有行为不变 |
 | StarRouter 上游 timeout | 现有 `STARSTONE_VIDEO_SUBMIT_TIMEOUT(30000ms)` 兜底 —— 行为不变 |
+| 后续若给 starrouter 加 pricing tier | tier 的 `when` 子句必须能覆盖 catalog 全部组合，否则 UI 选项会自动收窄。计费扩展时需要回头核对本 catalog 条目 |
 
 ---
 
@@ -184,6 +190,7 @@ const allowedOptionKeys = new Set([
 | StarRouter 上游忽略 `resolution` / `generate_audio` | 低 | 仅参数不生效，不报错；联调时观察上游响应 |
 | 文档外字段被严格校验拒绝 | 极低 | 现有 `aspect_ratio` 也是文档外字段且已工作；同站点行为一致性高 |
 | 后续模型扩充时 catalog 重复 | 低 | `buildCache` 已内置 `CAPABILITY_CATALOG_DUPLICATE` 校验 |
+| **计费空白**：starrouter 视频在 pricing catalog 中无 tier，按"无 pricing"分支处理 | 中 | 本设计不解决；视频任务能跑通，但若现有计费链路对未配置 pricing 的视频任务有断言/日志告警，需在验收时观察。需要精细计费时另起 spec 处理 |
 
 ---
 
