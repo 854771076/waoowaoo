@@ -22,7 +22,9 @@ vi.mock('@/lib/generator-api', () => ({
 vi.mock('@/lib/storage', () => ({
   generateUniqueKey: vi.fn().mockReturnValue('test-key.png'),
   uploadObject: vi.fn().mockResolvedValue('test-key.png'),
-  getSignedUrl: vi.fn().mockReturnValue('/api/storage/sign?key=test-key.png'),
+  getSignedUrl: vi.fn((key: string) => `/api/storage/sign?key=${key}`),
+  downloadAndUploadImage: vi.fn().mockImplementation(async (_url: string, key: string) => key),
+  toFetchableUrl: vi.fn((url: string) => url),
 }))
 
 import { generateImage } from '@/lib/generator-api'
@@ -152,7 +154,8 @@ describe('art-styles/generate-preview API', () => {
 
       expect(response.ok).toBe(true)
       expect(data.success).toBe(true)
-      expect(data.previewImageUrl).toBe(mockImageUrl)
+      // 路由会把远程图保存到本服务存储后再签名返回，因此返回的是本服务签名链接而非原始 URL
+      expect(data.previewImageUrl).toBe('/api/storage/sign?key=test-key.png')
     })
 
     it('should handle imageUrls array from response', async () => {
@@ -172,7 +175,8 @@ describe('art-styles/generate-preview API', () => {
       const data = await response.json()
 
       expect(response.ok).toBe(true)
-      expect(data.previewImageUrl).toBe('https://example.com/preview1.jpg')
+      // 同样会落本服务存储后返回签名链接
+      expect(data.previewImageUrl).toBe('/api/storage/sign?key=test-key.png')
     })
   })
 

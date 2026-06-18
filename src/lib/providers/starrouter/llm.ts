@@ -12,6 +12,7 @@ export interface StarRouterLlmCompletionParams {
   apiKey: string
   baseUrl?: string
   temperature?: number
+  stream?: boolean
 }
 
 function assertRegistered(modelId: string): void {
@@ -39,6 +40,28 @@ export async function completeStarRouterLlm(
     model: _params.modelId,
     messages: _params.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     temperature: _params.temperature ?? 0.7,
+    stream: _params.stream ?? false,
   })
   return completion as OpenAI.Chat.Completions.ChatCompletion
+}
+
+export async function streamStarRouterLlm(
+  _params: StarRouterLlmCompletionParams,
+): Promise<AsyncIterable<unknown>> {
+  assertRegistered(_params.modelId)
+  const baseURL = typeof _params.baseUrl === 'string' && _params.baseUrl.trim()
+    ? _params.baseUrl.trim()
+    : 'https://starrouter.io/v1'
+  const client = new OpenAI({
+    apiKey: _params.apiKey,
+    baseURL,
+    timeout: 30_000,
+  })
+  const stream = await client.chat.completions.create({
+    model: _params.modelId,
+    messages: _params.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    temperature: _params.temperature ?? 0.7,
+    stream: true,
+  })
+  return stream as AsyncIterable<unknown>
 }

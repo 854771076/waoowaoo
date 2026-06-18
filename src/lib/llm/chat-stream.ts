@@ -39,6 +39,7 @@ import { withStreamChunkTimeout } from './stream-timeout'
 import { shouldUseOpenAIReasoningProviderOptions } from './reasoning-capability'
 import { completeBailianLlm } from '@/lib/providers/bailian'
 import { completeSiliconFlowLlm } from '@/lib/providers/siliconflow'
+import { streamStarRouterLlm } from '@/lib/providers/starrouter/llm'
 
 const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow'])
 
@@ -322,6 +323,115 @@ export async function chatCompletionStream(
       recordCompletionUsage(resolvedModelId, completion)
       emitStreamStage(callbacks, streamStep, 'completed', providerKey)
       callbacks?.onComplete?.(completionParts.text, streamStep)
+      return completion
+    }
+
+    if (providerKey === 'starrouter') {
+      emitStreamStage(callbacks, streamStep, 'streaming', providerKey)
+      const stream = await streamStarRouterLlm({
+        modelId: resolvedModelId,
+        messages,
+        apiKey: providerConfig.apiKey,
+        baseUrl: providerConfig.baseUrl,
+        temperature: options.temperature ?? 0.7,
+      })
+
+      let text = ''
+      let reasoning = ''
+      let seq = 1
+      let finalCompletion: OpenAI.Chat.Completions.ChatCompletion | null = null
+      for await (const part of withStreamChunkTimeout(stream)) {
+        const { textDelta, reasoningDelta } = extractStreamDeltaParts(part)
+        if (reasoningDelta) {
+          reasoning += reasoningDelta
+          emitStreamChunk(callbacks, streamStep, {
+            kind: 'reasoning',
+            delta: reasoningDelta,
+            seq,
+            lane: 'reasoning',
+          })
+          seq += 1
+        }
+        if (textDelta) {
+          text += textDelta
+          emitStreamChunk(callbacks, streamStep, {
+            kind: 'text',
+            delta: textDelta,
+            seq,
+            lane: 'main',
+          })
+          seq += 1
+        }
+      }
+
+      type OpenAIStreamWithFinal = AsyncIterable<unknown> & {
+        finalChatCompletion?: () => Promise<OpenAI.Chat.Completions.ChatCompletion>
+      }
+      const finalChatCompletionFn = (stream as OpenAIStreamWithFinal)?.finalChatCompletion
+      if (typeof finalChatCompletionFn === 'function') {
+        try {
+          finalCompletion = await finalChatCompletionFn.call(stream)
+          const finalParts = getCompletionParts(finalCompletion)
+          if (finalParts.reasoning && finalParts.reasoning !== reasoning) {
+            const reasoningDelta = finalParts.reasoning.startsWith(reasoning)
+              ? finalParts.reasoning.slice(reasoning.length)
+              : finalParts.reasoning
+            if (reasoningDelta) {
+              emitStreamChunk(callbacks, streamStep, {
+                kind: 'reasoning',
+                delta: reasoningDelta,
+                seq,
+                lane: 'reasoning',
+              })
+              seq += 1
+            }
+            reasoning = finalParts.reasoning
+          }
+          if (finalParts.text && finalParts.text !== text) {
+            const textDelta = finalParts.text.startsWith(text)
+              ? finalParts.text.slice(text.length)
+              : finalParts.text
+            if (textDelta) {
+              emitStreamChunk(callbacks, streamStep, {
+                kind: 'text',
+                delta: textDelta,
+                seq,
+                lane: 'main',
+              })
+              seq += 1
+            }
+            text = finalParts.text
+          }
+        } catch {
+          // Ignore final aggregation errors and keep streamed content.
+        }
+      }
+
+      const completion = buildOpenAIChatCompletion(
+        resolvedModelId,
+        buildReasoningAwareContent(text, reasoning),
+        finalCompletion
+          ? {
+            promptTokens: Number(finalCompletion.usage?.prompt_tokens ?? 0),
+            completionTokens: Number(finalCompletion.usage?.completion_tokens ?? 0),
+          }
+          : undefined,
+      )
+      logLlmRawOutput({
+        userId,
+        projectId,
+        provider: providerKey,
+        modelId: resolvedModelId,
+        modelKey: selection.modelKey,
+        stream: true,
+        action: options.action,
+        text,
+        reasoning,
+        usage: completionUsageSummary(finalCompletion),
+      })
+      recordCompletionUsage(resolvedModelId, completion)
+      emitStreamStage(callbacks, streamStep, 'completed', providerKey)
+      callbacks?.onComplete?.(text, streamStep)
       return completion
     }
 

@@ -11,6 +11,7 @@ export interface ArtStyleOption {
   label: string
   description: string | null
   prompt: string
+  previewImageUrl: string | null
   sortOrder: number
   scope: 'system' | 'user'
 }
@@ -36,6 +37,7 @@ type ApiArtStyle = {
   name: string
   description: string | null
   prompt: string
+  previewImageUrl: string | null
   sortOrder: number
   enabled: boolean
 }
@@ -74,6 +76,7 @@ export function useArtStyles(options: UseArtStylesOptions = {}): UseArtStylesRes
         label: style.name,
         description: style.description,
         prompt: style.prompt,
+        previewImageUrl: style.previewImageUrl,
         sortOrder: style.sortOrder,
         scope: style.scope,
       }))

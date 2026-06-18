@@ -122,6 +122,9 @@ export interface UserModelConfig {
   editModel: string | null
   videoModel: string | null
   audioModel: string | null
+  artStyle: string | null
+  artStyleId: string | null
+  artStylePrompt: string | null
   capabilityDefaults: CapabilitySelections
 }
 
@@ -188,6 +191,14 @@ export async function getUserModelConfig(userId: string): Promise<UserModelConfi
     where: { userId },
   })
 
+  const resolvedArtStyle = await resolveArtStylePrompt({
+    artStyleId: userPref?.artStyleId || null,
+    legacyArtStyle: userPref?.artStyle || null,
+    legacyArtStylePrompt: null,
+    userId,
+    locale: 'zh',
+  })
+
   return {
     analysisModel: extractModelKey(userPref?.analysisModel) || null,
     characterModel: extractModelKey(userPref?.characterModel) || null,
@@ -196,6 +207,9 @@ export async function getUserModelConfig(userId: string): Promise<UserModelConfi
     editModel: extractModelKey(userPref?.editModel) || null,
     videoModel: extractModelKey(userPref?.videoModel) || null,
     audioModel: extractModelKey(userPref?.audioModel) || null,
+    artStyle: userPref?.artStyle || null,
+    artStyleId: resolvedArtStyle.artStyleId,
+    artStylePrompt: resolvedArtStyle.prompt || null,
     capabilityDefaults: parseCapabilitySelections(userPref?.capabilityDefaults),
   }
 }

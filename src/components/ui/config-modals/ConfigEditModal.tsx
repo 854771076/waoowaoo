@@ -43,6 +43,7 @@ interface SettingsModalProps {
     availableModels?: Partial<UserModels>
     modelsLoaded?: boolean
     artStyle?: string
+    artStyleOptions?: Array<{ value: string; label: string; previewImageUrl?: string | null }>
     analysisModel?: string
     characterModel?: string
     locationModel?: string
@@ -128,6 +129,7 @@ export function SettingsModal({
     availableModels,
     modelsLoaded = false,
     artStyle = 'american-comic',
+    artStyleOptions = ART_STYLES,
     analysisModel,
     characterModel,
     locationModel,
@@ -373,7 +375,7 @@ export function SettingsModal({
                                 <StyleSelector
                                     value={artStyle}
                                     onChange={(value) => handleChange(onArtStyleChange)(value)}
-                                    options={ART_STYLES}
+                                    options={artStyleOptions}
                                 />
                             </div>
                             <div className="space-y-2">

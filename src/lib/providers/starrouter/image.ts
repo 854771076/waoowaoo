@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import {
   assertOfficialModelRegistered,
   type OfficialModelModality,
@@ -23,7 +24,12 @@ function assertRegistered(modelId: string): void {
   })
 }
 
-const STARSTONE_IMAGE_ENDPOINT = 'https://starrouter.io/v1/images/generations'
+const STARSTONE_IMAGE_GENERATIONS_ENDPOINT = 'https://starrouter.io/v1/images/generations'
+const STARSTONE_IMAGE_EDITS_ENDPOINT = 'https://starrouter.io/v1/images/edits'
+
+// 文档约束：image 必须是 PNG，方形，<4MB
+const STARSTONE_EDIT_TARGET_SIZE = 1024
+const STARSTONE_EDIT_MAX_BYTES = 4 * 1024 * 1024
 
 interface StarRouterImageSubmitResponse {
   created?: number
@@ -74,7 +80,7 @@ function assertNoUnsupportedOptions(options: StarRouterGenerateRequestOptions): 
   }
 }
 
-function buildSubmitRequest(params: StarRouterImageGenerateParams): {
+function buildGenerationsRequest(params: StarRouterImageGenerateParams): {
   endpoint: string
   body: StarRouterImageSubmitBody
 } {
@@ -102,9 +108,109 @@ function buildSubmitRequest(params: StarRouterImageGenerateParams): {
   }
 
   return {
-    endpoint: STARSTONE_IMAGE_ENDPOINT,
+    endpoint: STARSTONE_IMAGE_GENERATIONS_ENDPOINT,
     body: submitBody,
   }
+}
+
+/**
+ * 解析参考图入参（data URL 或裸 URL），统一拿到字节流。
+ * normalizeReferenceImagesForGeneration 已经把所有输入转为 base64 data URL，
+ * 这里仍兼容裸 URL 以防上游绕过 normalize。
+ */
+async function fetchReferenceImageBytes(input: string): Promise<Buffer> {
+  const trimmed = input.trim()
+  if (!trimmed) throw new Error('STARSTONE_IMAGE_REFERENCE_EMPTY')
+
+  if (trimmed.startsWith('data:')) {
+    const commaIdx = trimmed.indexOf(',')
+    if (commaIdx === -1) throw new Error('STARSTONE_IMAGE_REFERENCE_DATA_URL_INVALID')
+    const meta = trimmed.slice(5, commaIdx) // skip "data:"
+    const payload = trimmed.slice(commaIdx + 1)
+    if (meta.includes(';base64')) {
+      return Buffer.from(payload, 'base64')
+    }
+    return Buffer.from(decodeURIComponent(payload), 'utf-8')
+  }
+
+  const response = await fetch(trimmed)
+  if (!response.ok) {
+    throw new Error(`STARSTONE_IMAGE_REFERENCE_FETCH_FAILED(${response.status})`)
+  }
+  return Buffer.from(await response.arrayBuffer())
+}
+
+/**
+ * 将任意来源的图转成 starrouter /v1/images/edits 接受的 PNG：
+ * - 转 PNG
+ * - 裁剪/填充至 1024x1024 方形（保持原图主体居中，不足部分透明填充）
+ * - 控制总体积 <4MB（超出则降低 compressionLevel + 进一步缩放）
+ */
+async function normalizeReferenceForEdit(buffer: Buffer): Promise<Buffer> {
+  let pipeline = sharp(buffer, { failOn: 'none' })
+    .resize(STARSTONE_EDIT_TARGET_SIZE, STARSTONE_EDIT_TARGET_SIZE, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png({ compressionLevel: 9 })
+
+  let out = await pipeline.toBuffer()
+  if (out.byteLength <= STARSTONE_EDIT_MAX_BYTES) return out
+
+  // 仍超限则再缩一档（512x512），文档允许 256/512/1024
+  pipeline = sharp(buffer, { failOn: 'none' })
+    .resize(512, 512, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png({ compressionLevel: 9 })
+  out = await pipeline.toBuffer()
+  if (out.byteLength <= STARSTONE_EDIT_MAX_BYTES) return out
+
+  throw new Error('STARSTONE_IMAGE_REFERENCE_TOO_LARGE_AFTER_NORMALIZE')
+}
+
+async function buildEditsFormData(
+  params: StarRouterImageGenerateParams,
+  referenceImages: string[],
+): Promise<FormData> {
+  const prompt = readTrimmedString(params.prompt)
+  if (!prompt) {
+    throw new Error('STARSTONE_IMAGE_PROMPT_REQUIRED')
+  }
+  const modelId = readTrimmedString(params.options.modelId)
+  if (!modelId) {
+    throw new Error('STARSTONE_IMAGE_MODEL_ID_REQUIRED')
+  }
+
+  const formData = new FormData()
+  formData.append('prompt', prompt)
+  formData.append('model', modelId)
+  formData.append('response_format', 'url')
+
+  const size = readTrimmedString(params.options.size)
+  if (size) {
+    formData.append('size', size)
+  }
+  const n = readOptionalPositiveInteger(params.options.n, 'n')
+  if (typeof n === 'number') {
+    // 文档定义 n 为 string 类型，统一字符串化
+    formData.append('n', String(n))
+  }
+
+  // 全部参考图都 append 为 image 字段；starrouter edits 文档官方只画了一张图，
+  // 但服务端常见做法是支持多次同名字段或 image[]，都试一下风险有限，由服务端决定如何取用。
+  for (let i = 0; i < referenceImages.length; i += 1) {
+    const raw = await fetchReferenceImageBytes(referenceImages[i])
+    const png = await normalizeReferenceForEdit(raw)
+    const blob = new Blob([new Uint8Array(png)], { type: 'image/png' })
+    const filename = `reference-${i}.png`
+    formData.append('image', blob, filename)
+    // 兼容某些后端的数组语法
+    formData.append('image[]', blob, filename)
+  }
+
+  return formData
 }
 
 async function parseSubmitResponse(response: Response): Promise<StarRouterImageSubmitResponse> {
@@ -121,29 +227,7 @@ async function parseSubmitResponse(response: Response): Promise<StarRouterImageS
   }
 }
 
-export async function generateStarRouterImage(params: StarRouterImageGenerateParams): Promise<GenerateResult> {
-  assertRegistered(params.options.modelId)
-  assertNoUnsupportedOptions(params.options)
-
-  const { apiKey } = await getProviderConfig(params.userId, params.options.provider)
-  const submitRequest = buildSubmitRequest(params)
-  const response = await fetch(submitRequest.endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(submitRequest.body),
-  })
-  const data = await parseSubmitResponse(response)
-
-  if (!response.ok) {
-    const message = readTrimmedString(data.error?.message)
-    const code = readTrimmedString(data.error?.code)
-    throw new Error(`STARSTONE_IMAGE_SUBMIT_FAILED(${response.status}): ${message || code || 'unknown error'}`)
-  }
-
-  // Starstone API 返回同步响应，直接获取图片 URL
+function extractResultFromResponse(data: StarRouterImageSubmitResponse): GenerateResult {
   const imageUrls = (data.data || []).map(item => item.url).filter(Boolean) as string[]
   const firstImageUrl = imageUrls[0] || null
   const firstB64Json = data.data?.[0]?.b64_json || null
@@ -159,4 +243,45 @@ export async function generateStarRouterImage(params: StarRouterImageGeneratePar
     imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
     imageBase64: firstB64Json || undefined,
   }
+}
+
+export async function generateStarRouterImage(params: StarRouterImageGenerateParams): Promise<GenerateResult> {
+  assertRegistered(params.options.modelId)
+  assertNoUnsupportedOptions(params.options)
+
+  const { apiKey } = await getProviderConfig(params.userId, params.options.provider)
+  const referenceImages = (params.referenceImages || []).filter((s) => typeof s === 'string' && s.trim().length > 0)
+
+  let response: Response
+  if (referenceImages.length > 0) {
+    // 走 /v1/images/edits（multipart/form-data）以传入参考图
+    const formData = await buildEditsFormData(params, referenceImages)
+    response = await fetch(STARSTONE_IMAGE_EDITS_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        // 不要手动设置 Content-Type，fetch 会自动加上含 boundary 的 multipart 头
+      },
+      body: formData,
+    })
+  } else {
+    const submitRequest = buildGenerationsRequest(params)
+    response = await fetch(submitRequest.endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(submitRequest.body),
+    })
+  }
+
+  const data = await parseSubmitResponse(response)
+  if (!response.ok) {
+    const message = readTrimmedString(data.error?.message)
+    const code = readTrimmedString(data.error?.code)
+    throw new Error(`STARSTONE_IMAGE_SUBMIT_FAILED(${response.status}): ${message || code || 'unknown error'}`)
+  }
+
+  return extractResultFromResponse(data)
 }

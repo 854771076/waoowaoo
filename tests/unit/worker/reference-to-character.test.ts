@@ -47,6 +47,13 @@ const configServiceMock = vi.hoisted(() => ({
     characterModel: 'character-model-1',
     analysisModel: 'analysis-model-1',
   })),
+  getProjectModelConfig: vi.fn(async () => ({
+    characterModel: 'character-model-1',
+    analysisModel: 'analysis-model-1',
+    artStyle: null,
+    artStyleId: null,
+    artStylePrompt: null,
+  })),
 }))
 
 const llmClientMock = vi.hoisted(() => ({

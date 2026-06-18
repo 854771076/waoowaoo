@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
+import type { ArtStyle } from '@prisma/client'
 
 // Mock dependencies
 vi.mock('@/lib/admin/auth', () => ({
@@ -23,7 +24,20 @@ vi.mock('@/lib/prisma', () => ({
   },
 }))
 
+vi.mock('@/lib/generator-api', () => ({
+  generateImage: vi.fn(),
+}))
+
+vi.mock('@/lib/storage', () => ({
+  generateUniqueKey: vi.fn().mockReturnValue('test-key.png'),
+  uploadObject: vi.fn().mockResolvedValue('test-key.png'),
+  getSignedUrl: vi.fn((key: string) => `/api/storage/sign?key=${key}`),
+  downloadAndUploadImage: vi.fn().mockImplementation(async (_url: string, key: string) => key),
+  toFetchableUrl: vi.fn((url: string) => url),
+}))
+
 import { prisma } from '@/lib/prisma'
+import { generateImage } from '@/lib/generator-api'
 
 // Create a simple test helper to test the core logic
 function createMockRequest(body: object, url = 'http://localhost/api/admin/config-center/art-styles/test-style-id/generate-preview'): NextRequest {
@@ -34,6 +48,26 @@ function createMockRequest(body: object, url = 'http://localhost/api/admin/confi
     },
     body: JSON.stringify(body),
   })
+}
+
+function createMockArtStyle(overrides: Partial<ArtStyle> = {}): ArtStyle {
+  return {
+    id: 'test-style-id',
+    name: 'Test Style',
+    scope: 'system',
+    previewMediaId: null,
+    previewImageUrl: null,
+    ownerUserId: null,
+    description: null,
+    prompt: '',
+    enabled: true,
+    sortOrder: 0,
+    createdByUserId: null,
+    updatedByUserId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  }
 }
 
 describe('admin/config-center/art-styles/[styleId]/generate-preview API', () => {
@@ -60,15 +94,14 @@ describe('admin/config-center/art-styles/[styleId]/generate-preview API', () => 
     })
 
     it('should proceed when art style exists', async () => {
-      vi.mocked(prisma.artStyle.findUnique).mockResolvedValueOnce({
-        id: 'test-style-id',
-        name: 'Test Style',
-        scope: 'system',
+      vi.mocked(prisma.artStyle.findUnique).mockResolvedValueOnce(createMockArtStyle())
+      vi.mocked(generateImage).mockResolvedValueOnce({
+        success: true,
+        imageUrl: 'https://example.com/preview.png',
       })
-      vi.mocked(prisma.artStyle.update).mockResolvedValueOnce({
-        id: 'test-style-id',
-        previewImageUrl: 'https://picsum.photos/seed/test-style-id-1234567890/400/400',
-      })
+      vi.mocked(prisma.artStyle.update).mockResolvedValueOnce(createMockArtStyle({
+        previewImageUrl: '/api/storage/sign?key=test-key.png',
+      }))
 
       const { POST } = await import('@/app/api/admin/config-center/art-styles/[styleId]/generate-preview/route')
 
@@ -81,19 +114,16 @@ describe('admin/config-center/art-styles/[styleId]/generate-preview API', () => 
   })
 
   describe('Preview Image Generation', () => {
-    it('should generate preview image URL using picsum.photos', async () => {
-      vi.mocked(prisma.artStyle.findUnique).mockResolvedValueOnce({
-        id: 'test-style-id',
-        name: 'Test Style',
-        scope: 'system',
+    it('should generate preview image URL via storage signed link and pass model through', async () => {
+      vi.mocked(prisma.artStyle.findUnique).mockResolvedValueOnce(createMockArtStyle({ prompt: 'cinematic style' }))
+      vi.mocked(generateImage).mockResolvedValueOnce({
+        success: true,
+        imageUrl: 'https://example.com/preview.png',
       })
-      vi.mocked(prisma.artStyle.update).mockImplementation(({ where, data }) => {
-        return Promise.resolve({
-          id: where.id,
-          previewImageUrl: data.previewImageUrl,
-          updatedByUserId: data.updatedByUserId,
-        })
-      })
+      vi.mocked(prisma.artStyle.update).mockResolvedValueOnce(createMockArtStyle({
+        previewImageUrl: '/api/storage/sign?key=test-key.png',
+        updatedByUserId: 'test-admin-id',
+      }))
 
       const { POST } = await import('@/app/api/admin/config-center/art-styles/[styleId]/generate-preview/route')
 
@@ -104,22 +134,26 @@ describe('admin/config-center/art-styles/[styleId]/generate-preview API', () => 
       const data = await response.json() as { previewImageUrl?: string; model?: string }
 
       expect(response.ok).toBe(true)
-      expect(data.previewImageUrl).toContain('picsum.photos')
-      expect(data.previewImageUrl).toContain('/400/400')
+      expect(data.previewImageUrl).toBe('/api/storage/sign?key=test-key.png')
       expect(data.model).toBe('test-model')
+      expect(generateImage).toHaveBeenCalledWith(
+        'test-admin-id',
+        'test-model',
+        'cinematic style',
+        expect.objectContaining({ outputFormat: 'png' }),
+      )
     })
 
     it('should update database with generated previewImageUrl', async () => {
-      vi.mocked(prisma.artStyle.findUnique).mockResolvedValueOnce({
-        id: 'test-style-id',
-        name: 'Test Style',
-        scope: 'system',
+      vi.mocked(prisma.artStyle.findUnique).mockResolvedValueOnce(createMockArtStyle())
+      vi.mocked(generateImage).mockResolvedValueOnce({
+        success: true,
+        imageUrl: 'https://example.com/preview.png',
       })
-      vi.mocked(prisma.artStyle.update).mockResolvedValueOnce({
-        id: 'test-style-id',
-        previewImageUrl: 'https://picsum.photos/seed/test-style-id-1234567890/400/400',
+      vi.mocked(prisma.artStyle.update).mockResolvedValueOnce(createMockArtStyle({
+        previewImageUrl: '/api/storage/sign?key=test-key.png',
         updatedByUserId: 'test-admin-id',
-      })
+      }))
 
       const { POST } = await import('@/app/api/admin/config-center/art-styles/[styleId]/generate-preview/route')
 
@@ -132,34 +166,23 @@ describe('admin/config-center/art-styles/[styleId]/generate-preview API', () => 
         expect.objectContaining({
           where: { id: 'test-style-id' },
           data: expect.objectContaining({
-            previewImageUrl: expect.stringContaining('picsum.photos'),
+            previewImageUrl: expect.stringContaining('/api/storage/sign'),
             updatedByUserId: 'test-admin-id',
           }),
         }),
       )
     })
 
-    it('should use default model when model is not provided', async () => {
-      vi.mocked(prisma.artStyle.findUnique).mockResolvedValueOnce({
-        id: 'test-style-id',
-        name: 'Test Style',
-        scope: 'system',
-      })
-      vi.mocked(prisma.artStyle.update).mockResolvedValueOnce({
-        id: 'test-style-id',
-        previewImageUrl: 'https://picsum.photos/seed/test-style-id-1234567890/400/400',
-      })
+    it('should reject the request with INVALID_PARAMS when model is not provided', async () => {
+      vi.mocked(prisma.artStyle.findUnique).mockResolvedValueOnce(createMockArtStyle())
 
       const { POST } = await import('@/app/api/admin/config-center/art-styles/[styleId]/generate-preview/route')
 
       const request = createMockRequest({})
       const context = { params: Promise.resolve({ styleId: 'test-style-id' }) }
 
-      const response = await POST(request, context)
-      const data = await response.json() as { model?: string }
-
-      expect(response.ok).toBe(true)
-      expect(data.model).toBe('default')
+      await expect(POST(request, context)).rejects.toThrow('请选择图片生成模型')
+      expect(generateImage).not.toHaveBeenCalled()
     })
   })
 })

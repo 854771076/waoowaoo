@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { generateImage } from '@/lib/generator-api'
-import { generateUniqueKey, uploadObject, getSignedUrl } from '@/lib/storage'
+import { generateUniqueKey, uploadObject, getSignedUrl, downloadAndUploadImage, toFetchableUrl } from '@/lib/storage'
 
 /**
  * 生成画风预览图的 API
@@ -51,18 +51,20 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
     let previewImageUrl: string | null = null
 
-    // 优先使用返回的 URL
-    if (result.imageUrl) {
-      previewImageUrl = result.imageUrl
-    } else if (result.imageUrls && result.imageUrls.length > 0) {
-      previewImageUrl = result.imageUrls[0]
+    // 统一将图片保存到本服务存储，再返回本服务静态资源链接
+    const remoteImageUrl = result.imageUrl || (result.imageUrls && result.imageUrls.length > 0 ? result.imageUrls[0] : null)
+
+    if (remoteImageUrl) {
+      const cosKey = generateUniqueKey(`art-style-preview-${styleName?.trim() || 'preview'}`, 'png')
+      const storedKey = await downloadAndUploadImage(toFetchableUrl(remoteImageUrl), cosKey)
+      previewImageUrl = getSignedUrl(storedKey, 7 * 24 * 3600)
     } else if (result.imageBase64) {
       // 如果返回 base64，上传到存储
       const base64Data = result.imageBase64.replace(/^data:image\/\w+;base64,/, '')
       const buffer = Buffer.from(base64Data, 'base64')
       const key = generateUniqueKey(`art-style-preview-${styleName?.trim() || 'preview'}`, 'png')
       await uploadObject(buffer, key, 3, 'image/png')
-      previewImageUrl = getSignedUrl(key)
+      previewImageUrl = getSignedUrl(key, 7 * 24 * 3600)
     }
 
     if (!previewImageUrl) {

@@ -241,3 +241,26 @@ export async function attachMediaFieldsToProject<T extends Record<string, unknow
 export function firstMediaUrl(list: MediaRef[]): string[] {
   return list.map((m) => m.url)
 }
+
+export async function attachMediaFieldsToArtStyle<T extends Record<string, unknown>>(
+  artStyle: T,
+): Promise<T> {
+  // 当 previewMediaId 和 previewImageUrl 都为空时，直接返回原对象，
+  // 避免触发 storage 模块加载（在缺少 storage 配置的环境/测试中会抛错）。
+  const hasMediaId = typeof artStyle.previewMediaId === 'string' && artStyle.previewMediaId.trim().length > 0
+  const hasImageUrl = typeof artStyle.previewImageUrl === 'string' && artStyle.previewImageUrl.trim().length > 0
+  if (!hasMediaId && !hasImageUrl) {
+    return artStyle
+  }
+
+  const previewMedia = await resolveMediaRef(
+    artStyle.previewMediaId,
+    artStyle.previewImageUrl,
+  )
+
+  return {
+    ...artStyle,
+    previewMedia,
+    previewImageUrl: previewMedia?.url || artStyle.previewImageUrl || null,
+  }
+}

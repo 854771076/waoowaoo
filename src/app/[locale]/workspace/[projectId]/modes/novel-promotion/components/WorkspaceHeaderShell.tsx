@@ -6,6 +6,7 @@ import WorkspaceTopActions from './WorkspaceTopActions'
 import type { NovelPromotionPanel } from '@/types/project'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import { resolveEpisodeStageArtifacts } from '@/lib/novel-promotion/stage-readiness'
+import { useArtStyles } from '@/hooks/useArtStyles'
 
 interface EpisodeSummary {
   id: string
@@ -119,6 +120,8 @@ export default function WorkspaceHeaderShell({
   settingsLabel,
   refreshTitle,
 }: WorkspaceHeaderShellProps) {
+  const { artStyles } = useArtStyles()
+
   return (
     <>
       <SettingsModal
@@ -127,6 +130,7 @@ export default function WorkspaceHeaderShell({
         availableModels={availableModels}
         modelsLoaded={modelsLoaded}
         artStyle={artStyle ?? undefined}
+        artStyleOptions={artStyles}
         analysisModel={analysisModel ?? undefined}
         characterModel={characterModel ?? undefined}
         locationModel={locationModel ?? undefined}

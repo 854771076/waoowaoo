@@ -239,6 +239,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
         audioModel: userPreference.audioModel,
         videoRatio: userPreference.videoRatio,
         artStyle: isValidArtStyle ? userPreference.artStyle : 'system-american-comic',
+        artStyleId: userPreference.artStyleId || null,
         ttsRate: userPreference.ttsRate
       })
     }

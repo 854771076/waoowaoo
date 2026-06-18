@@ -155,12 +155,24 @@ export async function generateImage(
     }
 
     const generator = createImageGenerator(selection.provider, selection.modelId)
+
+    // 统一处理 aspectRatio → size 转换（与 openai-compat 逻辑一致）
+    let finalGeneratorOptions = { ...generatorOptions }
+    if (finalGeneratorOptions.aspectRatio) {
+        const mappedSize = aspectRatioToOpenAISize(finalGeneratorOptions.aspectRatio)
+        if (mappedSize && !finalGeneratorOptions.size) {
+            finalGeneratorOptions = { ...finalGeneratorOptions, size: mappedSize }
+        }
+        // 移除不支持的 aspectRatio 选项
+        delete finalGeneratorOptions.aspectRatio
+    }
+
     return await generator.generate({
         userId,
         prompt,
         referenceImages,
         options: {
-            ...generatorOptions,
+            ...finalGeneratorOptions,
             provider: selection.provider,
             modelId: selection.modelId,
             modelKey: selection.modelKey,

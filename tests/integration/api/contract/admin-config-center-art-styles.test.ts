@@ -32,6 +32,15 @@ vi.mock('@/lib/admin/auth', () => ({
   requireAdminAuth: requireAdminAuthMock,
 }))
 
+// 屏蔽 storage 调用：默认让 previewImageUrl 原样透传（不 resolve 成 /m/ URL）
+vi.mock('@/lib/media/attach', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/media/attach')>('@/lib/media/attach')
+  return {
+    ...actual,
+    attachMediaFieldsToArtStyle: vi.fn(async (style: Record<string, unknown>) => style),
+  }
+})
+
 const adminAuth = {
   session: { user: { id: 'admin-user-1', email: 'admin@example.com', name: 'Admin' } },
   user: { id: 'admin-user-1', email: 'admin@example.com', name: 'Admin', role: 'admin' },

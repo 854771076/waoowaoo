@@ -16,7 +16,7 @@ interface RatioSelectorProps {
 interface StyleSelectorProps {
   value: string
   onChange: (value: string) => void
-  options: Array<{ value: string; label: string }>
+  options: Array<{ value: string; label: string; previewImageUrl?: string | null }>
 }
 
 /** 线框比例预览块 */
@@ -104,6 +104,31 @@ export function RatioSelector({ value, onChange, options }: RatioSelectorProps) 
   )
 }
 
+/** 画风缩略图预览 */
+function StyleThumbnail({ previewImageUrl, size = 32 }: { previewImageUrl: string | null | undefined; size?: number }) {
+  return (
+    <div
+      className="overflow-hidden rounded-md border border-[var(--glass-stroke-strong)]"
+      style={{ width: size, height: size }}
+    >
+      {previewImageUrl ? (
+        <img
+          src={previewImageUrl}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = 'none'
+          }}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-[var(--glass-bg-base)]">
+          <AppIcon name="sparklesAlt" className="h-3 w-3 text-[var(--glass-text-tertiary)]" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function StyleSelector({ value, onChange, options }: StyleSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -127,12 +152,15 @@ export function StyleSelector({ value, onChange, options }: StyleSelectorProps) 
         onClick={() => setIsOpen(!isOpen)}
         className="glass-input-base h-11 px-3 flex items-center justify-between gap-2 cursor-pointer transition-colors"
       >
-        <span className="text-sm text-[var(--glass-text-primary)] font-medium">{selectedOption.label}</span>
+        <div className="flex items-center gap-2.5">
+          <StyleThumbnail previewImageUrl={selectedOption.previewImageUrl} size={18} />
+          <span className="text-sm text-[var(--glass-text-primary)] font-medium">{selectedOption.label}</span>
+        </div>
         <AppIcon name="chevronDown" className={`w-4 h-4 text-[var(--glass-text-tertiary)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="glass-surface-modal absolute z-50 mt-1 left-0 p-3" style={{ minWidth: '320px' }}>
+        <div className="glass-surface-modal absolute z-50 mt-1 left-0 p-3" style={{ minWidth: '360px' }}>
           <div className="grid grid-cols-2 gap-2">
             {options.map((option) => {
               const isSelected = value === option.value
@@ -144,12 +172,13 @@ export function StyleSelector({ value, onChange, options }: StyleSelectorProps) 
                     onChange(option.value)
                     setIsOpen(false)
                   }}
-                  className={`flex items-center p-3 rounded-xl border text-left transition-all ${
+                  className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-all ${
                     isSelected
                       ? 'border-[var(--glass-accent-from)] bg-[var(--glass-accent-from)]/5 shadow-sm'
                       : 'border-[var(--glass-stroke-soft)] hover:border-[var(--glass-stroke-strong)]'
                   }`}
                 >
+                  <StyleThumbnail previewImageUrl={option.previewImageUrl} />
                   <span className={`text-sm whitespace-nowrap ${isSelected ? 'font-semibold text-[var(--glass-accent-from)]' : 'text-[var(--glass-text-secondary)]'}`}>
                     {option.label}
                   </span>

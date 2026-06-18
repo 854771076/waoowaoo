@@ -1,5 +1,6 @@
 import { getArtStylePrompt } from '@/lib/constants'
 import { prisma } from '@/lib/prisma'
+import { attachMediaFieldsToArtStyle } from '@/lib/media/attach'
 import type { ArtStyleRecord, ResolvedArtStylePrompt } from './types'
 
 type ResolveArtStylePromptInput = {
@@ -39,7 +40,11 @@ export async function listAvailableArtStyles(userId: string): Promise<ArtStyleRe
     ],
   })
 
-  return artStyles as ArtStyleRecord[]
+  const withMedia = await Promise.all(
+    artStyles.map((style) => attachMediaFieldsToArtStyle(style)),
+  )
+
+  return withMedia as ArtStyleRecord[]
 }
 
 export async function resolveArtStylePrompt(

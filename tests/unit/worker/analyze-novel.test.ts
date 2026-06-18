@@ -53,6 +53,23 @@ vi.mock('@/lib/constants', async (importOriginal) => {
 })
 vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: workerMock.reportTaskProgress }))
 vi.mock('@/lib/workers/utils', () => ({ assertTaskActive: workerMock.assertTaskActive }))
+vi.mock('@/lib/config-service', () => ({
+  getProjectModelConfig: vi.fn(async () => ({
+    analysisModel: null,
+    characterModel: null,
+    locationModel: null,
+    storyboardModel: null,
+    editModel: null,
+    videoModel: null,
+    audioModel: null,
+    videoRatio: '16:9',
+    artStyle: null,
+    artStyleId: null,
+    artStylePrompt: 'cinematic style',
+    capabilityDefaults: {},
+    capabilityOverrides: {},
+  })),
+}))
 vi.mock('@/lib/workers/handlers/llm-stream', () => ({
   createWorkerLLMStreamContext: vi.fn(() => ({ streamRunId: 'run-1', nextSeqByStepLane: {} })),
   createWorkerLLMStreamCallbacks: vi.fn(() => ({

@@ -181,6 +181,31 @@ export function RatioSelector({
   )
 }
 
+/** 画风缩略图预览 */
+function StyleThumbnail({ previewImageUrl, size = 32 }: { previewImageUrl: string | null | undefined; size?: number }) {
+  return (
+    <div
+      className="overflow-hidden rounded-md border border-[var(--glass-stroke-strong)]"
+      style={{ width: size, height: size }}
+    >
+      {previewImageUrl ? (
+        <img
+          src={previewImageUrl}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = 'none'
+          }}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-[var(--glass-bg-base)]">
+          <AppIcon name="sparklesAlt" className="h-3 w-3 text-[var(--glass-text-tertiary)]" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function StyleSelector({
   value,
   onChange,
@@ -188,10 +213,10 @@ export function StyleSelector({
 }: {
   value: string
   onChange: (value: string) => void
-  options: { value: string; label: string; recommended?: boolean }[]
+  options: { value: string; label: string; recommended?: boolean; previewImageUrl?: string | null }[]
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const { triggerRef, panelRef, panelStyle } = useFloatingDropdown(isOpen, 320)
+  const { triggerRef, panelRef, panelStyle } = useFloatingDropdown(isOpen, 360)
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -233,7 +258,7 @@ export function StyleSelector({
         className={`${TRIGGER_CLASSNAME} cursor-pointer`}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <AppIcon name="sparklesAlt" className="h-4 w-4 text-[var(--glass-accent-from)]" />
+          <StyleThumbnail previewImageUrl={selectedOption.previewImageUrl} size={18} />
           <span className={`${TRIGGER_TEXT_CLASSNAME} truncate`}>{selectedOption.label}</span>
         </div>
         <AppIcon name="chevronDown" className={`w-4 h-4 text-[var(--glass-text-tertiary)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -256,12 +281,13 @@ export function StyleSelector({
                     onChange(option.value)
                     setIsOpen(false)
                   }}
-                  className={`flex items-center p-3 rounded-xl border text-left transition-all ${
+                  className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-all ${
                     isSelected
                       ? 'border-[var(--glass-accent-from)] bg-[var(--glass-accent-from)]/5 shadow-sm'
                       : 'border-[var(--glass-stroke-soft)] hover:border-[var(--glass-stroke-strong)]'
                   }`}
                 >
+                  <StyleThumbnail previewImageUrl={option.previewImageUrl} />
                   <span className={`text-sm whitespace-nowrap ${isSelected ? 'font-semibold text-[var(--glass-accent-from)]' : 'text-[var(--glass-text-secondary)]'}`}>
                     {option.label}
                   </span>

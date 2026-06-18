@@ -122,14 +122,14 @@
     },
     "toggleFailed": "Failed to update status",
     "updateFailed": "Failed to update",
-    "createFailed": "Failed to create"
-  },
-  "messages": {
-    "created": "Art style created successfully",
-    "updated": "Art style updated successfully",
-    "deleted": "Art style deleted successfully",
-    "enabled": "Art style enabled",
-    "disabled": "Art style disabled",
-    "previewGenerated": "Preview generated successfully"
+    "createFailed": "Failed to create",
+    "messages": {
+      "created": "Art style created successfully",
+      "updated": "Art style updated successfully",
+      "deleted": "Art style deleted successfully",
+      "enabled": "Art style enabled",
+      "disabled": "Art style disabled",
+      "previewGenerated": "Preview generated successfully"
+    }
   }
 }

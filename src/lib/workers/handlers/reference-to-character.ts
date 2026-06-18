@@ -6,17 +6,19 @@ import { queryFalStatus } from '@/lib/async-submit'
 import { fetchWithTimeoutAndRetry } from '@/lib/ark-api'
 import { getProviderConfig } from '@/lib/api-config'
 import { executeAiVisionStep } from '@/lib/ai-runtime'
-import { getUserModelConfig } from '@/lib/config-service'
+import { getProjectModelConfig, getUserModelConfig } from '@/lib/config-service'
 import {
   CHARACTER_IMAGE_BANANA_RATIO,
   addCharacterPromptSuffix,
-  getArtStylePrompt,
+  isArtStyleValue,
+  type ArtStyleValue,
 } from '@/lib/constants'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { generateUniqueKey, getSignedUrl, uploadObject } from '@/lib/storage'
 import { initializeFonts, createLabelSVG } from '@/lib/fonts'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
+import { resolveWorkerArtStylePrompt } from '@/lib/workers/art-style'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { buildPromptAsync, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
@@ -142,7 +144,11 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
   const extractOnly = readBoolean(payload.extractOnly)
   const customDescription = readString(payload.customDescription)
   const characterName = readString(payload.characterName) || '新角色 - 初始形象'
-  const artStyle = readString(payload.artStyle)
+  const payloadArtStyleRaw = readString(payload.artStyle)
+  const payloadArtStyle: ArtStyleValue | undefined =
+    payloadArtStyleRaw && isArtStyleValue(payloadArtStyleRaw)
+      ? payloadArtStyleRaw
+      : undefined
   const promptProjectId = isProject ? job.data.projectId : null
 
   if (isBackgroundJob && (!characterId || !appearanceId)) {
@@ -200,7 +206,15 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
     }
   }
 
-  const artStylePrompt = getArtStylePrompt(artStyle, job.data.locale)
+  const projectModelConfig = isProject
+    ? await getProjectModelConfig(job.data.projectId, job.data.userId)
+    : null
+  const artStylePrompt = resolveWorkerArtStylePrompt({
+    payloadArtStyle,
+    modelConfigArtStyle: projectModelConfig?.artStyle,
+    modelConfigArtStylePrompt: projectModelConfig?.artStylePrompt,
+    locale: job.data.locale,
+  })
 
   const basePrompt = customDescription || await buildPromptAsync({
     promptId: PROMPT_IDS.CHARACTER_REFERENCE_TO_SHEET,

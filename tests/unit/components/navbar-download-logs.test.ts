@@ -89,7 +89,7 @@ describe('Navbar download logs entry', () => {
   it('renders the download logs entry on the far-right action group for signed-in users', () => {
     Reflect.set(globalThis, 'React', React)
     useSessionMock.mockReturnValue({
-      data: { user: { name: 'Earth' } },
+      data: { user: { name: 'Earth', role: 'admin' } },
       status: 'authenticated',
     })
 
