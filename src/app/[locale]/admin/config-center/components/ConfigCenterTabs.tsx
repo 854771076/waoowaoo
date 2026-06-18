@@ -12,7 +12,7 @@ interface TabConfig {
 }
 
 const tabs: TabConfig[] = [
-  { key: 'prompts', labelKey: 'tabs.prompts', path: '/admin/config-center' },
+  { key: 'prompts', labelKey: 'tabs.prompts', path: '/admin/config-center/prompts' },
   { key: 'art-styles', labelKey: 'tabs.artStyles', path: '/admin/config-center/art-styles' },
 ]
 
