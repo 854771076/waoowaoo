@@ -1,20 +1,7 @@
 import { requireAdminServerSide } from '@/lib/admin/auth'
 import Navbar from '@/components/Navbar'
 import ConfigCenterTabs from '../components/ConfigCenterTabs'
-
-// TODO: Task 2 - Implement ArtStyleLibraryPanel content
-function ArtStyleLibraryPanel() {
-  return (
-    <div className="glass-card p-6">
-      <h2 className="text-lg font-semibold text-[var(--glass-text-primary)] mb-4">
-        艺术风格配置
-      </h2>
-      <p className="text-[var(--glass-text-secondary)]">
-        艺术风格配置页面开发中...
-      </p>
-    </div>
-  )
-}
+import ArtStyleLibraryPanel from '../components/ArtStyleLibraryPanel'
 
 export default async function ArtStylesPage() {
   await requireAdminServerSide()

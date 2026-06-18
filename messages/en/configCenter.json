@@ -72,5 +72,48 @@
     "overrideFailed": "Failed to save project override",
     "emptyContent": "Prompt content is required",
     "overrideRequired": "Enter a project ID and choose a version"
+  },
+  "artStyles": {
+    "title": "Art Style Library",
+    "loading": "Loading art styles...",
+    "retry": "Retry",
+    "total": "{count} total",
+    "filters": {
+      "allStatuses": "All statuses",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "searchPlaceholder": "Search art styles...",
+    "create": "Create style",
+    "empty": "No system art styles",
+    "emptyFiltered": "No matching art styles",
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "noDescription": "No description",
+    "sortOrder": "Sort order: {value}",
+    "actions": {
+      "enable": "Enable",
+      "disable": "Disable",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "deleteConfirm": "Are you sure you want to delete this art style?",
+    "loadFailed": "Failed to load art styles",
+    "saveFailed": "Failed to save art style",
+    "deleteFailed": "Failed to delete art style",
+    "editor": {
+      "name": "Name",
+      "description": "Description",
+      "prompt": "Prompt",
+      "previewImageUrl": "Preview Image URL",
+      "sortOrder": "Sort Order",
+      "save": "Save",
+      "cancel": "Cancel",
+      "generate": "Generate Prompt",
+      "generating": "Generating...",
+      "selectModel": "Select Model"
+    }
   }
 }
