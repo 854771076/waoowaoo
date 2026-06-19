@@ -6,12 +6,7 @@ vi.mock('@/lib/providers/omnivoice/client', () => ({
 
 import { getOmnivoiceClient } from '@/lib/providers/omnivoice/client'
 import { createOmnivoiceClone, buildOmnivoiceProfileName } from '@/lib/providers/omnivoice/voice-clone'
-import { OmniVoiceError } from '@omnivoice/sdk'
-
-function buildOmniVoiceError(status: number, body: unknown, message = `HTTP ${status}`): OmniVoiceError {
-  const response = new Response(null, { status })
-  return new OmniVoiceError(message, response, body)
-}
+import { buildOmniVoiceError } from './_helpers'
 
 describe('createOmnivoiceClone', () => {
   const createProfile = vi.fn()

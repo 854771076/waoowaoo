@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { OmniVoiceError } from '@omnivoice/sdk'
 import { mapOmnivoiceError } from '@/lib/providers/omnivoice/error-mapping'
-
-function buildOmniVoiceError(status: number, body: unknown, message = `HTTP ${status}`): OmniVoiceError {
-  const response = new Response(null, { status })
-  return new OmniVoiceError(message, response, body)
-}
+import { buildOmniVoiceError } from './_helpers'
 
 describe('mapOmnivoiceError', () => {
   it('maps 400 to OMNIVOICE_INVALID_PARAMS', () => {

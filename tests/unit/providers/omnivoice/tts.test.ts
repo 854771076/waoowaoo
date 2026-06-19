@@ -7,12 +7,7 @@ vi.mock('@/lib/providers/omnivoice/client', () => ({
 
 import { getOmnivoiceClient } from '@/lib/providers/omnivoice/client'
 import { synthesizeWithOmnivoiceTTS } from '@/lib/providers/omnivoice/tts'
-import { OmniVoiceError } from '@omnivoice/sdk'
-
-function buildOmniVoiceError(status: number, body: unknown, message = `HTTP ${status}`): OmniVoiceError {
-  const response = new Response(null, { status })
-  return new OmniVoiceError(message, response, body)
-}
+import { buildOmniVoiceError } from './_helpers'
 
 describe('synthesizeWithOmnivoiceTTS', () => {
   const mockGenerateSpeech = vi.fn()
