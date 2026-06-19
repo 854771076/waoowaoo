@@ -9,6 +9,8 @@ import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import ImageSectionCandidateMode from './ImageSectionCandidateMode'
 import ImageSectionActionButtons from './ImageSectionActionButtons'
 import { AppIcon } from '@/components/ui/icons'
+import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
+import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
 
 interface PanelCandidateData {
   candidates: string[]
@@ -27,7 +29,7 @@ interface ImageSectionProps {
   failedError: string | null
   candidateData: PanelCandidateData | null
   previousImageUrl?: string | null
-  onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean, panelGridSize?: number) => void
   onOpenEditModal: () => void
   onOpenAIDataModal: () => void
   onSelectCandidateIndex: (panelId: string, index: number) => void
@@ -61,6 +63,8 @@ export default function ImageSection({
   onPreviewImage,
 }: ImageSectionProps) {
   const t = useTranslations('storyboard')
+  const { count: candidateCount, setCount: setCandidateCount } = useImageGenerationCount('storyboard-candidates')
+  const { count: panelGridSize, setCount: setPanelGridSize } = useImageGenerationCount('storyboard-grid')
   const [isTaskPulseAnimating, setIsTaskPulseAnimating] = useState(false)
   const cssAspectRatio = videoRatio.replace(':', '/')
   const hasValidCandidates = !!candidateData && candidateData.candidates.some((url) => !url.startsWith('PENDING:'))
@@ -116,7 +120,7 @@ export default function ImageSection({
   )
 
   const renderEmptyState = () => (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[var(--glass-bg-surface-strong)] text-[var(--glass-text-tertiary)]">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[var(--glass-bg-surface-strong)] text-[var(--glass-text-tertiary)] p-3">
       <AppIcon name="imagePreview" className="w-8 h-8" />
       <span className="text-xs">{t('video.toolbar.showPending')}</span>
       <GlassButton
@@ -124,11 +128,37 @@ export default function ImageSection({
         size="sm"
         onClick={() => {
           triggerPulse()
-          onRegeneratePanelImage(panelId, 1, false)
+          onRegeneratePanelImage(panelId, candidateCount, false, panelGridSize)
         }}
       >
         {t('panel.generateImage')}
       </GlassButton>
+      <div className="flex items-center gap-2 mt-1 text-[10px] text-[var(--glass-text-tertiary)]">
+        <label className="flex items-center gap-1">
+          <span>{t('image.panelGridSize')}</span>
+          <select
+            value={panelGridSize}
+            onChange={(e) => setPanelGridSize(Number(e.target.value))}
+            className="bg-transparent border border-[var(--glass-stroke-base)] rounded px-1 text-[10px]"
+          >
+            {getImageGenerationCountOptions('storyboard-grid').map((n) => (
+              <option key={n} value={n} className="text-black">{n}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1">
+          <span>{t('image.candidateCount')}</span>
+          <select
+            value={candidateCount}
+            onChange={(e) => setCandidateCount(Number(e.target.value))}
+            className="bg-transparent border border-[var(--glass-stroke-base)] rounded px-1 text-[10px]"
+          >
+            {getImageGenerationCountOptions('storyboard-candidates').map((n) => (
+              <option key={n} value={n} className="text-black">{n}</option>
+            ))}
+          </select>
+        </label>
+      </div>
     </div>
   )
 
