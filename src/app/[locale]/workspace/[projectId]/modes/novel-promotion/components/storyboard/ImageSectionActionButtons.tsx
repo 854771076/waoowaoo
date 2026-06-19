@@ -14,7 +14,7 @@ interface ImageSectionActionButtonsProps {
   previousImageUrl?: string | null
   isSubmittingPanelImageTask: boolean
   isModifying: boolean
-  onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean, panelGridSize?: number) => void
   onOpenEditModal: () => void
   onOpenAIDataModal: () => void
   onUndo?: (panelId: string) => void
@@ -35,6 +35,7 @@ export default function ImageSectionActionButtons({
 }: ImageSectionActionButtonsProps) {
   const t = useTranslations('storyboard')
   const { count, setCount } = useImageGenerationCount('storyboard-candidates')
+  const { count: panelGridSize, setCount: setPanelGridSize } = useImageGenerationCount('storyboard-grid')
 
   return (
     <>
@@ -55,9 +56,9 @@ export default function ImageSectionActionButtons({
               onClick={() => {
                 _ulogInfo('[ImageSection] 🔄 左下角重新生成按钮被点击')
                 _ulogInfo('[ImageSection] isSubmittingPanelImageTask:', isSubmittingPanelImageTask)
-                _ulogInfo('[ImageSection] 将传递 force:', isSubmittingPanelImageTask)
+                _ulogInfo('[ImageSection] panelGridSize:', panelGridSize)
                 triggerPulse()
-                onRegeneratePanelImage(panelId, count, isSubmittingPanelImageTask)
+                onRegeneratePanelImage(panelId, count, isSubmittingPanelImageTask, panelGridSize)
               }}
               disabled={false}
               ariaLabel={t('image.selectCount')}
@@ -67,6 +68,22 @@ export default function ImageSectionActionButtons({
             />
 
             <div className="w-px h-3 bg-[var(--glass-stroke-base)]" />
+
+            <div className="w-px h-3 bg-[var(--glass-stroke-base)]" />
+            <label className="flex items-center gap-0.5 px-1.5 text-[10px] text-[var(--glass-text-secondary)]">
+              <span>{t('image.panelGridSize')}</span>
+              <select
+                value={String(panelGridSize)}
+                onChange={(e) => setPanelGridSize(Number(e.target.value))}
+                aria-label={t('image.panelGridSize')}
+                disabled={isSubmittingPanelImageTask}
+                className="appearance-none bg-transparent border-0 pr-2 text-[10px] font-semibold text-[var(--glass-text-primary)] outline-none cursor-pointer"
+              >
+                {getImageGenerationCountOptions('storyboard-grid').map((n) => (
+                  <option key={n} value={n} className="text-black">{n}</option>
+                ))}
+              </select>
+            </label>
 
             <button
               onClick={onOpenAIDataModal}

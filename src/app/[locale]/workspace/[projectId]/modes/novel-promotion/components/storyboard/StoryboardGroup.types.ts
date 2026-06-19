@@ -45,7 +45,7 @@ export interface StoryboardGroupProps {
   onRemoveCharacter: (panel: StoryboardPanel, index: number) => void
   onRemoveLocation: (panel: StoryboardPanel) => void
   onRetryPanelSave: (panelId: string) => void
-  onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean, panelGridSize?: number) => void
   onCreateAiStoryboardImage: (storyboardId: string, gridPreset: StoryboardGridPreset) => Promise<void>
   onOpenEditModal: (panelIndex: number) => void
   onOpenAIDataModal: (panelIndex: number) => void
