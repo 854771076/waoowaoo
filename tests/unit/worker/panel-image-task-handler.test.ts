@@ -77,7 +77,10 @@ vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
   }
 })
 vi.mock('@/lib/prompt-i18n', () => ({
-  PROMPT_IDS: { NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image' },
+  PROMPT_IDS: {
+    NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image',
+    NP_PANEL_GRID_IMAGE: 'np_panel_grid_image',
+  },
   buildPrompt: promptMock.buildPrompt,
   buildPromptAsync: promptMock.buildPromptAsync,
 }))
@@ -236,6 +239,64 @@ describe('worker panel-image-task-handler behavior', () => {
       data: {
         previousImageUrl: 'cos/panel-old.png',
         candidateImages: JSON.stringify(['cos/panel-regenerated.png']),
+      },
+    })
+  })
+
+  it('panelGridSize=1 -> uses single panel prompt (regression)', async () => {
+    await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 1 }))
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ promptId: 'np_single_panel_image' }),
+    )
+  })
+
+  it('panelGridSize=6 -> switches to grid prompt with grid_layout + panel_grid_size', async () => {
+    await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 6 }))
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        promptId: 'np_panel_grid_image',
+        variables: expect.objectContaining({
+          grid_layout: '3 列 x 2 行',
+          panel_grid_size: '6',
+          aspect_ratio: '16:9',
+        }),
+      }),
+    )
+  })
+
+  it('panelGridSize clamped to [1,16]', async () => {
+    await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 99 }))
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        promptId: 'np_panel_grid_image',
+        variables: expect.objectContaining({ panel_grid_size: '16' }),
+      }),
+    )
+
+    promptMock.buildPromptAsync.mockClear()
+    await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 0 }))
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ promptId: 'np_single_panel_image' }),
+    )
+  })
+
+  it('panelGridSize=6 with candidateCount=2 -> still produces 2 candidates', async () => {
+    utilsMock.resolveImageSourceFromGeneration.mockReset()
+    utilsMock.uploadImageSourceToCos.mockReset()
+    utilsMock.resolveImageSourceFromGeneration
+      .mockResolvedValueOnce('src-grid-1')
+      .mockResolvedValueOnce('src-grid-2')
+    utilsMock.uploadImageSourceToCos
+      .mockResolvedValueOnce('cos/grid-1.png')
+      .mockResolvedValueOnce('cos/grid-2.png')
+
+    const result = await handlePanelImageTask(buildJob({ candidateCount: 2, panelGridSize: 6 }))
+    expect(result.candidateCount).toBe(2)
+    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
+      where: { id: 'panel-1' },
+      data: {
+        imageUrl: 'cos/grid-1.png',
+        candidateImages: JSON.stringify(['cos/grid-1.png', 'cos/grid-2.png']),
       },
     })
   })

@@ -24,6 +24,14 @@ import { buildPromptAsync, PROMPT_IDS } from '@/lib/prompt-i18n'
 import {
   parseLocationAvailableSlots,
 } from '@/lib/location-available-slots'
+import { buildStoryboardGridLayout } from '@/lib/storyboard-images/grid'
+
+function formatPanelGridLayout(layout: ReturnType<typeof buildStoryboardGridLayout>, locale: TaskJobData['locale']) {
+  if (locale === 'zh') {
+    return `${layout.columns} 列 x ${layout.rows} 行`
+  }
+  return `${layout.columns} columns x ${layout.rows} rows`
+}
 
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   if (!raw) return null
@@ -176,6 +184,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   if (!modelKey) throw new Error('Storyboard model not configured')
 
   const candidateCount = clampCount(payload.candidateCount ?? payload.count, 1, 4, 1)
+  const panelGridSize = clampCount(payload.panelGridSize, 1, 16, 1)
   const refs = await collectPanelReferenceImages(projectData, panel)
   const normalizedRefs = await normalizeReferenceImagesForGeneration(refs)
 
@@ -193,6 +202,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       panelId,
       modelKey,
       candidateCount,
+      panelGridSize,
       referenceImagesRawCount: refs.length,
       referenceImagesNormalizedCount: normalizedRefs.length,
       rawUrls: refs.map((u) => u.substring(0, 100)),
@@ -227,14 +237,32 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     projectData,
   })
   const contextJson = JSON.stringify(promptContext, null, 2)
-  const prompt = await buildPanelPrompt({
-    projectId: job.data.projectId,
-    locale: job.data.locale,
-    aspectRatio,
-    styleText: artStyle || '与参考图风格一致',
-    sourceText: panel.srtSegment || panel.description || '',
-    contextJson,
-  })
+  const prompt = await (async () => {
+    if (panelGridSize > 1) {
+      const layout = buildStoryboardGridLayout('grid_auto', panelGridSize)
+      return await buildPromptAsync({
+        promptId: PROMPT_IDS.NP_PANEL_GRID_IMAGE,
+        locale: job.data.locale,
+        projectId: job.data.projectId,
+        variables: {
+          storyboard_text_json_input: contextJson,
+          source_text: panel.srtSegment || panel.description || '',
+          aspect_ratio: aspectRatio,
+          style: artStyle || '与参考图风格一致',
+          grid_layout: formatPanelGridLayout(layout, job.data.locale),
+          panel_grid_size: String(panelGridSize),
+        },
+      })
+    }
+    return await buildPanelPrompt({
+      projectId: job.data.projectId,
+      locale: job.data.locale,
+      aspectRatio,
+      styleText: artStyle || '与参考图风格一致',
+      sourceText: panel.srtSegment || panel.description || '',
+      contextJson,
+    })
+  })()
   logger.info({
     message: 'panel image prompt resolved',
     details: {
