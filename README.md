@@ -159,3 +159,53 @@ npm run dev
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=saturndec/vvicat&type=date&legend=top-left)](https://www.star-history.com/#saturndec/vvicat&type=date&legend=top-left)
+
+---
+
+## OmniVoice 集成部署
+
+vvicat 通过 `@omnivoice/sdk` 接入 OmniVoice-Studio 后端,提供第三个语音 provider(与 fal、bailian 并列),覆盖 TTS / 声音克隆 / 声音设计三条路径。
+
+### 环境变量
+
+```bash
+# 必填:服务端可达的 OmniVoice 后端地址
+OMNIVOICE_BASE_URL=http://omnivoice-backend:3900
+
+# 可选:请求超时(默认 5 分钟,长任务保险丝)
+OMNIVOICE_REQUEST_TIMEOUT_MS=300000
+```
+
+### SDK 包路径
+
+`package.json` 当前用 `file:` 引用本地 SDK 源码:
+
+```
+"@omnivoice/sdk": "file:../../../../OmniVoice-Studio/sdk/omnivoice-ts"
+```
+
+这个路径是 **worktree 相对路径**(4 级 `..`),仅适用于本仓库 `.claude/worktrees/<branch>/` 下的 worktree 开发场景。**合并到 main 分支时,必须改回**:
+
+```
+"@omnivoice/sdk": "file:../OmniVoice-Studio/sdk/omnivoice-ts"
+```
+
+CI / Docker 镜像构建前需先在 `OmniVoice-Studio/sdk/omnivoice-ts/` 跑 `bun run build` 产出 `dist/`,或在 vvicat 仓库 vendor SDK 的 `dist/` 目录(后续 SDK 发布到 npm 时取消 vendor)。
+
+### 后端部署要点
+
+- OmniVoice 后端的 voice profile 持久化在容器内 `omnivoice_data/`。**部署时必须挂载该目录**,否则容器重启会丢音色,vvicat 中已绑定的 voiceId 全部 dangling。
+- 推荐用 OmniVoice 官方 Docker 镜像,在 docker-compose 里加上 service + volume。
+- vvicat 后端服务对 OmniVoice 后端 reachable 即可,**不需要 apiKey、不需要用户配置**(用户在 voice-design 对话框选 provider 即可)。
+
+### 验收
+
+- 健康检查:`GET /api/providers/omnivoice/health` 返回 `{ available: true, version, device }`
+- 资源库声音设计 + 克隆功能可用
+- OmniVoice 后端离线时,fal/bailian voice line 路径不受影响
+
+### 已知跟进项(Follow-ups from Task 15 + Task 17)
+
+- **MediaObject ownership schema**:`MediaObject` 表无 `userId` 列。当前 voice-clone 接口靠 `voices/<userId>/...` storage key 前缀做归属判断。后续应:加 `userId` 列(migration + 反向关系回填),或把克隆接口入参从 `refAudioMediaId` 改为 `globalVoiceId`(走 `GlobalVoice.userId`)。
+- **资源库克隆 UI 入口**:`/api/asset-hub/voice-clone` 已就绪,但前端尚未串接(`useVoiceCreation` 当前的上传流程不创建 MediaObject)。需要扩展上传路由让它返回 MediaObject id,或把克隆接口改为接 `globalVoiceId`。
+- **默认音频模型选择**:Task 17 留下的口子 — `DefaultModelCards.tsx` 的 audio 选项来自用户的 `customModels`,omnivoice 是 catalog-only,目前不出现在默认下拉里。Task 17 的 catalog fallback 让 runtime 不再 fail,但用户体验上 OmniVoice 仅通过 voice-design 对话框 provider 下拉触达。
