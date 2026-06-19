@@ -10,7 +10,7 @@ import {
 } from './image-generation-runtime'
 
 interface RegeneratePanelMutationLike {
-  mutateAsync: (payload: { panelId: string; count: number }) => Promise<unknown>
+  mutateAsync: (payload: { panelId: string; count: number; panelGridSize: number }) => Promise<unknown>
 }
 
 interface UsePanelImageRegenerationParams {
@@ -36,14 +36,14 @@ export function usePanelImageRegeneration({
   selectPanelCandidateIndex,
 }: UsePanelImageRegenerationParams) {
   const regeneratePanelImage = useCallback(
-    async (panelId: string, count: number = 1, force: boolean = false) => {
+    async (panelId: string, count: number = 1, force: boolean = false, panelGridSize: number = 1) => {
       if (!force && submittingPanelImageIds.has(panelId)) return
 
       setSubmittingPanelImageIds((previous) => new Set(previous).add(panelId))
 
       let handoffToTaskState = false
       try {
-        const data = await regeneratePanelMutation.mutateAsync({ panelId, count })
+        const data = await regeneratePanelMutation.mutateAsync({ panelId, count, panelGridSize })
         const result = (data || {}) as StoryboardImageMutationResult
 
         if (result.async) {
