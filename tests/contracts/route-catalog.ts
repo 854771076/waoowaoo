@@ -135,7 +135,6 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/speaker-voice/route.ts',
   'src/app/api/novel-promotion/[projectId]/story-to-script-stream/route.ts',
   'src/app/api/novel-promotion/[projectId]/storyboard-group/route.ts',
-  'src/app/api/novel-promotion/[projectId]/storyboard-images/route.ts',
   'src/app/api/novel-promotion/[projectId]/storyboards/route.ts',
   'src/app/api/novel-promotion/[projectId]/undo-regenerate/route.ts',
   'src/app/api/novel-promotion/[projectId]/update-appearance/route.ts',
@@ -239,7 +238,6 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     || routeFile.endsWith('/regenerate-panel-image/route.ts')
     || routeFile.endsWith('/regenerate-single-image/route.ts')
     || routeFile.endsWith('/regenerate-storyboard-text/route.ts')
-    || routeFile.endsWith('/storyboard-images/route.ts')
     || routeFile.endsWith('/voice-generate/route.ts')
   ) {
     return 'direct-submit-routes'

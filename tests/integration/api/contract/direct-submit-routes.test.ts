@@ -520,23 +520,6 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
     expectedProjectId: 'project-1',
   },
   {
-    routeFile: 'src/app/api/novel-promotion/[projectId]/storyboard-images/route.ts',
-    body: { storyboardId: 'storyboard-1', mode: 'ai_storyboard', gridPreset: 'grid_auto' },
-    params: { projectId: 'project-1' },
-    expectedTaskType: TASK_TYPE.STORYBOARD_IMAGE,
-    expectedTargetType: 'NovelPromotionStoryboard',
-    expectedProjectId: 'project-1',
-    expectedPayloadSubset: {
-      storyboardId: 'storyboard-1',
-      mode: 'ai_storyboard',
-      gridPreset: 'grid_auto',
-      imageModel: 'img::storyboard',
-      generationOptions: {
-        resolution: '1024x1024',
-      },
-    },
-  },
-  {
     routeFile: 'src/app/api/novel-promotion/[projectId]/voice-design/route.ts',
     body: { voicePrompt: 'warm female voice', previewText: 'This is preview text' },
     params: { projectId: 'project-1' },
