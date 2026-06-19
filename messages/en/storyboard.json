@@ -51,15 +51,7 @@
     },
     "storyboardImage": {
         "finalImage": "Final Storyboard Image",
-        "preview": "Preview",
-        "gridPreset": "Grid",
-        "grid3": "3 Grid",
-        "grid6": "6 Grid",
-        "grid9": "9 Grid",
-        "gridAuto": "n Grid",
-        "aiGenerate": "AI Storyboard",
-        "compose": "Compose Storyboard",
-        "missingPanelImages": "Generate every panel image first"
+        "preview": "Preview"
     },
     "header": {
         "title": "Storyboard Editing",
@@ -151,6 +143,8 @@
         "clickToPreview": "Click to preview",
         "enlargePreview": "Enlarge Preview",
         "candidateCount": "Candidate {count}",
+        "candidateCountLabel": "Candidates",
+        "panelGridSize": "Cells",
         "candidateGenerating": "{count} generating",
         "selectingCandidate": "Selecting candidate...",
         "confirmCandidate": "Confirm Selection",

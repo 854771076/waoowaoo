@@ -30,7 +30,7 @@ interface StoryboardPanelListProps {
   onRemoveCharacter: (panel: StoryboardPanel, index: number) => void
   onRemoveLocation: (panel: StoryboardPanel) => void
   onRetryPanelSave: (panelId: string) => void
-  onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
+  onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean, panelGridSize?: number) => void
   onOpenEditModal: (panelIndex: number) => void
   onOpenAIDataModal: (panelIndex: number) => void
   onSelectPanelCandidateIndex: (panelId: string, index: number) => void

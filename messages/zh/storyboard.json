@@ -51,15 +51,7 @@
     },
     "storyboardImage": {
         "finalImage": "最终故事板图",
-        "preview": "预览",
-        "gridPreset": "宫格",
-        "grid3": "3宫格",
-        "grid6": "6宫格",
-        "grid9": "9宫格",
-        "gridAuto": "n宫格",
-        "aiGenerate": "AI生成故事板",
-        "compose": "拼接故事板",
-        "missingPanelImages": "请先生成所有分镜图"
+        "preview": "预览"
     },
     "header": {
         "title": "分镜编辑",
@@ -151,6 +143,8 @@
         "clickToPreview": "点击放大预览",
         "enlargePreview": "放大预览",
         "candidateCount": "候选 {count}",
+        "candidateCountLabel": "候选数",
+        "panelGridSize": "分镜数",
         "candidateGenerating": "{count} 张生成中",
         "selectingCandidate": "选择候选图中...",
         "confirmCandidate": "确认选择",

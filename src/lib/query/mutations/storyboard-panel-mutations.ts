@@ -3,7 +3,6 @@ import { queryKeys } from '../keys'
 import { resolveTaskResponse } from '@/lib/task/client'
 import { resolveTaskErrorMessage } from '@/lib/task/error-message'
 import { apiFetch } from '@/lib/api-fetch'
-import type { StoryboardGridPreset } from '@/lib/storyboard-images/grid'
 import {
     clearTaskTargetOverlay,
     upsertTaskTargetOverlay,
@@ -14,36 +13,18 @@ import {
     requestTaskResponseWithError,
 } from './mutation-shared'
 
-type CreateStoryboardImagePayload = {
-    storyboardId: string
-    mode: 'composited_storyboard' | 'ai_storyboard'
-    gridPreset: StoryboardGridPreset
-}
-
-type CreateStoryboardImageResult =
-    | {
-        storyboardImage: {
-            storyboardId: string
-            imageUrl: string
-            imageMediaId: string
-            versionId: string
-            mode: 'composited_storyboard'
-            gridPreset: StoryboardGridPreset
-        }
-    }
-    | {
-        taskId: string
-        async: true
-    }
-
 export function useRegenerateProjectPanelImage(projectId: string) {
     const queryClient = useQueryClient()
     return useMutation({
-        mutationFn: async ({ panelId, count }: { panelId: string; count?: number }) => {
+        mutationFn: async ({ panelId, count, panelGridSize }: { panelId: string; count?: number; panelGridSize?: number }) => {
             const res = await apiFetch(`/api/novel-promotion/${projectId}/regenerate-panel-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ panelId, count: count ?? 1 }),
+                body: JSON.stringify({
+                    panelId,
+                    count: count ?? 1,
+                    panelGridSize: panelGridSize ?? 1,
+                }),
             })
             if (!res.ok) {
                 const error = await res.json().catch(() => ({}))
@@ -106,43 +87,6 @@ export function useModifyProjectStoryboardImage(projectId: string) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             }, '修改失败')
-        },
-        onSettled: () => {
-            invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
-        },
-    })
-}
-
-export function useCreateProjectStoryboardImage(projectId: string) {
-    const queryClient = useQueryClient()
-    return useMutation({
-        mutationFn: async (payload: CreateStoryboardImagePayload) => {
-            return await requestJsonWithError<CreateStoryboardImageResult>(
-                `/api/novel-promotion/${projectId}/storyboard-images`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                },
-                '故事板图生成失败',
-            )
-        },
-        onMutate: ({ storyboardId, mode }) => {
-            if (mode !== 'ai_storyboard') return
-            upsertTaskTargetOverlay(queryClient, {
-                projectId,
-                targetType: 'NovelPromotionStoryboard',
-                targetId: storyboardId,
-                intent: 'generate',
-            })
-        },
-        onError: (_error, { storyboardId, mode }) => {
-            if (mode !== 'ai_storyboard') return
-            clearTaskTargetOverlay(queryClient, {
-                projectId,
-                targetType: 'NovelPromotionStoryboard',
-                targetId: storyboardId,
-            })
         },
         onSettled: () => {
             invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
