@@ -11,6 +11,9 @@ vi.mock('@/lib/task/submitter', () => ({
 vi.mock('@/lib/task/resolve-locale', () => ({
   resolveRequiredTaskLocale: vi.fn(() => 'zh'),
 }))
+vi.mock('@/lib/config-service', () => ({
+  getProjectModelConfig: vi.fn(async () => ({ analysisModel: 'ark::doubao-analysis' })),
+}))
 
 import { POST } from '@/app/api/novel-promotion/[projectId]/character/[characterId]/recommend-voice-instruct/route'
 import { submitTask } from '@/lib/task/submitter'
@@ -30,13 +33,21 @@ function ctx(projectId: string, characterId: string) {
 describe('POST recommend-voice-instruct', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
-  it('submits CHARACTER_VOICE_RECOMMEND task with characterId in payload', async () => {
+  it('submits CHARACTER_VOICE_RECOMMEND task with characterId and analysisModel for billing', async () => {
     const res = await POST(buildRequest({}) as never, ctx('p1', 'c1') as never)
     expect(res.status).toBe(200)
     expect(submitTask).toHaveBeenCalledWith(expect.objectContaining({
       projectId: 'p1',
       type: 'character_voice_recommend',
-      payload: expect.objectContaining({ characterId: 'c1' }),
+      payload: expect.objectContaining({
+        characterId: 'c1',
+        analysisModel: 'ark::doubao-analysis',
+      }),
+      billingInfo: expect.objectContaining({
+        billable: true,
+        apiType: 'text',
+        model: 'ark::doubao-analysis',
+      }),
     }))
   })
 

@@ -5,6 +5,7 @@ import { submitTask } from '@/lib/task/submitter'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
+import { getProjectModelConfig } from '@/lib/config-service'
 
 /**
  * AI 推荐角色语音特征(OmniVoice instruct 词表标签)
@@ -26,7 +27,12 @@ export const POST = apiHandler(async (
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
   const locale = resolveRequiredTaskLocale(request, body)
 
-  const payload = { characterId, displayMode: 'detail' as const }
+  const projectModelConfig = await getProjectModelConfig(projectId, session.user.id)
+  const payload = {
+    characterId,
+    displayMode: 'detail' as const,
+    ...(projectModelConfig.analysisModel ? { analysisModel: projectModelConfig.analysisModel } : {}),
+  }
 
   const result = await submitTask({
     userId: session.user.id,
