@@ -5,6 +5,7 @@ import VoiceDesignDialogBase, {
   type VoiceDesignMutationResult,
 } from '@/components/voice/VoiceDesignDialogBase'
 import { useDesignProjectVoice } from '@/lib/query/hooks'
+import { useRecommendVoiceInstruct } from '@/lib/query/mutations/useVoiceMutations'
 
 interface VoiceDesignDialogProps {
   isOpen: boolean
@@ -13,6 +14,7 @@ interface VoiceDesignDialogProps {
   onClose: () => void
   onSave: (voiceId: string, audioBase64: string) => void
   projectId: string
+  characterId?: string
 }
 
 export default function VoiceDesignDialog({
@@ -22,14 +24,23 @@ export default function VoiceDesignDialog({
   onClose,
   onSave,
   projectId,
+  characterId,
 }: VoiceDesignDialogProps) {
   const designVoiceMutation = useDesignProjectVoice(projectId)
+  const recommendMutation = useRecommendVoiceInstruct(projectId, characterId ?? '')
 
   const handleDesignVoice = async (
     payload: VoiceDesignMutationPayload,
   ): Promise<VoiceDesignMutationResult> => {
     return await designVoiceMutation.mutateAsync(payload)
   }
+
+  const handleRecommendInstruct = characterId
+    ? async () => {
+        const result = await recommendMutation.mutateAsync()
+        return { instruct: result.instruct }
+      }
+    : undefined
 
   return (
     <VoiceDesignDialogBase
@@ -39,6 +50,7 @@ export default function VoiceDesignDialog({
       onClose={onClose}
       onSave={onSave}
       onDesignVoice={handleDesignVoice}
+      onRecommendInstruct={handleRecommendInstruct}
     />
   )
 }

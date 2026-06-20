@@ -262,6 +262,8 @@
         "selectStyle": "选择声音风格：",
         "orCustomDescription": "或自定义描述：",
         "describePlaceholder": "描述声音特征：年龄、性别、音色、语调...",
+        "aiRecommend": "AI 推荐语音",
+        "aiRecommendLoading": "AI 分析角色中...",
         "generateSchemesPrefix": "生成",
         "generateSchemesSuffix": "个声音方案",
         "schemeCountAriaLabel": "生成声音方案数量",

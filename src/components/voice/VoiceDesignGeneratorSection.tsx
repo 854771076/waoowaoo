@@ -65,6 +65,8 @@ interface VoiceDesignGeneratorSectionProps {
   playingIndex: number | null
   onPlayVoice: (index: number) => void
   onGenerate: () => void
+  onRecommendInstruct?: () => void
+  isRecommending?: boolean
   footer?: ReactNode
 }
 
@@ -86,6 +88,8 @@ export default function VoiceDesignGeneratorSection({
   playingIndex,
   onPlayVoice,
   onGenerate,
+  onRecommendInstruct,
+  isRecommending,
   footer = null,
 }: VoiceDesignGeneratorSectionProps) {
   const tv = useTranslations('voice.voiceDesign')
@@ -143,6 +147,19 @@ export default function VoiceDesignGeneratorSection({
           })}
         </div>
       </div>
+
+      {isOmnivoice && onRecommendInstruct && (
+        <button
+          type="button"
+          onClick={onRecommendInstruct}
+          disabled={isRecommending}
+          className={`glass-btn-base glass-btn-tone-info w-full py-2 rounded-lg text-sm font-medium transition-opacity ${
+            isRecommending ? 'opacity-60 cursor-wait' : 'cursor-pointer'
+          }`}
+        >
+          {isRecommending ? tv('aiRecommendLoading') : `✨ ${tv('aiRecommend')}`}
+        </button>
+      )}
 
       {isOmnivoice && (
         <div>

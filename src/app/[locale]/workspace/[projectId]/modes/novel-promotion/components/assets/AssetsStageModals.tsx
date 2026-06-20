@@ -49,6 +49,7 @@ interface CharacterImageEditModalState {
 }
 
 interface VoiceDesignCharacterState {
+  id: string
   name: string
   hasExistingVoice: boolean
 }
@@ -229,6 +230,7 @@ export default function AssetsStageModals({
           speaker={voiceDesignCharacter.name}
           hasExistingVoice={voiceDesignCharacter.hasExistingVoice}
           projectId={projectId}
+          characterId={voiceDesignCharacter.id}
           onClose={handleCloseVoiceDesign}
           onSave={handleVoiceDesignSave}
         />

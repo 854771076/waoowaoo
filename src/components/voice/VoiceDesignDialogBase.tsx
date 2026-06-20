@@ -24,6 +24,7 @@ interface VoiceDesignDialogBaseProps {
   onClose: () => void
   onSave: (voiceId: string, audioBase64: string) => void
   onDesignVoice: (payload: VoiceDesignMutationPayload) => Promise<VoiceDesignMutationResult>
+  onRecommendInstruct?: () => Promise<{ instruct: string }>
 }
 
 export default function VoiceDesignDialogBase({
@@ -33,6 +34,7 @@ export default function VoiceDesignDialogBase({
   onClose,
   onSave,
   onDesignVoice,
+  onRecommendInstruct,
 }: VoiceDesignDialogBaseProps) {
   const t = useTranslations('common')
   const tv = useTranslations('voice.voiceDesign')
@@ -42,6 +44,7 @@ export default function VoiceDesignDialogBase({
   const [schemeCount, setSchemeCount] = useState(String(DEFAULT_VOICE_SCHEME_COUNT))
   const [provider, setProvider] = useState<VoiceDesignProvider>('bailian')
   const [isDesignSubmitting, setIsDesignSubmitting] = useState(false)
+  const [isRecommending, setIsRecommending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedVoices, setGeneratedVoices] = useState<GeneratedVoice[]>([])
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -93,6 +96,22 @@ export default function VoiceDesignDialogBase({
       setIsDesignSubmitting(false)
     }
   }
+
+  const handleRecommend = onRecommendInstruct
+    ? async () => {
+        setIsRecommending(true)
+        setError(null)
+        try {
+          const { instruct } = await onRecommendInstruct()
+          if (instruct) setVoicePrompt(instruct)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : tv('generationError')
+          setError(message)
+        } finally {
+          setIsRecommending(false)
+        }
+      }
+    : undefined
 
   const handlePlayVoice = (index: number) => {
     if (playingIndex === index && audioRef.current) {
@@ -196,6 +215,8 @@ export default function VoiceDesignDialogBase({
             onGenerate={() => {
               void handleGenerate()
             }}
+            onRecommendInstruct={handleRecommend}
+            isRecommending={isRecommending}
             footer={(
               <div className="flex gap-2 pt-2">
                 <button

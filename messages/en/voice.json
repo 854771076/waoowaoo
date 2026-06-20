@@ -262,6 +262,8 @@
         "selectStyle": "Select voice style:",
         "orCustomDescription": "Or custom description:",
         "describePlaceholder": "Describe voice characteristics: age, gender, tone, pitch...",
+        "aiRecommend": "AI Recommend Voice",
+        "aiRecommendLoading": "Analyzing character...",
         "generateSchemesPrefix": "Generate",
         "generateSchemesSuffix": "Voice Schemes",
         "schemeCountAriaLabel": "Number of voice schemes to generate",
