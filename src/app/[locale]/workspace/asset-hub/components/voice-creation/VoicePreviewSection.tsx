@@ -58,7 +58,12 @@ export default function VoicePreviewSection({ runtime }: VoicePreviewSectionProp
           schemeCount={schemeCount}
           onSchemeCountChange={setSchemeCount}
           provider={provider}
-          onProviderChange={setProvider}
+          onProviderChange={(next) => {
+            setProvider(next)
+            // 切换 provider 时清空描述:百炼自由文本与 OmniVoice 受控词表
+            // 语义不同,残留会触发 OmniVoice instruct 校验失败。
+            setVoicePrompt('')
+          }}
           isSubmitting={isVoiceCreationSubmitting}
           submittingState={voiceCreationSubmittingState}
           error={error}

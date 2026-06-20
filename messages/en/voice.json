@@ -236,6 +236,22 @@
             "intellectualFemale": "Elegant intellectual woman with clear, pleasant voice",
             "narrator": "Emotional narrator with warm, storytelling voice"
         },
+        "presetsPromptsOmnivoice": {
+            "maleBroadcaster": "male, middle-aged, moderate pitch",
+            "gentleFemale": "female, young adult, high pitch",
+            "matureMale": "male, middle-aged, low pitch",
+            "livelyFemale": "female, teenager, high pitch",
+            "intellectualFemale": "female, young adult, moderate pitch",
+            "narrator": "male, middle-aged, moderate pitch"
+        },
+        "omnivoiceChips": {
+            "title": "Or pick from the vocabulary (OmniVoice):",
+            "groupGender": "Gender",
+            "groupAge": "Age",
+            "groupPitch": "Pitch",
+            "groupAccent": "Accent",
+            "hint": "OmniVoice only accepts tags from this vocabulary; selected tags are joined into the description below."
+        },
         "defaultPreviewText": "Hello, nice to meet you. This is your AI-designed exclusive voice. Let me demonstrate its features for you. Whether it's a gentle conversation or an excited narration, I can deliver it perfectly. I hope you enjoy this voice, let's create amazing content together.",
         "provider": "Provider",
         "providerOptionBailian": "Bailian (QwenTTS)",

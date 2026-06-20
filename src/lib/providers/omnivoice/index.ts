@@ -13,6 +13,16 @@ export {
 export { generateOmnivoiceAudio } from './audio'
 export { probeOmnivoice } from './probe'
 export { mapOmnivoiceError } from './error-mapping'
+export {
+  validateOmnivoiceInstruct,
+  OMNIVOICE_ZH_VOCABULARY,
+  OMNIVOICE_EN_VOCABULARY,
+  OMNIVOICE_ZH_CHIP_GROUPS,
+} from './instruct-vocabulary'
+export type {
+  OmnivoiceInstructValidation,
+  OmnivoiceChipGroupKey,
+} from './instruct-vocabulary'
 export type {
   OmnivoiceTTSParams,
   OmnivoiceTTSResult,

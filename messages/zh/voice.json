@@ -236,6 +236,22 @@
             "intellectualFemale": "知性优雅的女性，声音清晰悦耳，语调平和",
             "narrator": "富有感情的叙述者，声音温暖有故事感"
         },
+        "presetsPromptsOmnivoice": {
+            "maleBroadcaster": "男、中年、中音调",
+            "gentleFemale": "女、青年、高音调",
+            "matureMale": "男、中年、低音调",
+            "livelyFemale": "女、少年、高音调",
+            "intellectualFemale": "女、青年、中音调",
+            "narrator": "男、中年、中音调"
+        },
+        "omnivoiceChips": {
+            "title": "或从词表多选(OmniVoice)：",
+            "groupGender": "性别",
+            "groupAge": "年龄",
+            "groupPitch": "音调",
+            "groupAccent": "口音/方言",
+            "hint": "OmniVoice 仅接受词表中的标签;选中的标签会自动用「、」拼接到下方描述里。"
+        },
         "defaultPreviewText": "你好，很高兴认识你。这是AI为你专属设计的声音，让我来为你展示它的特点。无论是温柔的对话，还是激动的讲述，我都能完美呈现。希望你喜欢这个声音，让我们一起创造精彩的内容吧。",
         "provider": "服务提供商",
         "providerOptionBailian": "百炼 (QwenTTS)",

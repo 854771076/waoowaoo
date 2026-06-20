@@ -6,6 +6,10 @@ import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { AppIcon } from '@/components/ui/icons'
 import type { TaskPresentationState } from '@/lib/task/presentation'
 import {
+  OMNIVOICE_ZH_CHIP_GROUPS,
+  type OmnivoiceChipGroupKey,
+} from '@/lib/providers/omnivoice/instruct-vocabulary'
+import {
   MAX_VOICE_SCHEME_COUNT,
   MIN_VOICE_SCHEME_COUNT,
   normalizeVoiceSchemeCount,
@@ -23,6 +27,25 @@ const VOICE_PRESET_KEYS = [
 ] as const
 
 type VoicePresetKey = (typeof VOICE_PRESET_KEYS)[number]
+
+const CHIP_GROUP_TITLE_KEY: Record<OmnivoiceChipGroupKey, string> = {
+  gender: 'omnivoiceChips.groupGender',
+  age: 'omnivoiceChips.groupAge',
+  pitch: 'omnivoiceChips.groupPitch',
+  accent: 'omnivoiceChips.groupAccent',
+}
+
+const OMNIVOICE_CHIP_SEPARATOR = '、'
+
+/** Parse an OmniVoice Chinese instruct string into its selected tag set. */
+function parseOmnivoiceTags(value: string): Set<string> {
+  return new Set(
+    value
+      .split(/[、,，]/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0),
+  )
+}
 
 interface VoiceDesignGeneratorSectionProps {
   voicePrompt: string
@@ -67,6 +90,20 @@ export default function VoiceDesignGeneratorSection({
 }: VoiceDesignGeneratorSectionProps) {
   const tv = useTranslations('voice.voiceDesign')
   const normalizedSchemeCount = normalizeVoiceSchemeCount(schemeCount)
+  const isOmnivoice = (provider ?? 'bailian') === 'omnivoice'
+  // OmniVoice 的 instruct 是受控词表,预设按钮要填合法标签组合而非自然语言。
+  const presetPromptNamespace = isOmnivoice ? 'presetsPromptsOmnivoice' : 'presetsPrompts'
+  const selectedTags = isOmnivoice ? parseOmnivoiceTags(voicePrompt) : new Set<string>()
+
+  const toggleOmnivoiceTag = (tag: string) => {
+    const next = parseOmnivoiceTags(voicePrompt)
+    if (next.has(tag)) {
+      next.delete(tag)
+    } else {
+      next.add(tag)
+    }
+    onVoicePromptChange(Array.from(next).join(OMNIVOICE_CHIP_SEPARATOR))
+  }
 
   return (
     <>
@@ -89,7 +126,7 @@ export default function VoiceDesignGeneratorSection({
         <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{tv('selectStyle')}</div>
         <div className="flex flex-wrap gap-1.5">
           {VOICE_PRESET_KEYS.map((presetKey) => {
-            const prompt = tv(`presetsPrompts.${presetKey}` as `presetsPrompts.${VoicePresetKey}`)
+            const prompt = tv(`${presetPromptNamespace}.${presetKey}` as `presetsPrompts.${VoicePresetKey}`)
             return (
               <button
                 key={presetKey}
@@ -107,12 +144,45 @@ export default function VoiceDesignGeneratorSection({
         </div>
       </div>
 
+      {isOmnivoice && (
+        <div>
+          <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{tv('omnivoiceChips.title')}</div>
+          <div className="space-y-2">
+            {OMNIVOICE_ZH_CHIP_GROUPS.map((group) => (
+              <div key={group.key} className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-[var(--glass-text-tertiary)] w-16 shrink-0">
+                  {tv(CHIP_GROUP_TITLE_KEY[group.key])}
+                </span>
+                {group.tokens.map((tag) => {
+                  const active = selectedTags.has(tag)
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleOmnivoiceTag(tag)}
+                      className={`glass-btn-base px-2 py-0.5 text-xs rounded-md border transition-all ${
+                        active
+                          ? 'glass-btn-tone-info border-[var(--glass-stroke-focus)]'
+                          : 'glass-btn-soft text-[var(--glass-text-secondary)] border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-focus)]'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="text-xs text-[var(--glass-text-tertiary)] mt-2">{tv('omnivoiceChips.hint')}</div>
+        </div>
+      )}
+
       <div>
         <div className="text-sm text-[var(--glass-text-secondary)] mb-1">{tv('orCustomDescription')}</div>
         <textarea
           value={voicePrompt}
           onChange={(event) => onVoicePromptChange(event.target.value)}
-          placeholder={tv('describePlaceholder')}
+          placeholder={isOmnivoice ? tv('omnivoiceChips.hint') : tv('describePlaceholder')}
           className="glass-textarea-base w-full px-3 py-2 text-sm resize-none"
           rows={2}
         />

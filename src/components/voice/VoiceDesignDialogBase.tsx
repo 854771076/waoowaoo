@@ -179,7 +179,12 @@ export default function VoiceDesignDialogBase({
             schemeCount={schemeCount}
             onSchemeCountChange={setSchemeCount}
             provider={provider}
-            onProviderChange={setProvider}
+            onProviderChange={(next) => {
+              setProvider(next)
+              // 切换 provider 时清空描述:两边 instruct 语义不同
+              // (百炼自由文本 vs OmniVoice 受控词表),残留会触发校验失败。
+              setVoicePrompt('')
+            }}
             isSubmitting={isDesignSubmitting}
             submittingState={designSubmittingState}
             error={error}
