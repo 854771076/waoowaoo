@@ -63,6 +63,22 @@ export function useDesignProjectVoice(projectId: string) {
 }
 
 /**
+ * AI 推荐角色语音特征(OmniVoice instruct 词表标签)
+ */
+export function useRecommendVoiceInstruct(projectId: string, characterId: string) {
+    return useMutation({
+        mutationFn: async (): Promise<{ instruct: string; source: string }> => {
+            const response = await requestTaskResponseWithError(
+                `/api/novel-promotion/${projectId}/character/${characterId}/recommend-voice-instruct`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+                'Failed to recommend voice',
+            )
+            return await resolveTaskResponse<{ instruct: string; source: string }>(response)
+        },
+    })
+}
+
+/**
  * 分析镜头变体（项目）
  */
 
