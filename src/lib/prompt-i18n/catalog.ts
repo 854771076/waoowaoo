@@ -173,4 +173,18 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
     pathStem: 'novel-promotion/voice_analysis',
     variableKeys: ['input', 'characters_lib_name', 'characters_introduction', 'storyboard_json'],
   },
+  [PROMPT_IDS.NP_CHARACTER_VOICE_RECOMMEND]: {
+    pathStem: 'novel-promotion/character_voice_recommend',
+    variableKeys: [
+      'name',
+      'gender',
+      'age_range',
+      'archetype',
+      'personality_tags',
+      'occupation',
+      'social_class',
+      'era_period',
+      'vocabulary',
+    ],
+  },
 }
