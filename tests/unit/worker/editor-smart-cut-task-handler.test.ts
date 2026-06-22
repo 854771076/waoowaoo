@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
+import { withTaskLifecycle } from '@/lib/workers/shared'
 
 const prismaMock = vi.hoisted(() => ({
   novelPromotionEditorProject: {
@@ -18,10 +19,14 @@ const prismaMock = vi.hoisted(() => ({
 const workerMock = vi.hoisted(() => ({
   reportTaskProgress: vi.fn(async () => undefined),
   assertTaskActive: vi.fn(async () => undefined),
+  withTaskLifecycle: vi.fn(async (_job: unknown, handler: () => Promise<unknown>) => handler()),
 }))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: workerMock.reportTaskProgress }))
+vi.mock('@/lib/workers/shared', () => ({
+  reportTaskProgress: workerMock.reportTaskProgress,
+  withTaskLifecycle: workerMock.withTaskLifecycle,
+}))
 vi.mock('@/lib/workers/utils', () => ({ assertTaskActive: workerMock.assertTaskActive }))
 
 import { buildSmartCutProject, handleEditorSmartCutTask } from '@/lib/workers/handlers/editor-smart-cut-task-handler'
@@ -196,6 +201,38 @@ describe('editor smart cut worker handler', () => {
     const videoElements = updateArgs.data.projectData.tracks[0].elements
     expect(videoElements).toHaveLength(1)
     expect(videoElements[0].props.src).toBe('mediaobj://video-media-2')
+  })
+
+  it('throws when no usable video panels exist and does not overwrite projectData', async () => {
+    prismaMock.novelPromotionStoryboard.findMany.mockResolvedValueOnce([
+      {
+        id: 'storyboard-empty',
+        clip: { id: 'clip-empty', start: 0 },
+        panels: [
+          {
+            id: 'panel-empty',
+            panelIndex: 0,
+            description: 'no video yet',
+            videoPrompt: null,
+            duration: 3,
+            videoMediaId: null,
+            videoMedia: null,
+          },
+        ],
+      },
+    ])
+
+    await expect(handleEditorSmartCutTask(buildJob())).rejects.toThrow('SMART_CUT_NO_VIDEO_PANELS')
+    expect(workerMock.assertTaskActive).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.update).not.toHaveBeenCalled()
+  })
+
+  it('propagates empty-video failures through withTaskLifecycle so billing rollback path runs', async () => {
+    prismaMock.novelPromotionStoryboard.findMany.mockResolvedValueOnce([])
+
+    await expect(withTaskLifecycle(buildJob(), () => handleEditorSmartCutTask(buildJob()))).rejects.toThrow('SMART_CUT_NO_VIDEO_PANELS')
+    expect(workerMock.withTaskLifecycle).toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.update).not.toHaveBeenCalled()
   })
 
   it('throws explicit error when editor project does not belong to the episode', async () => {

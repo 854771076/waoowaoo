@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { apiFetch } from '@/lib/api-fetch'
@@ -36,9 +36,11 @@ export function SmartCutPanel() {
     isLoadingData,
     isLoadingProject,
     reloadProject,
+    flushProjectSave,
   } = useEditorStageRuntime()
   const [submittedTaskId, setSubmittedTaskId] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
+  const completedTaskIdsRef = useRef(new Set<string>())
 
   const taskStatus = useTaskStatus({
     projectId,
@@ -46,11 +48,14 @@ export function SmartCutPanel() {
     targetId: editorProjectId,
     type: [TASK_TYPE.EDITOR_AI_SMART_CUT],
     enabled: !!projectId && !!editorProjectId,
+    refetchInterval: submittedTaskId ? 2500 : false,
   })
 
-  const handleCompletedTask = useCallback(async () => {
+  const handleCompletedTask = useCallback(async (taskId: string) => {
+    if (completedTaskIdsRef.current.has(taskId)) return
+    completedTaskIdsRef.current.add(taskId)
     setLocalError(null)
-    setSubmittedTaskId(null)
+    setSubmittedTaskId((current) => (current === taskId ? null : current))
     await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId) })
     await reloadProject()
   }, [projectId, queryClient, reloadProject])
@@ -59,6 +64,7 @@ export function SmartCutPanel() {
     mutationFn: async () => {
       if (!episodeId || !editorProjectId) throw new Error(t('smartCut.missingContext'))
       setLocalError(null)
+      await flushProjectSave()
       const res = await apiFetch(`/api/novel-promotion/${projectId}/editor/ai/smart-cut`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -105,7 +111,7 @@ export function SmartCutPanel() {
         : null
       const lifecycleType = typeof payload?.lifecycleType === 'string' ? payload.lifecycleType : null
       if (lifecycleType === TASK_EVENT_TYPE.COMPLETED) {
-        void handleCompletedTask()
+        void handleCompletedTask(submittedTaskId)
       } else if (lifecycleType === TASK_EVENT_TYPE.FAILED) {
         setSubmittedTaskId(null)
         setLocalError(readErrorMessage(payload?.error || payload, t('smartCut.failed')))
@@ -117,7 +123,7 @@ export function SmartCutPanel() {
     if (!submittedTaskId) return
     if (latestTask?.id !== submittedTaskId) return
     if (latestTask.status === 'completed') {
-      void handleCompletedTask()
+      void handleCompletedTask(submittedTaskId)
     } else if (latestTask.status === 'failed' || latestTask.status === 'canceled') {
       setSubmittedTaskId(null)
       setLocalError(latestTask.error?.message || latestTask.errorMessage || t('smartCut.failed'))

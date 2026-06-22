@@ -175,6 +175,7 @@ export function useEditorProjectSync({
   const versionRef = useRef(0)
   const savePendingRef = useRef(false)
   const saveMutationPendingRef = useRef(false)
+  const saveErrorRef = useRef<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof createDebouncedAction<[TwickTimelineProject]>> | null>(null)
 
   useEffect(() => {
@@ -184,6 +185,10 @@ export function useEditorProjectSync({
   useEffect(() => {
     versionRef.current = version
   }, [version])
+
+  useEffect(() => {
+    saveErrorRef.current = saveError
+  }, [saveError])
 
   const editorProjectQuery = useQuery({
     queryKey,
@@ -397,6 +402,21 @@ export function useEditorProjectSync({
     triggerSave(currentProjectData, versionRef.current)
   }, [saveMutation.isPending, triggerSave])
 
+  const flushProjectSave = useCallback(async () => {
+    flushPendingSave()
+    const maxWaitMs = 5000
+    const startedAt = Date.now()
+    while (saveMutationPendingRef.current) {
+      if (Date.now() - startedAt >= maxWaitMs) {
+        throw new Error('Timed out waiting for editor project save')
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    if (saveErrorRef.current) {
+      throw new Error(saveErrorRef.current)
+    }
+  }, [flushPendingSave])
+
   const forceSave = useCallback(() => {
     const currentProjectData = projectDataRef.current
     if (!currentProjectData || saveMutation.isPending) return
@@ -461,6 +481,7 @@ export function useEditorProjectSync({
     lastSavedAt,
     updateProjectData,
     saveNow,
+    flushProjectSave,
     forceSave,
     reloadFromServer,
   }

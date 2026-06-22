@@ -11,6 +11,8 @@ const DEFAULT_VOICE_DURATION_SECONDS = 2
 const DEFAULT_PROJECT_WIDTH = 720
 const DEFAULT_PROJECT_HEIGHT = 1280
 
+export const SMART_CUT_NO_VIDEO_PANELS_ERROR = 'SMART_CUT_NO_VIDEO_PANELS'
+
 type JsonRecord = Record<string, unknown>
 
 type StoryboardWithPanels = Awaited<ReturnType<typeof loadEpisodeStoryboards>>[number]
@@ -291,6 +293,10 @@ export async function handleEditorSmartCutTask(job: Job<TaskJobData>) {
     voiceLines,
     panelIds,
   })
+
+  if (panelCount === 0) {
+    throw new Error(SMART_CUT_NO_VIDEO_PANELS_ERROR)
+  }
 
   await assertTaskActive(job, 'smart_cut_persist_editor_project')
   await prisma.novelPromotionEditorProject.update({

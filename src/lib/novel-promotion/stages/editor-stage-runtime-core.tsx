@@ -27,6 +27,7 @@ interface EditorStageRuntimeContextValue {
 
   updateProjectData: (data: TwickTimelineProject) => void
   saveProject: () => void
+  flushProjectSave: () => Promise<void>
   forceSave: () => void
   reloadProject: () => Promise<void>
   reloadAssets: () => Promise<void>
@@ -81,6 +82,7 @@ export function EditorStageRuntimeProvider({
     lastSavedAt,
     updateProjectData,
     saveNow: saveProject,
+    flushProjectSave,
     forceSave,
     reloadFromServer: reloadProject,
   } = useEditorProjectSync({
@@ -112,12 +114,14 @@ export function EditorStageRuntimeProvider({
     lastSavedAt,
     updateProjectData,
     saveProject,
+    flushProjectSave,
     forceSave,
     reloadProject,
     reloadAssets,
   }), [
     dataError,
     editorProjectId,
+    flushProjectSave,
     forceSave,
     hasConflict,
     hasVideoPanels,

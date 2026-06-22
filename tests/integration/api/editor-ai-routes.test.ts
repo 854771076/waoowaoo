@@ -45,6 +45,9 @@ const prismaMock = vi.hoisted(() => ({
   novelPromotionEditorProject: {
     findFirst: vi.fn(),
   },
+  novelPromotionPanel: {
+    count: vi.fn(),
+  },
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -206,6 +209,7 @@ describe('editor AI route skeletons', () => {
     authState.userId = 'user-1'
     prismaMock.project.findFirst.mockResolvedValue({ id: 'project-1', userId: 'user-1', name: 'Project' })
     prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValue({ id: 'editor-project-1', episodeId: 'episode-1' })
+    prismaMock.novelPromotionPanel.count.mockResolvedValue(1)
     submitTaskMock.mockResolvedValue({ taskId: 'task-1', async: true, success: true })
   })
 
@@ -304,6 +308,30 @@ describe('editor AI route skeletons', () => {
     } else {
       expect(buildDefaultTaskBillingInfo(routeCase.taskType, body)).toBeNull()
     }
+  })
+
+  it('smart-cut returns 400 and does not enqueue when the episode has no video panels', async () => {
+    const routeCase = routeCases[0]
+    const { POST } = await routeCase.load()
+    prismaMock.novelPromotionPanel.count.mockResolvedValueOnce(0)
+
+    const res = await POST(
+      buildEditorAiRequest(routeCase.path),
+      buildContext(),
+    )
+
+    expect(res.status).toBe(400)
+    const json = await res.json() as Record<string, unknown>
+    expect(json.code).toBe('INVALID_PARAMS')
+    expect(json.message).toBe('SMART_CUT_NO_VIDEO_PANELS')
+    expect(prismaMock.novelPromotionPanel.count).toHaveBeenCalledWith({
+      where: {
+        videoMediaId: { not: null },
+        storyboard: { episodeId: 'episode-1' },
+        id: { in: ['panel-1'] },
+      },
+    })
+    expect(submitTaskMock).not.toHaveBeenCalled()
   })
 
   it('smart-cut propagates insufficient balance from task submission as 402', async () => {

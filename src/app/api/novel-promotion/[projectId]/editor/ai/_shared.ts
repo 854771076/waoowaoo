@@ -23,6 +23,12 @@ type SubmitEditorAiRouteParams = {
   action: string
   billingItem?: BillingItemKey
   billingQuantity?: (body: EditorAiBody) => number
+  beforeSubmit?: (input: {
+    projectId: string
+    episodeId: string
+    editorProjectId: string
+    body: EditorAiBody
+  }) => Promise<void>
   payload?: (body: EditorAiBody) => Record<string, unknown>
   dedupeKey?: (input: { action: string; editorProjectId: string; clientRequestId: string | null; requestId: string | null; body: EditorAiBody }) => string | null
 }
@@ -194,6 +200,13 @@ export function createEditorAiRoute(params: Omit<SubmitEditorAiRouteParams, 'req
       projectId,
       episodeId,
       editorProjectId,
+    })
+
+    await params.beforeSubmit?.({
+      projectId,
+      episodeId,
+      editorProjectId,
+      body,
     })
 
     const locale = resolveRequiredTaskLocale(request, body)
