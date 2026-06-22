@@ -416,6 +416,44 @@ describe('useEditorProjectSync', () => {
     expect(savedProjects).toHaveLength(3)
   })
 
+  it('reloads server project data and bumps reload revision even when version is unchanged', async () => {
+    const serverProjectA = createProject({ metadata: { custom: { marker: 'server-a' } } })
+    const serverProjectB = createProject({ metadata: { custom: { marker: 'server-b' } } })
+    let fetchCount = 0
+
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/editor?episodeId=')) {
+        fetchCount += 1
+        return okJson({
+          data: {
+            id: 'editor-project-1',
+            version: 7,
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            projectData: fetchCount === 1 ? serverProjectA : serverProjectB,
+          },
+        })
+      }
+
+      return okJson({ data: null })
+    })
+
+    const hook = renderEditorProjectSyncHook(defaultHookProps)
+
+    await waitForExpectation(() => {
+      expect(hook.result.current?.projectData).toEqual(serverProjectA)
+      expect(hook.result.current?.version).toBe(7)
+      expect(hook.result.current?.reloadRevision).toBe(0)
+    })
+
+    await act(async () => {
+      await hook.result.current?.reloadFromServer()
+    })
+
+    expect(hook.result.current?.projectData).toEqual(serverProjectB)
+    expect(hook.result.current?.version).toBe(7)
+    expect(hook.result.current?.reloadRevision).toBe(1)
+  })
+
   it('enters idle instead of staying loading when assets are loaded but no panel videos exist', async () => {
     createEmptyEditorApiMock()
     const hook = renderEditorProjectSyncHook({

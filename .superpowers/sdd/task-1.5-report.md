@@ -82,3 +82,39 @@ During verification, existing/new API route type errors in `src/app/api/novel-pr
 - The left panel is injected directly into `VideoEditor`; the shell does not render a separate external left/right column because `VideoEditor` owns the layout slots.
 - Image and BGM asset tabs are Phase 1 placeholders because runtime currently exposes generated videos and voice lines, not standalone image/BGM sources.
 - AI tools and property editing are placeholders for Phase 2.
+
+## 修复轮次
+
+### Important 1：冲突后刷新不重载 timeline
+
+- 采用方案 A：在 editor runtime 中新增 `reloadRevision`，`reloadFromServer()` 成功拉取服务端 editor project 后递增。
+- `TwickEditor` 的 `TimelineProvider` key 现在包含 `projectReloadRevision`，即使服务端 `version` 与冲突时记录的 `currentVersion` 相同，点击刷新后也会 remount 并重新应用 `initialData`。
+- `reloadFromServer()` 会取消 pending debounce、清除 conflict/save error、用 refetch 返回的服务端 `projectData/version/updatedAt` 直接更新本地 runtime state；由于 `TimelineRuntimeSync` remount 时的 `initialSerialized` 来自同一份 server data，初始 present 不会被当成本地编辑立刻回写。
+- 新增 `tests/unit/editor-stage-runtime.test.ts` 覆盖相同 version reload 仍替换 `projectData` 并递增 `reloadRevision`。
+
+### Important 2：重复添加素材导致 element id 冲突
+
+- `panelToVideoElement()` 和 `voiceLineToAudioElement()` 现在为每个 timeline element 实例生成唯一 id：`video-${panelId}-${...}` / `audio-${voiceLineId}-${...}`。
+- 原始 `panelId` / `voiceLineId` 继续保留在 `metadata` 中，供来源追踪使用。
+- `buildInitialProject()` 仍复用 adapter，初始构建也获得唯一 element id。
+- 已调整 Task 1.2 adapter 单测断言：不再断言固定 id，改为断言 id 前缀包含源素材 id，并新增重复调用唯一性断言。
+
+### 测试
+
+```bash
+npx vitest run tests/unit/lib/twick/ --reporter=dot
+```
+
+结果：4 个 test files passed，20 个 tests passed。
+
+```bash
+npx vitest run tests/unit/editor-stage-runtime.test.ts --reporter=dot
+```
+
+结果：1 个 test file passed，7 个 tests passed。
+
+```bash
+npx tsc --noEmit 2>&1 | grep -iE "editor/|asset-adapter|TwickEditor|VideoAssetList|VoiceAssetList"
+```
+
+结果：无输出，即目标路径/文件无匹配 type errors。

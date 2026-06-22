@@ -11,6 +11,14 @@ function endSec(startSec: number, durationSec: number): number {
   return startSec + durationSec
 }
 
+let elementIdCounter = 0
+
+function createElementInstanceId(prefix: string, sourceId: string): string {
+  elementIdCounter = (elementIdCounter + 1) % Number.MAX_SAFE_INTEGER
+  const randomSuffix = Math.random().toString(36).slice(2, 8)
+  return `${prefix}-${sourceId}-${Date.now().toString(36)}-${elementIdCounter.toString(36)}-${randomSuffix}`
+}
+
 export function panelToVideoElement(
   panel: PanelVideoSource,
   startSec: number,
@@ -23,7 +31,7 @@ export function panelToVideoElement(
   if (panel.description) metadata.description = panel.description
 
   return {
-    id: `video-${panel.panelId}`,
+    id: createElementInstanceId('video', panel.panelId),
     type: 'video',
     s: startSec,
     e: endSec(startSec, panel.duration),
@@ -46,7 +54,7 @@ export function voiceLineToAudioElement(
   if (voiceLine.speaker) metadata.speaker = voiceLine.speaker
 
   return {
-    id: `audio-${voiceLine.voiceLineId}`,
+    id: createElementInstanceId('audio', voiceLine.voiceLineId),
     type: 'audio',
     s: startSec,
     e: endSec(startSec, voiceLine.duration),

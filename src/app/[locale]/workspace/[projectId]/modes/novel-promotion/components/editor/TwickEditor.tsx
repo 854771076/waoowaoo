@@ -53,6 +53,7 @@ export function TwickEditor({ videoWidth, videoHeight }: TwickEditorProps) {
     editorProjectId,
     projectData,
     projectVersion,
+    projectReloadRevision,
     isLoadingData,
     isLoadingProject,
     dataError,
@@ -61,7 +62,7 @@ export function TwickEditor({ videoWidth, videoHeight }: TwickEditorProps) {
   } = useEditorStageRuntime()
 
   const initialSerialized = useMemo(() => JSON.stringify(projectData), [projectData])
-  const timelineKey = `${editorProjectId ?? 'new'}-${projectVersion}-${videoWidth}x${videoHeight}`
+  const timelineKey = `${editorProjectId ?? 'new'}-${projectVersion}-${projectReloadRevision}-${videoWidth}x${videoHeight}`
 
   if (isLoadingData || isLoadingProject) {
     return (

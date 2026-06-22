@@ -42,10 +42,21 @@ describe('asset-adapter', () => {
           description: 'A test panel',
         },
       })
-      expect(element.id).toMatch(/^video-panel-1$/)
+      expect(element.id).toMatch(/^video-panel-1-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/)
       expect('src' in element).toBe(false)
       expect('start' in element).toBe(false)
       expect('duration' in element).toBe(false)
+    })
+
+    it('creates a unique element id for each video instance while keeping panel metadata', () => {
+      const first = panelToVideoElement(panel, 0)
+      const second = panelToVideoElement(panel, 0)
+
+      expect(first.id).not.toBe(second.id)
+      expect(first.id).toContain('video-panel-1-')
+      expect(second.id).toContain('video-panel-1-')
+      expect(first.metadata?.panelId).toBe('panel-1')
+      expect(second.metadata?.panelId).toBe('panel-1')
     })
   })
 
@@ -54,7 +65,6 @@ describe('asset-adapter', () => {
       const element = voiceLineToAudioElement(voiceLine, 1.5)
 
       expect(element).toMatchObject({
-        id: 'audio-vl-1',
         type: 'audio',
         s: 1.5,
         e: 3.5,
@@ -69,7 +79,19 @@ describe('asset-adapter', () => {
           source: 'generated',
         },
       })
+      expect(element.id).toMatch(/^audio-vl-1-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/)
       expect('volume' in element).toBe(false)
+    })
+
+    it('creates a unique element id for each audio instance while keeping voice line metadata', () => {
+      const first = voiceLineToAudioElement(voiceLine, 0)
+      const second = voiceLineToAudioElement(voiceLine, 0)
+
+      expect(first.id).not.toBe(second.id)
+      expect(first.id).toContain('audio-vl-1-')
+      expect(second.id).toContain('audio-vl-1-')
+      expect(first.metadata?.voiceLineId).toBe('vl-1')
+      expect(second.metadata?.voiceLineId).toBe('vl-1')
     })
   })
 

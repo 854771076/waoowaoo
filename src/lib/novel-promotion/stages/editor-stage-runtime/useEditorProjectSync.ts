@@ -165,6 +165,7 @@ export function useEditorProjectSync({
   const [projectIdState, setProjectIdState] = useState<string | null>(null)
   const [projectData, setProjectData] = useState<TwickTimelineProject | null>(null)
   const [version, setVersion] = useState(0)
+  const [reloadRevision, setReloadRevision] = useState(0)
   const [status, setStatus] = useState<EditorProjectStatus>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [hasConflict, setHasConflict] = useState(false)
@@ -311,6 +312,7 @@ export function useEditorProjectSync({
     setProjectIdState(null)
     setProjectData(null)
     setVersion(0)
+    setReloadRevision(0)
     setStatus(projectId && episodeId ? 'loading' : 'idle')
     setSaveError(null)
     setHasConflict(false)
@@ -412,14 +414,45 @@ export function useEditorProjectSync({
     setSaveError(null)
     setStatus('loading')
     initializedKeyRef.current = null
-    await queryClient.invalidateQueries({ queryKey })
-    await editorProjectQuery.refetch()
-  }, [editorProjectQuery, queryClient, queryKey])
+
+    try {
+      await queryClient.invalidateQueries({ queryKey })
+      const result = await editorProjectQuery.refetch()
+      if (result.error) throw result.error
+
+      const record = result.data
+      if (record?.projectData) {
+        setProjectIdState(record.id)
+        setProjectData(record.projectData)
+        projectDataRef.current = record.projectData
+        setVersion(record.version)
+        versionRef.current = record.version
+        setLastSavedAt(record.updatedAt ? new Date(record.updatedAt) : null)
+        setStatus('saved')
+        setReloadRevision((revision) => revision + 1)
+        initializedKeyRef.current = `${projectId ?? ''}:${episodeId ?? ''}`
+        return
+      }
+
+      setProjectData(null)
+      projectDataRef.current = null
+      setVersion(0)
+      versionRef.current = 0
+      setStatus('idle')
+      setReloadRevision((revision) => revision + 1)
+      initializedKeyRef.current = `${projectId ?? ''}:${episodeId ?? ''}`
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reload editor project'
+      setStatus('error')
+      setSaveError(message)
+    }
+  }, [editorProjectQuery, episodeId, projectId, queryClient, queryKey])
 
   return {
     id: projectIdState,
     projectData,
     version,
+    reloadRevision,
     status,
     isLoading: editorProjectQuery.isLoading || status === 'loading',
     isSaving: saveMutation.isPending || status === 'saving',

@@ -17,6 +17,7 @@ interface EditorStageRuntimeContextValue {
   editorProjectId: string | null
   projectData: TwickTimelineProject | null
   projectVersion: number
+  projectReloadRevision: number
   projectStatus: EditorProjectStatus
   isLoadingProject: boolean
   isSaving: boolean
@@ -71,6 +72,7 @@ export function EditorStageRuntimeProvider({
     id: editorProjectId,
     projectData,
     version: projectVersion,
+    reloadRevision: projectReloadRevision,
     status: projectStatus,
     isLoading: isLoadingProject,
     isSaving,
@@ -101,6 +103,7 @@ export function EditorStageRuntimeProvider({
     editorProjectId,
     projectData,
     projectVersion,
+    projectReloadRevision,
     projectStatus,
     isLoadingProject,
     isSaving,
@@ -125,6 +128,7 @@ export function EditorStageRuntimeProvider({
     lastSavedAt,
     panelVideos,
     projectData,
+    projectReloadRevision,
     projectStatus,
     projectVersion,
     reloadAssets,
