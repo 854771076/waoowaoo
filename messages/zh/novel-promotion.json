@@ -143,7 +143,11 @@
       "smartSplit": "智能分集",
       "smartSplitRecommend": "推荐",
       "singleEpisodeWarning": "单集模式下，所有内容将作为一集处理"
-    }
+    },
+    "panelGridSize": "分镜宫格数",
+    "panelGridSizeHint": "每个镜头生成的宫格分镜格数。1 = 单镜头，>1 = 宫格分镜（一张图含多格）",
+    "panelGridSizeSingle": "单镜头",
+    "panelGridSizeGrid": "{count} 宫格"
   },
   "execution": {
     "selectEpisode": "请先选择剧集",

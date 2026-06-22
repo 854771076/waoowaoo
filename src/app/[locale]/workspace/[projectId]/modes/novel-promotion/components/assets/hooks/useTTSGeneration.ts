@@ -79,7 +79,7 @@ export function useTTSGeneration({
     }
 
     // 保存 AI 设计的声音
-    const handleVoiceDesignSave = async (voiceId: string, audioBase64: string) => {
+    const handleVoiceDesignSave = async (voiceId: string, audioBase64: string, provider: 'bailian' | 'omnivoice') => {
         if (!voiceDesignCharacter) return
 
         try {
@@ -87,6 +87,7 @@ export function useTTSGeneration({
                 characterId: voiceDesignCharacter.id,
                 voiceId,
                 audioBase64,
+                provider,
             })
             refreshAssets()
             alert(t('tts.voiceDesignSaved', { name: voiceDesignCharacter.name }))

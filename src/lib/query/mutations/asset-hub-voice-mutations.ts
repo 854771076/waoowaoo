@@ -63,6 +63,7 @@ export function useSaveDesignedAssetHubVoice() {
       voiceName: string
       folderId: string | null
       voicePrompt: string
+      provider?: 'bailian' | 'omnivoice'
     }) => {
       const uploadData = await requestJsonWithError<{ key: string }>('/api/asset-hub/upload-temp', {
         method: 'POST',
@@ -73,6 +74,7 @@ export function useSaveDesignedAssetHubVoice() {
           extension: 'wav',
         }),
       }, '上传音频失败')
+      const voiceType = payload.provider === 'omnivoice' ? 'omnivoice-design' : 'qwen-designed'
       const res = await requestJsonWithError('/api/asset-hub/voices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -81,7 +83,7 @@ export function useSaveDesignedAssetHubVoice() {
           description: null,
           folderId: payload.folderId,
           voiceId: payload.voiceId,
-          voiceType: 'qwen-designed',
+          voiceType,
           customVoiceUrl: uploadData.key,
           voicePrompt: payload.voicePrompt,
           gender: null,

@@ -64,7 +64,7 @@ export function listOfficialCatalogModels(modality: OfficialModelModality): Offi
     results.push({
       provider,
       modelId,
-      modelKey: `${provider}:${modelId}`,
+      modelKey: `${provider}::${modelId}`,
       modality,
     })
   }

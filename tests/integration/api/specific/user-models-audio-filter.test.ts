@@ -64,8 +64,12 @@ describe('api specific - user models audio filter', () => {
 
     expect(res.status).toBe(200)
     const body = await res.json() as { audio: Array<{ value: string }> }
-    expect(body.audio.map((item) => item.value)).toEqual([
-      'bailian::qwen3-tts-vd-2026-01-26',
-    ])
+    const audioValues = body.audio.map((item) => item.value)
+    // User-added TTS model is present
+    expect(audioValues).toContain('bailian::qwen3-tts-vd-2026-01-26')
+    // Voice design model is excluded
+    expect(audioValues).not.toContain('bailian::qwen-voice-design')
+    // Catalog-only models (e.g. OmniVoice) are also included
+    expect(audioValues).toContain('omnivoice::omnivoice-tts-v1')
   })
 })

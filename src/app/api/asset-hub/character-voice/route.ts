@@ -7,6 +7,7 @@ import { apiHandler, ApiError } from '@/lib/api-errors'
 interface VoiceDesignPayload {
     voiceId?: string
     audioBase64?: string
+    provider?: 'bailian' | 'omnivoice'
 }
 
 interface CharacterVoiceJsonBody {
@@ -46,7 +47,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
             throw new ApiError('INVALID_PARAMS')
         }
 
-        const { voiceId, audioBase64 } = voiceDesign
+        const { voiceId, audioBase64, provider } = voiceDesign
         if (!voiceId || !audioBase64) {
             throw new ApiError('INVALID_PARAMS')
         }
@@ -63,10 +64,13 @@ export const POST = apiHandler(async (request: NextRequest) => {
         const key = generateUniqueKey(`global-voice/${session.user.id}/${characterId}`, 'wav')
         const cosUrl = await uploadObject(audioBuffer, key)
 
+        // 按 provider 决定 voiceType：OmniVoice 设计 → omnivoice-design，否则百炼设计
+        const voiceType = provider === 'omnivoice' ? 'omnivoice-design' : 'qwen-designed'
+
         await db.globalCharacter.update({
             where: { id: characterId },
             data: {
-                voiceType: 'qwen-designed',
+                voiceType,
                 voiceId: voiceId,
                 customVoiceUrl: cosUrl
             }

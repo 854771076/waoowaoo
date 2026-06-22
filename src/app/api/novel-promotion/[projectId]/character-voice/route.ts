@@ -67,7 +67,7 @@ export const POST = apiHandler(async (
       throw new ApiError('INVALID_PARAMS')
     }
 
-    const { voiceId, audioBase64 } = voiceDesign
+    const { voiceId, audioBase64, provider } = voiceDesign
     if (!voiceId || !audioBase64) {
       throw new ApiError('INVALID_PARAMS')
     }
@@ -79,11 +79,14 @@ export const POST = apiHandler(async (
     const key = generateUniqueKey(`voice/custom/${projectId}/${characterId}`, 'wav')
     const cosUrl = await uploadObject(audioBuffer, key)
 
+    // 按 provider 决定 voiceType：OmniVoice 设计 → omnivoice-design，否则百炼设计
+    const voiceType = provider === 'omnivoice' ? 'omnivoice-design' : 'qwen-designed'
+
     // 更新角色音色设置
     const character = await prisma.novelPromotionCharacter.update({
       where: { id: characterId },
       data: {
-        voiceType: 'qwen-designed',
+        voiceType,
         voiceId: voiceId,  // 保存 AI 生成的 voice ID
         customVoiceUrl: cosUrl
       }

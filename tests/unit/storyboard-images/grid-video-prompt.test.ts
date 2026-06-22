@@ -96,8 +96,7 @@ describe('buildGridVideoPrompt', () => {
         base_prompt: '主角缓步走向镜头，表情凝重',
         panel_description: '雨夜小巷，主角撑伞独行',
         panel_grid_size: '4',
-        grid_layout: expect.stringContaining('列'),
-        grid_layout: expect.stringContaining('行'),
+        grid_layout: expect.stringMatching(/列.*行/),
         shot_type: '中景',
         camera_move: '缓慢推进',
       }),
@@ -122,8 +121,7 @@ describe('buildGridVideoPrompt', () => {
         locale: 'en',
         variables: expect.objectContaining({
           panel_grid_size: '6',
-          grid_layout: expect.stringContaining('columns'),
-          grid_layout: expect.stringContaining('rows'),
+          grid_layout: expect.stringMatching(/columns.*rows/),
         }),
       }),
     )

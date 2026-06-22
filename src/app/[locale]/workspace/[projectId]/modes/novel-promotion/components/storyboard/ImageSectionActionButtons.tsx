@@ -3,8 +3,9 @@ import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
-import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
+import { getImageGenerationCountOptions, normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
+import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { AI_EDIT_BUTTON_CLASS, AI_EDIT_ICON_CLASS } from '@/components/ui/ai-edit-style'
 import AISparklesIcon from '@/components/ui/icons/AISparklesIcon'
 
@@ -35,7 +36,10 @@ export default function ImageSectionActionButtons({
 }: ImageSectionActionButtonsProps) {
   const t = useTranslations('storyboard')
   const { count, setCount } = useImageGenerationCount('storyboard-candidates')
-  const { count: panelGridSize, setCount: setPanelGridSize } = useImageGenerationCount('storyboard-grid')
+  // 分镜宫格数：读写项目级配置（所有镜头共享、与项目配置同源）
+  const runtime = useWorkspaceStageRuntime()
+  const panelGridSize = normalizeImageGenerationCount('storyboard-grid', runtime.panelGridSize)
+  const setPanelGridSize = (value: number) => { void runtime.onPanelGridSizeChange(value) }
 
   return (
     <>

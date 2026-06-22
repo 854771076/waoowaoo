@@ -184,7 +184,9 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   if (!modelKey) throw new Error('Storyboard model not configured')
 
   const candidateCount = clampCount(payload.candidateCount ?? payload.count, 1, 4, 1)
-  const panelGridSize = clampCount(payload.panelGridSize, 1, 16, 1)
+  // 宫格数：payload 显式指定时优先，否则回退到项目级默认配置
+  const defaultGridSize = clampCount(modelConfig.panelGridSize, 1, 16, 1)
+  const panelGridSize = clampCount(payload.panelGridSize, 1, 16, defaultGridSize)
   const refs = await collectPanelReferenceImages(projectData, panel)
   const normalizedRefs = await normalizeReferenceImagesForGeneration(refs)
 

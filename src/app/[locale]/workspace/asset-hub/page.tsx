@@ -214,7 +214,7 @@ export default function AssetHubPage() {
     }
 
     // 保存 AI 设计的声音
-    const handleVoiceDesignSave = async (voiceId: string, audioBase64: string) => {
+    const handleVoiceDesignSave = async (voiceId: string, audioBase64: string, provider: 'bailian' | 'omnivoice') => {
         if (!voiceDesignCharacter) return
 
         try {
@@ -224,7 +224,8 @@ export default function AssetHubPage() {
                 body: JSON.stringify({
                     characterId: voiceDesignCharacter.id,
                     voiceId,
-                    audioBase64
+                    audioBase64,
+                    provider
                 })
             })
 

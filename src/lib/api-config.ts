@@ -426,12 +426,13 @@ async function resolveSingleModelSelection(
     throw new Error(`MODEL_SELECTION_REQUIRED: multiple ${mediaType} models are enabled, provide model_key explicitly`)
   }
 
-  // Fallback: catalog-only providers (e.g., omnivoice) don't require
-  // a per-user customModel row. If a single catalog model exists for this
-  // modality, use it.
+  // Fallback: catalog-only providers (e.g., omnivoice, bailian) don't require
+  // a per-user customModel row. If catalog models exist for this modality,
+  // use the first one as default (catalog models are built-in presets,
+  // unlike user custom models which require explicit selection).
   if (mediaType !== 'llm' && mediaType !== 'lipsync') {
     const catalogModels = listOfficialCatalogModels(mediaType as OfficialModelModality)
-    if (catalogModels.length === 1) {
+    if (catalogModels.length >= 1) {
       const catalog = catalogModels[0]
       return {
         provider: catalog.provider,
@@ -439,9 +440,6 @@ async function resolveSingleModelSelection(
         modelKey: catalog.modelKey,
         mediaType,
       }
-    }
-    if (catalogModels.length > 1) {
-      throw new Error(`MODEL_SELECTION_REQUIRED: multiple ${mediaType} catalog models available, provide model_key explicitly`)
     }
   }
 

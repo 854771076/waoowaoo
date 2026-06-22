@@ -4,6 +4,7 @@ import VoiceDesignDialogBase, {
   type VoiceDesignMutationPayload,
   type VoiceDesignMutationResult,
 } from '@/components/voice/VoiceDesignDialogBase'
+import type { VoiceDesignProvider } from '@/components/voice/voice-design-shared'
 import { useDesignProjectVoice } from '@/lib/query/hooks'
 import { useRecommendVoiceInstruct } from '@/lib/query/mutations/useVoiceMutations'
 
@@ -12,7 +13,7 @@ interface VoiceDesignDialogProps {
   speaker: string
   hasExistingVoice?: boolean
   onClose: () => void
-  onSave: (voiceId: string, audioBase64: string) => void
+  onSave: (voiceId: string, audioBase64: string, provider: VoiceDesignProvider) => void
   projectId: string
   characterId?: string
 }

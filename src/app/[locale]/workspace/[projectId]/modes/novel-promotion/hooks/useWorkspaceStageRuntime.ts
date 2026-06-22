@@ -14,6 +14,7 @@ interface UseWorkspaceStageRuntimeParams {
   isStartingStoryToScript: boolean
   isStartingScriptToStoryboard: boolean
   videoRatio: string | undefined
+  panelGridSize: number | undefined
   artStyle: string | undefined
   videoModel: string | undefined
   capabilityOverrides: CapabilitySelections
@@ -64,6 +65,7 @@ export function useWorkspaceStageRuntime({
   isStartingStoryToScript,
   isStartingScriptToStoryboard,
   videoRatio,
+  panelGridSize,
   artStyle,
   videoModel,
   capabilityOverrides,
@@ -101,6 +103,8 @@ export function useWorkspaceStageRuntime({
     onNovelTextChange: (value) => handleUpdateEpisode('novelText', value),
     onVideoRatioChange: (value) => handleUpdateConfig('videoRatio', value),
     onArtStyleChange: (value) => handleUpdateConfig('artStyle', value),
+    panelGridSize,
+    onPanelGridSizeChange: (value) => handleUpdateConfig('panelGridSize', value),
     onRunStoryToScript: () => runWithRebuildConfirm('storyToScript', runStoryToScriptFlow),
     onClipUpdate: (clipId, data) => {
       if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -140,5 +144,6 @@ export function useWorkspaceStageRuntime({
     capabilityOverrides,
     videoModel,
     videoRatio,
+    panelGridSize,
   ])
 }

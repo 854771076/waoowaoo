@@ -70,7 +70,7 @@ interface AssetsStageModalsProps {
   handleLocationImageEdit: (modifyPrompt: string, extraImageUrls?: string[]) => Promise<void>
   handleCharacterImageEdit: (modifyPrompt: string, extraImageUrls?: string[]) => Promise<void>
   handleCloseVoiceDesign: () => void
-  handleVoiceDesignSave: (voiceId: string, audioBase64: string) => Promise<void>
+  handleVoiceDesignSave: (voiceId: string, audioBase64: string, provider: 'bailian' | 'omnivoice') => Promise<void>
   handleCloseCopyPicker: () => void
   handleConfirmCopyFromGlobal: (globalAssetId: string) => Promise<void>
   handleConfirmProfile: (characterId: string, updatedProfileData?: CharacterProfileData) => Promise<void>

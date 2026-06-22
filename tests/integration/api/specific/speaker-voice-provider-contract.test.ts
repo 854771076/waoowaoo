@@ -131,4 +131,59 @@ describe('api specific - speaker voice provider contract', () => {
       previewAudioUrl: 'voice/storage/preview.wav',
     })
   })
+
+  it('stores omnivoice speaker voice with explicit provider and profileId', async () => {
+    const mod = await import('@/app/api/novel-promotion/[projectId]/speaker-voice/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1/speaker-voice',
+      method: 'PATCH',
+      body: {
+        episodeId: 'episode-1',
+        speaker: 'Narrator',
+        provider: 'omnivoice',
+        voiceType: 'omnivoice-design',
+        profileId: 'ov-profile-001',
+        previewAudioUrl: '/m/preview-audio',
+      },
+    })
+
+    const res = await mod.PATCH(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+    expect(res.status).toBe(200)
+
+    const updateCall = prismaMock.novelPromotionEpisode.update.mock.calls[0] as
+      | [{ data?: { speakerVoices?: string } }]
+      | undefined
+    expect(updateCall).toBeTruthy()
+    if (!updateCall) throw new Error('expected update call')
+    const updateArg = updateCall[0]
+    const saved = JSON.parse(updateArg.data?.speakerVoices || '{}') as Record<string, unknown>
+
+    expect(saved.Narrator).toEqual({
+      provider: 'omnivoice',
+      voiceType: 'omnivoice-design',
+      profileId: 'ov-profile-001',
+      previewAudioUrl: 'voice/storage/preview.wav',
+    })
+  })
+
+  it('returns INVALID_PARAMS when omnivoice provider is missing profileId', async () => {
+    const mod = await import('@/app/api/novel-promotion/[projectId]/speaker-voice/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1/speaker-voice',
+      method: 'PATCH',
+      body: {
+        episodeId: 'episode-1',
+        speaker: 'Narrator',
+        provider: 'omnivoice',
+        voiceType: 'omnivoice-design',
+      },
+    })
+
+    const res = await mod.PATCH(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.error.code).toBe('INVALID_PARAMS')
+    expect(prismaMock.novelPromotionEpisode.update).not.toHaveBeenCalled()
+  })
 })

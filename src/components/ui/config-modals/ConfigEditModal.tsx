@@ -12,6 +12,7 @@ import type {
     ModelCapabilities,
 } from '@/lib/model-config-contract'
 import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-model-options'
+import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
 import { RatioSelector, StyleSelector } from './config-modal-selectors'
 import { ModelCapabilityDropdown } from './ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
@@ -53,6 +54,7 @@ interface SettingsModalProps {
     videoModel?: string
     audioModel?: string
     videoRatio?: string
+    panelGridSize?: number
     capabilityOverrides?: CapabilitySelections
     ttsRate?: string
     onArtStyleChange?: (value: string) => void
@@ -65,6 +67,7 @@ interface SettingsModalProps {
     onVideoModelChange?: (value: string) => void
     onAudioModelChange?: (value: string) => void
     onVideoRatioChange?: (value: string) => void
+    onPanelGridSizeChange?: (value: number) => void
     onCapabilityOverridesChange?: (value: CapabilitySelections) => void
     onTTSRateChange?: (value: string) => void
 }
@@ -138,6 +141,7 @@ export function SettingsModal({
     videoModel,
     audioModel,
     videoRatio = '9:16',
+    panelGridSize = 4,
     capabilityOverrides,
     ttsRate,
     onArtStyleChange,
@@ -149,6 +153,7 @@ export function SettingsModal({
     onVideoModelChange,
     onAudioModelChange,
     onVideoRatioChange,
+    onPanelGridSizeChange,
     onCapabilityOverridesChange,
     onTTSRateChange,
 }: SettingsModalProps) {
@@ -385,6 +390,25 @@ export function SettingsModal({
                                     onChange={(value) => { handleChange(onVideoRatioChange)(value) }}
                                     options={VIDEO_RATIOS}
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('panelGridSize')}</label>
+                                <select
+                                    value={panelGridSize}
+                                    onChange={(event) => {
+                                        onPanelGridSizeChange?.(Number(event.target.value))
+                                        showSaved()
+                                    }}
+                                    className="w-full rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-3 py-2.5 text-sm text-[var(--glass-text-primary)] outline-none focus:border-[var(--glass-stroke-focus)]"
+                                >
+                                    {getImageGenerationCountOptions('storyboard-grid').map((count) => (
+                                        <option key={count} value={count} className="text-black">
+                                            {count === 1
+                                                ? t('panelGridSizeSingle')
+                                                : t('panelGridSizeGrid', { count })}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                     </div>

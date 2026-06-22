@@ -304,6 +304,7 @@ export const PATCH = apiHandler(async (
     'analysisModel', 'characterModel', 'locationModel', 'storyboardModel',
     'editModel', 'videoModel', 'audioModel', 'videoRatio', 'artStyle',
     'ttsRate', 'lipSyncEnabled', 'lipSyncMode', 'capabilityOverrides',
+    'panelGridSize',
   ] as const
 
   const updateData: Record<string, unknown> = {}
@@ -316,6 +317,18 @@ export const PATCH = apiHandler(async (
 
     if (field === 'artStyle') {
       updateData[field] = await validateArtStyleField(body[field], session.user.id)
+      continue
+    }
+
+    if (field === 'panelGridSize') {
+      const parsed = Number(body.panelGridSize)
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 16) {
+        throw new ApiError('INVALID_PARAMS', {
+          code: 'PANEL_GRID_SIZE_INVALID',
+          field: 'panelGridSize',
+        })
+      }
+      updateData.panelGridSize = parsed
       continue
     }
 

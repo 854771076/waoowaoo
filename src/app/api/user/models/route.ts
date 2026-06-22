@@ -19,6 +19,21 @@ import {
 import { findBuiltinCapabilities } from '@/lib/model-capabilities/catalog'
 import { findBuiltinPricingCatalogEntry } from '@/lib/model-pricing/catalog'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
+import {
+  listOfficialCatalogModels,
+  type OfficialCatalogModel,
+} from '@/lib/providers/official/model-registry'
+import { ensureBailianCatalogRegistered } from '@/lib/providers/bailian/catalog'
+import { ensureOmnivoiceCatalogRegistered } from '@/lib/providers/omnivoice/catalog'
+import { ensureSiliconFlowCatalogRegistered } from '@/lib/providers/siliconflow/catalog'
+import { ensureStarRouterCatalogRegistered } from '@/lib/providers/starrouter/catalog'
+
+// Eagerly register all catalog models so listOfficialCatalogModels()
+// returns the complete set available for user selection.
+ensureBailianCatalogRegistered()
+ensureOmnivoiceCatalogRegistered()
+ensureSiliconFlowCatalogRegistered()
+ensureStarRouterCatalogRegistered()
 
 type StoredModelType = UnifiedModelType | string
 
@@ -163,6 +178,28 @@ function isUserSelectableModel(model: StoredModel): boolean {
   return !AUDIO_MODEL_EXCLUDED_IDS.has(modelId)
 }
 
+function getCatalogProviderDisplayName(provider: string): string {
+  switch (provider) {
+    case 'bailian': return '百炼'
+    case 'omnivoice': return 'OmniVoice'
+    case 'siliconflow': return 'SiliconFlow'
+    case 'starrouter': return 'StarRouter'
+    default: return provider
+  }
+}
+
+function buildCatalogModelLabel(model: OfficialCatalogModel): string {
+  const providerName = getCatalogProviderDisplayName(model.provider)
+  // Use a shorter, user-friendly label for catalog models
+  if (model.provider === 'bailian' && model.modelId.includes('tts')) {
+    return `${providerName} · Qwen TTS`
+  }
+  if (model.provider === 'omnivoice') {
+    return `${providerName} · OmniVoice TTS`
+  }
+  return `${providerName} · ${model.modelId}`
+}
+
 export const GET = apiHandler(async () => {
   const authResult = await requireUserAuth()
   if (isErrorResponse(authResult)) return authResult
@@ -230,6 +267,25 @@ export const GET = apiHandler(async () => {
     }
 
     grouped[modelType].push(option)
+  }
+
+  // Add catalog-only audio models (e.g. OmniVoice, Bailian TTS) that don't
+  // require per-user custom model rows. Users can set them as project defaults
+  // or select them in the voice stage toolbar.
+  const catalogAudioModels = listOfficialCatalogModels('audio')
+  const existingAudioModelKeys = new Set(grouped.audio.map((m) => m.value))
+  for (const catalogModel of catalogAudioModels) {
+    if (existingAudioModelKeys.has(catalogModel.modelKey)) continue
+    if (AUDIO_MODEL_EXCLUDED_IDS.has(catalogModel.modelId)) continue
+    const label = buildCatalogModelLabel(catalogModel)
+    const capabilities = findBuiltinCapabilities('audio', catalogModel.provider, catalogModel.modelId)
+    grouped.audio.push({
+      value: catalogModel.modelKey,
+      label,
+      provider: catalogModel.provider,
+      providerName: providerNameMap.get(catalogModel.provider) || getCatalogProviderDisplayName(catalogModel.provider),
+      ...(capabilities ? { capabilities } : {}),
+    })
   }
 
   return NextResponse.json({

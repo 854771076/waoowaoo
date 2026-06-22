@@ -4,6 +4,7 @@ import VoiceDesignDialogBase, {
   type VoiceDesignMutationPayload,
   type VoiceDesignMutationResult,
 } from '@/components/voice/VoiceDesignDialogBase'
+import type { VoiceDesignProvider } from '@/components/voice/voice-design-shared'
 import { useDesignAssetHubVoice } from '@/lib/query/hooks'
 
 interface VoiceDesignDialogProps {
@@ -11,7 +12,7 @@ interface VoiceDesignDialogProps {
   speaker: string
   hasExistingVoice?: boolean
   onClose: () => void
-  onSave: (voiceId: string, audioBase64: string) => void
+  onSave: (voiceId: string, audioBase64: string, provider: VoiceDesignProvider) => void
 }
 
 export default function VoiceDesignDialog({

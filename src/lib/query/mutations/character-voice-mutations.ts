@@ -72,17 +72,19 @@ export function useSaveProjectDesignedVoice(projectId: string) {
             characterId,
             voiceId,
             audioBase64,
+            provider,
         }: {
             characterId: string
             voiceId: string
             audioBase64: string
+            provider?: 'bailian' | 'omnivoice'
         }) => {
             return await requestJsonWithError<{ audioUrl?: string }>(`/api/novel-promotion/${projectId}/character-voice`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     characterId,
-                    voiceDesign: { voiceId, audioBase64 },
+                    voiceDesign: { voiceId, audioBase64, provider },
                 }),
             }, '保存失败')
         },

@@ -10,7 +10,8 @@ import ImageSectionCandidateMode from './ImageSectionCandidateMode'
 import ImageSectionActionButtons from './ImageSectionActionButtons'
 import { AppIcon } from '@/components/ui/icons'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
-import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
+import { getImageGenerationCountOptions, normalizeImageGenerationCount } from '@/lib/image-generation/count'
+import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 
 interface PanelCandidateData {
   candidates: string[]
@@ -64,7 +65,10 @@ export default function ImageSection({
 }: ImageSectionProps) {
   const t = useTranslations('storyboard')
   const { count: candidateCount, setCount: setCandidateCount } = useImageGenerationCount('storyboard-candidates')
-  const { count: panelGridSize, setCount: setPanelGridSize } = useImageGenerationCount('storyboard-grid')
+  // 分镜宫格数：读写项目级配置（所有镜头共享、与项目配置同源），而非 localStorage
+  const runtime = useWorkspaceStageRuntime()
+  const panelGridSize = normalizeImageGenerationCount('storyboard-grid', runtime.panelGridSize)
+  const setPanelGridSize = (value: number) => { void runtime.onPanelGridSizeChange(value) }
   const [isTaskPulseAnimating, setIsTaskPulseAnimating] = useState(false)
   const cssAspectRatio = videoRatio.replace(':', '/')
   const hasValidCandidates = !!candidateData && candidateData.candidates.some((url) => !url.startsWith('PENDING:'))

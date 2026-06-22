@@ -96,13 +96,14 @@ describe('useTTSGeneration', () => {
   it('does not send a second voice update request after designed voice save succeeds', async () => {
     const hook = useTTSGeneration({ projectId: 'project-1' })
 
-    await hook.handleVoiceDesignSave('voice-1', 'base64-audio')
+    await hook.handleVoiceDesignSave('voice-1', 'base64-audio', 'bailian')
 
     expect(saveDesignedVoiceMutateAsyncMock).toHaveBeenCalledTimes(1)
     expect(saveDesignedVoiceMutateAsyncMock).toHaveBeenCalledWith({
       characterId: 'character-1',
       voiceId: 'voice-1',
       audioBase64: 'base64-audio',
+      provider: 'bailian',
     })
     expect(updateVoiceSettingsMutateAsyncMock).not.toHaveBeenCalled()
     expect(refreshAssetsMock).toHaveBeenCalledTimes(1)

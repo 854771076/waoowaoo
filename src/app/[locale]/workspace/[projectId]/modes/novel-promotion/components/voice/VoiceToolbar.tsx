@@ -112,8 +112,8 @@ export default function VoiceToolbar({
                             className="glass-input-base h-8 px-2.5 py-1 text-xs rounded-lg outline-none transition-all"
                         >
                             <option value="">{t("toolbar.auto")}</option>
-                            <option value="bailian:sambert-tts-v1">{t("toolbar.qwenTTS")}</option>
-                            <option value="omnivoice:tts-v1">{t("toolbar.omniVoice")}</option>
+                            <option value="bailian::qwen3-tts-vd-2026-01-26">{t("toolbar.qwenTTS")}</option>
+                            <option value="omnivoice::omnivoice-tts-v1">{t("toolbar.omniVoice")}</option>
                         </select>
                     </div>
                     <span className="text-sm text-[var(--glass-text-tertiary)]">

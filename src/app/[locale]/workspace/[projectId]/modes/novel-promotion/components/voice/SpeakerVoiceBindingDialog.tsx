@@ -53,7 +53,16 @@ export default function SpeakerVoiceBindingDialog({
         voiceId: string | null
         voiceType: string
     }) => {
-        if (voice.voiceId) {
+        const isOmnivoiceVoice = (voice.voiceType || '').toLowerCase().startsWith('omnivoice-')
+        if (voice.voiceId && isOmnivoiceVoice) {
+            // OmniVoice 设计/克隆音色：voiceId 字段存的是 OmniVoice profileId
+            onBound(speaker, {
+                provider: 'omnivoice',
+                voiceType: voice.voiceType,
+                profileId: voice.voiceId,
+                ...(voice.customVoiceUrl ? { previewAudioUrl: voice.customVoiceUrl } : {}),
+            })
+        } else if (voice.voiceId) {
             onBound(speaker, {
                 provider: 'bailian',
                 voiceType: voice.voiceType,

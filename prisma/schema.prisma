@@ -253,6 +253,7 @@ model NovelPromotionProject {
   audioModel      String? // 用户配置的语音模型
   videoRatio      String                    @default("9:16")
   ttsRate         String                    @default("+50%")
+  panelGridSize   Int                       @default(4) // 分镜宫格默认数（1 = 单镜头，>1 = 宫格）
   globalAssetText String?                   @db.Text
   artStyle        String                    @default("american-comic")
   artStyleId      String?

@@ -239,6 +239,7 @@ export default function NovelInputStage({
           )}
         />
       </div>
+
       <AiWriteModal
         open={aiWriteOpen}
         loading={aiWriteLoading}

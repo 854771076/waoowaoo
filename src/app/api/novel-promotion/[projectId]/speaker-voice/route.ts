@@ -103,13 +103,14 @@ export const PATCH = apiHandler(async (
   const speaker = readTrimmedString(body?.speaker) ?? ''
   const voiceType = readTrimmedString(body?.voiceType) ?? 'uploaded'
   const providerRaw = readTrimmedString(body?.provider)?.toLowerCase() ?? null
-  if (!providerRaw || (providerRaw !== 'fal' && providerRaw !== 'bailian')) {
+  if (!providerRaw || (providerRaw !== 'fal' && providerRaw !== 'bailian' && providerRaw !== 'omnivoice')) {
     throw new ApiError('INVALID_PARAMS')
   }
   const provider = providerRaw
   const audioUrl = readTrimmedString(body?.audioUrl)
   const previewAudioUrl = readTrimmedString(body?.previewAudioUrl)
   const voiceId = readTrimmedString(body?.voiceId)
+  const profileId = readTrimmedString(body?.profileId)
 
   if (!episodeId) {
     throw new ApiError('INVALID_PARAMS')
@@ -121,6 +122,9 @@ export const PATCH = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
   if (provider === 'bailian' && !voiceId) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+  if (provider === 'omnivoice' && !profileId) {
     throw new ApiError('INVALID_PARAMS')
   }
 
@@ -151,6 +155,21 @@ export const PATCH = apiHandler(async (
       provider: 'fal',
       voiceType,
       audioUrl: audioUrlToStore,
+    }
+  } else if (provider === 'omnivoice') {
+    const previewCandidate = previewAudioUrl || audioUrl
+    const resolvedPreviewKey = previewCandidate
+      ? await resolveStorageKeyFromMediaValue(previewCandidate)
+      : null
+    const previewAudioUrlToStore = previewCandidate
+      ? (resolvedPreviewKey || previewCandidate)
+      : undefined
+
+    nextVoiceEntry = {
+      provider: 'omnivoice',
+      voiceType,
+      profileId: profileId!,
+      ...(previewAudioUrlToStore ? { previewAudioUrl: previewAudioUrlToStore } : {}),
     }
   } else {
     const previewCandidate = previewAudioUrl || audioUrl

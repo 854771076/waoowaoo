@@ -9,12 +9,16 @@ import { buildDefaultTaskBillingInfo } from '@/lib/billing'
 import { estimateVoiceLineMaxSeconds } from '@/lib/voice/generate-voice-line'
 import { hasVoiceLineAudioOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
-import { parseModelKeyStrict } from '@/lib/model-config-contract'
-import { getProviderKey, resolveModelSelectionOrSingle } from '@/lib/api-config'
+import { composeModelKey, parseModelKeyStrict } from '@/lib/model-config-contract'
+import { getModelsByType, getProviderKey, resolveModelSelectionOrSingle } from '@/lib/api-config'
+import { OMNIVOICE_TTS_MODEL_ID } from '@/lib/providers/omnivoice/catalog'
+import { BAILIAN_TTS_MODEL_ID } from '@/lib/providers/bailian/tts'
 import {
+  hasAnyVoiceBinding,
   hasVoiceBindingForProvider,
   parseSpeakerVoiceMap,
   type CharacterVoiceFields,
+  type SpeakerVoiceEntry,
   type SpeakerVoiceMap,
 } from '@/lib/voice/provider-voice-binding'
 
@@ -37,6 +41,59 @@ function matchCharacterBySpeaker(speaker: string, characters: CharacterRow[]) {
   return characters.find((character) => character.name.trim().toLowerCase() === normalizedSpeaker) || null
 }
 
+function detectVoiceProvider(
+  character: CharacterRow | null,
+  speakerVoice: SpeakerVoiceEntry | undefined,
+): 'bailian' | 'omnivoice' | 'fal' | null {
+  // Speaker voice takes priority (per-episode override)
+  if (speakerVoice) {
+    return speakerVoice.provider
+  }
+  // Check character-level voice binding
+  if (character?.voiceId) {
+    const voiceType = (character.voiceType || '').toLowerCase()
+    if (voiceType.startsWith('omnivoice-')) {
+      return 'omnivoice'
+    }
+    return 'bailian'
+  }
+  if (character?.customVoiceUrl) {
+    return 'fal'
+  }
+  return null
+}
+
+function getProviderDisplayName(providerKey: string): string {
+  switch (providerKey) {
+    case 'bailian': return '百炼 QwenTTS'
+    case 'omnivoice': return 'OmniVoice'
+    case 'fal': return 'FAL IndexTTS'
+    default: return providerKey
+  }
+}
+
+/**
+ * 把音色 provider 映射到对应的 TTS audioModel modelKey。
+ * - bailian / omnivoice 走内置 catalog 模型
+ * - fal 依赖用户自定义音频模型（取第一个 fal 模型）
+ * 解析失败返回 null，由调用方决定如何提示。
+ */
+async function resolveAudioModelKeyForProvider(
+  userId: string,
+  providerKey: 'bailian' | 'omnivoice' | 'fal',
+): Promise<string | null> {
+  if (providerKey === 'omnivoice') {
+    return composeModelKey('omnivoice', OMNIVOICE_TTS_MODEL_ID)
+  }
+  if (providerKey === 'bailian') {
+    return composeModelKey('bailian', BAILIAN_TTS_MODEL_ID)
+  }
+  // fal：取用户配置的第一个 fal 音频模型
+  const audioModels = await getModelsByType(userId, 'audio')
+  const falModel = audioModels.find((model) => getProviderKey(model.provider).toLowerCase() === 'fal')
+  return falModel ? falModel.modelKey : null
+}
+
 function validateSpeakerVoiceForProvider(
   speaker: string,
   characters: CharacterRow[],
@@ -54,6 +111,8 @@ function validateSpeakerVoiceForProvider(
     return { ok: true }
   }
 
+  const existingVoiceProvider = detectVoiceProvider(character, speakerVoice)
+
   if (providerKey === 'bailian') {
     const hasUploadedReference =
       !!character?.customVoiceUrl ||
@@ -64,6 +123,12 @@ function validateSpeakerVoiceForProvider(
         message: '无音色ID，QwenTTS 必须使用 AI 设计音色',
       }
     }
+    if (existingVoiceProvider && existingVoiceProvider !== 'bailian') {
+      return {
+        ok: false,
+        message: `当前角色音色为 ${getProviderDisplayName(existingVoiceProvider)} 类型，切换到对应 TTS 引擎后可生成，或重新设计百炼音色`,
+      }
+    }
     return {
       ok: false,
       message: '请先为该发言人绑定百炼音色',
@@ -71,9 +136,22 @@ function validateSpeakerVoiceForProvider(
   }
 
   if (providerKey === 'omnivoice') {
+    if (existingVoiceProvider && existingVoiceProvider !== 'omnivoice') {
+      return {
+        ok: false,
+        message: `当前角色音色为 ${getProviderDisplayName(existingVoiceProvider)} 类型，切换到对应 TTS 引擎后可生成，或重新设计 OmniVoice 音色`,
+      }
+    }
     return {
       ok: false,
       message: '请先为该发言人绑定 OmniVoice 音色',
+    }
+  }
+
+  if (existingVoiceProvider) {
+    return {
+      ok: false,
+      message: `当前角色音色为 ${getProviderDisplayName(existingVoiceProvider)} 类型，请切换到对应 TTS 引擎`,
     }
   }
 
@@ -96,6 +174,17 @@ function hasSpeakerVoiceForProvider(
     character,
     speakerVoice,
   })
+}
+
+/** 自动模式：该发言人是否有任意可用音色绑定（不限 provider） */
+function hasAnySpeakerVoiceBinding(
+  speaker: string,
+  characters: CharacterRow[],
+  speakerVoices: SpeakerVoiceMap,
+): boolean {
+  const character = matchCharacterBySpeaker(speaker, characters)
+  const speakerVoice = speakerVoices[speaker]
+  return hasAnyVoiceBinding({ character, speakerVoice })
 }
 
 export const POST = apiHandler(async (
@@ -161,13 +250,17 @@ export const POST = apiHandler(async (
       code: 'MODEL_KEY_INVALID',
       field: 'audioModel'})
   }
-  const resolvedAudioModel = requestedAudioModel || projectAudioModel || preferredAudioModel
-  const selectedResolvedAudioModel = await resolveModelSelectionOrSingle(
-    session.user.id,
-    resolvedAudioModel || null,
-    'audio',
-  )
-  const selectedProviderKey = getProviderKey(selectedResolvedAudioModel.provider).toLowerCase()
+  // 是否由用户显式指定了本次生成的 TTS 引擎。
+  // 仅当本次请求显式传入 audioModel 时才强制用该引擎（向后兼容 UI 引擎下拉）。
+  // 未指定（自动）→ 引擎跟随每条台词所绑定音色的 provider，
+  //   忽略 project/preference 默认（这些全局默认会与音色 provider 冲突）。
+  const autoMode = !requestedAudioModel
+  const explicitSelection = autoMode
+    ? null
+    : await resolveModelSelectionOrSingle(session.user.id, requestedAudioModel, 'audio')
+  const explicitProviderKey = explicitSelection
+    ? getProviderKey(explicitSelection.provider).toLowerCase()
+    : null
 
   const episode = await prisma.novelPromotionEpisode.findFirst({
     where: {
@@ -195,7 +288,9 @@ export const POST = apiHandler(async (
         speaker: true,
         content: true}})
     voiceLines = allLines.filter((line) =>
-      hasSpeakerVoiceForProvider(line.speaker, characters, speakerVoices, selectedProviderKey),
+      autoMode
+        ? hasAnySpeakerVoiceBinding(line.speaker, characters, speakerVoices)
+        : hasSpeakerVoiceForProvider(line.speaker, characters, speakerVoices, explicitProviderKey!),
     )
   } else {
     const line = await prisma.novelPromotionVoiceLine.findFirst({
@@ -209,16 +304,24 @@ export const POST = apiHandler(async (
     if (!line) {
       throw new ApiError('NOT_FOUND')
     }
-    const validation = validateSpeakerVoiceForProvider(
-      line.speaker,
-      characters,
-      speakerVoices,
-      selectedProviderKey,
-    )
-    if (!validation.ok) {
-      throw new ApiError('INVALID_PARAMS', {
-        message: validation.message,
-      })
+    if (autoMode) {
+      if (!hasAnySpeakerVoiceBinding(line.speaker, characters, speakerVoices)) {
+        throw new ApiError('INVALID_PARAMS', {
+          message: '请先为该发言人设置音色',
+        })
+      }
+    } else {
+      const validation = validateSpeakerVoiceForProvider(
+        line.speaker,
+        characters,
+        speakerVoices,
+        explicitProviderKey!,
+      )
+      if (!validation.ok) {
+        throw new ApiError('INVALID_PARAMS', {
+          message: validation.message,
+        })
+      }
     }
     voiceLines = [line]
   }
@@ -236,12 +339,16 @@ export const POST = apiHandler(async (
         },
       })
       const validation = firstLineWithoutBinding
-        ? validateSpeakerVoiceForProvider(
-          firstLineWithoutBinding.speaker,
-          characters,
-          speakerVoices,
-          selectedProviderKey,
-        )
+        ? (autoMode
+          ? (hasAnySpeakerVoiceBinding(firstLineWithoutBinding.speaker, characters, speakerVoices)
+            ? { ok: true as const }
+            : { ok: false as const, message: '请先为该发言人设置音色' })
+          : validateSpeakerVoiceForProvider(
+            firstLineWithoutBinding.speaker,
+            characters,
+            speakerVoices,
+            explicitProviderKey!,
+          ))
         : { ok: false as const, message: '没有需要生成的台词' }
       return NextResponse.json({
         success: true,
@@ -259,11 +366,32 @@ export const POST = apiHandler(async (
 
   const results = await Promise.all(
     voiceLines.map(async (line) => {
+      // 自动模式：引擎跟随该台词音色 provider；显式模式：用全局选定引擎
+      let lineAudioModelKey: string
+      if (autoMode) {
+        const character = matchCharacterBySpeaker(line.speaker, characters)
+        const voiceProvider = detectVoiceProvider(character, speakerVoices[line.speaker])
+        if (!voiceProvider) {
+          throw new ApiError('INVALID_PARAMS', {
+            message: `发言人「${line.speaker}」未设置音色`,
+          })
+        }
+        const resolvedKey = await resolveAudioModelKeyForProvider(session.user.id, voiceProvider)
+        if (!resolvedKey) {
+          throw new ApiError('INVALID_PARAMS', {
+            message: `未配置 ${getProviderDisplayName(voiceProvider)} 音频模型`,
+          })
+        }
+        lineAudioModelKey = resolvedKey
+      } else {
+        lineAudioModelKey = explicitSelection!.modelKey
+      }
+
       const payload = {
         episodeId,
         lineId: line.id,
         maxSeconds: estimateVoiceLineMaxSeconds(line.content),
-        audioModel: selectedResolvedAudioModel.modelKey}
+        audioModel: lineAudioModelKey}
       const result = await submitTask({
         userId: session.user.id,
     locale,

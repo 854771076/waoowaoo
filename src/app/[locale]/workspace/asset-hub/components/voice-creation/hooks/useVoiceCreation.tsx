@@ -151,7 +151,8 @@ export function useVoiceCreation({ isOpen, folderId, onClose, onSuccess, initial
                 voiceBase64: voice.audioBase64,
                 voiceName: voiceName.trim(),
                 folderId,
-                voicePrompt: voicePrompt.trim()
+                voicePrompt: voicePrompt.trim(),
+                provider,
             })
 
             onSuccess()

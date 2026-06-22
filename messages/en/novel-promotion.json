@@ -143,7 +143,11 @@
       "smartSplit": "Smart Split",
       "smartSplitRecommend": "Recommended",
       "singleEpisodeWarning": "All content will be processed as one episode"
-    }
+    },
+    "panelGridSize": "Panels per Shot",
+    "panelGridSizeHint": "Number of panels generated per shot. 1 = single shot, >1 = grid storyboard (one image with multiple cells)",
+    "panelGridSizeSingle": "Single",
+    "panelGridSizeGrid": "{count}-panel grid"
   },
   "execution": {
     "selectEpisode": "Please select an episode first",

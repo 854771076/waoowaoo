@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { queueRedis } from '@/lib/redis'
 import { QUEUE_NAME } from '@/lib/task/queues'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
+import { createScopedLogger } from '@/lib/logging/core'
 import { getUserWorkflowConcurrencyConfig } from '@/lib/config-service'
 import { reportTaskProgress, withTaskLifecycle } from './shared'
 import { withUserConcurrencyGate } from './user-concurrency-gate'
@@ -85,10 +86,20 @@ async function generateVideoForPanel(
   modelId: string,
   projectVideoRatio: string | null | undefined,
   generationOptions: VideoOptionMap,
+  defaultGridSize: number,
 ): Promise<{ cosKey: string; generationMode: VideoGenerationMode; actualVideoTokens?: number }> {
   if (!panel.imageUrl) {
     throw new Error(`Panel ${panel.id} has no imageUrl`)
   }
+
+  const logger = createScopedLogger({
+    module: 'worker.video-panel',
+    action: 'panel_video_generate',
+    requestId: job.data.trace?.requestId || undefined,
+    taskId: job.data.taskId,
+    projectId: job.data.projectId,
+    userId: job.data.userId,
+  })
 
   const firstLastFramePayload =
     typeof payload.firstLastFrame === 'object' && payload.firstLastFrame !== null
@@ -108,10 +119,13 @@ async function generateVideoForPanel(
   const isGridImage = isGridLayout(panelImageLayout || payloadImageLayout)
 
   let prompt = basePrompt
+  let usedGridPrompt = false
   if (isGridImage && !firstLastFramePayload) {
     const payloadGridSize = typeof payload.gridSize === 'number' ? payload.gridSize : null
-    // 宫格数量：优先用 payload 传入的值，其次用默认值 4（常见 2x2 宫格）
-    const gridSize = payloadGridSize && payloadGridSize > 1 ? payloadGridSize : 4
+    // 宫格数量：优先用 payload 传入的值，其次用项目级默认配置
+    const gridSize = payloadGridSize && payloadGridSize > 1
+      ? payloadGridSize
+      : (defaultGridSize > 1 ? defaultGridSize : 4)
     const gridPrompt = await buildGridVideoPrompt({
       basePrompt,
       panelDescription: panel.description || basePrompt,
@@ -123,8 +137,39 @@ async function generateVideoForPanel(
     })
     if (gridPrompt) {
       prompt = gridPrompt
+      usedGridPrompt = true
     }
   }
+
+  logger.info({
+    message: 'panel video prompt resolved',
+    details: {
+      panelId: panel.id,
+      imageLayout: panelImageLayout || payloadImageLayout || 'single',
+      usedGridPrompt,
+      basePromptLength: basePrompt?.length || 0,
+      finalPromptLength: prompt?.length || 0,
+      promptSource: firstLastCustomPrompt
+        ? 'firstLastCustomPrompt'
+        : persistedFirstLastPrompt
+          ? 'persistedFirstLastPrompt'
+          : customPrompt
+            ? 'customPrompt'
+            : panel.videoPrompt
+              ? 'panel.videoPrompt'
+              : 'panel.description',
+    },
+  })
+
+  logger.debug({
+    message: 'panel video prompt content',
+    details: {
+      panelId: panel.id,
+      imageLayout: panelImageLayout || payloadImageLayout || 'single',
+      usedGridPrompt,
+      prompt,
+    },
+  })
 
   const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
   if (!sourceImageUrl) {
@@ -228,6 +273,7 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
     modelId,
     projectModels.videoRatio,
     generationOptions,
+    projectModels.panelGridSize,
   )
 
   await assertTaskActive(job, 'persist_panel_video')

@@ -93,6 +93,7 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         audioModel={vm.project.audioModel}
         capabilityOverrides={vm.project.capabilityOverrides}
         videoRatio={vm.project.videoRatio}
+        panelGridSize={vm.project.panelGridSize}
         ttsRate={vm.project.ttsRate !== undefined && vm.project.ttsRate !== null ? String(vm.project.ttsRate) : undefined}
         onUpdateConfig={vm.actions.handleUpdateConfig}
         globalAssetText={vm.project.globalAssetText}

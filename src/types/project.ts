@@ -253,6 +253,7 @@ export interface NovelPromotionProject {
   videoModel: string
   audioModel: string
   videoRatio: string
+  panelGridSize?: number
   capabilityOverrides?: CapabilitySelections | string | null
   ttsRate: string
   workflowMode: WorkflowMode  // 新增：工作流模式

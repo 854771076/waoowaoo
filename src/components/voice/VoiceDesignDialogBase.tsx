@@ -22,7 +22,7 @@ interface VoiceDesignDialogBaseProps {
   speaker: string
   hasExistingVoice?: boolean
   onClose: () => void
-  onSave: (voiceId: string, audioBase64: string) => void
+  onSave: (voiceId: string, audioBase64: string, provider: VoiceDesignProvider) => void
   onDesignVoice: (payload: VoiceDesignMutationPayload) => Promise<VoiceDesignMutationResult>
   onRecommendInstruct?: () => Promise<{ instruct: string }>
 }
@@ -157,7 +157,7 @@ export default function VoiceDesignDialogBase({
   const doSave = () => {
     if (selectedIndex !== null && generatedVoices[selectedIndex]) {
       const voice = generatedVoices[selectedIndex]
-      onSave(voice.voiceId, voice.audioBase64)
+      onSave(voice.voiceId, voice.audioBase64, provider)
       handleClose()
     }
   }

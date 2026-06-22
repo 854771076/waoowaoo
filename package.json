@@ -21,6 +21,7 @@
     "start": "npm run storage:init && concurrently --kill-others \"npm run start:next\" \"npm run start:worker\" \"npm run start:watchdog\" \"npm run start:board\"",
     "kill:ports": "lsof -ti:3000 -ti:3010 2>/dev/null | xargs -r kill -9 2>/dev/null || true",
     "storage:init": "tsx --env-file=.env src/lib/storage/init.ts",
+    "seed:prompts": "tsx --env-file=.env scripts/seed-prompt-config.ts",
     "start:next": "next start -H 0.0.0.0",
     "start:worker": "tsx --env-file=.env src/lib/workers/index.ts",
     "start:watchdog": "tsx --env-file=.env scripts/watchdog.ts",
