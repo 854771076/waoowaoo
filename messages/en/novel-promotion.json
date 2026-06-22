@@ -312,7 +312,7 @@
           "anchorLeft": "Left",
           "anchorRight": "Right",
           "selected": "Selected {id} · duration about {seconds}s",
-          "mvpNote": "MVP: smart crop updates timeline crop/fit parameters only, so it does not create a new MediaObject or EditorAsset."
+          "mvpNote": "MVP: smart crop updates Twick objectFit/frame parameters only, so it does not create a new MediaObject or EditorAsset."
         }
       },
       "properties": {

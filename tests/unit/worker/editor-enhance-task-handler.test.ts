@@ -97,13 +97,19 @@ describe('editor enhance worker handler', () => {
     const videoElement = result.projectData.tracks?.[0]?.elements?.[0]
     expect(videoElement).toEqual(expect.objectContaining({
       id: 'video-1',
+      objectFit: 'cover',
+      frame: expect.objectContaining({
+        x: 0,
+        y: 437.5,
+        size: [720, 405],
+      }),
       props: expect.objectContaining({
         src: 'mediaobj://video-1',
-        objectFit: 'cover',
-        crop: expect.objectContaining({ targetAspectRatio: '16:9' }),
       }),
       metadata: expect.objectContaining({ source: 'ai_enhanced', enhanceType: 'smart_crop' }),
     }))
+    expect(videoElement?.props?.objectFit).toBeUndefined()
+    expect(videoElement?.props?.crop).toBeUndefined()
   })
 
   it('updates editor project data, increments version, and returns zero actualQuantity for free MVP smart crop settlement', async () => {
@@ -118,9 +124,11 @@ describe('editor enhance worker handler', () => {
         version: { increment: 1 },
       },
     })
-    const persisted = getUpdateManyCall(0).data.projectData as { tracks: Array<{ elements: Array<{ props: { src: string; crop?: unknown } }> }> }
+    const persisted = getUpdateManyCall(0).data.projectData as { tracks: Array<{ elements: Array<{ objectFit?: string; frame?: { size?: [number, number] }; props: { src: string; crop?: unknown } }> }> }
     expect(persisted.tracks[0]?.elements[0]?.props.src).toBe('mediaobj://video-1')
-    expect(persisted.tracks[0]?.elements[0]?.props.crop).toEqual(expect.objectContaining({ mode: 'smart_crop' }))
+    expect(persisted.tracks[0]?.elements[0]?.objectFit).toBe('cover')
+    expect(persisted.tracks[0]?.elements[0]?.frame?.size).toEqual([720, 1280])
+    expect(persisted.tracks[0]?.elements[0]?.props.crop).toBeUndefined()
     expect(result).toEqual(expect.objectContaining({
       success: true,
       enhanceType: 'smart_crop',

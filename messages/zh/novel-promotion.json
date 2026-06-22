@@ -312,7 +312,7 @@
           "anchorLeft": "左侧",
           "anchorRight": "右侧",
           "selected": "已选 {id} · 时长约 {seconds}s",
-          "mvpNote": "MVP：智能裁剪仅更新时间轴 crop/fit 参数，不生成新 MediaObject 或 EditorAsset。"
+          "mvpNote": "MVP：智能裁剪仅更新 Twick objectFit/frame 参数，不生成新 MediaObject 或 EditorAsset。"
         }
       },
       "properties": {

@@ -144,20 +144,6 @@ const routeCases: RouteCase[] = [
     },
   },
   {
-    name: 'enhance restore',
-    path: '/api/novel-promotion/project-1/editor/ai/enhance',
-    load: () => import('@/app/api/novel-promotion/[projectId]/editor/ai/enhance/route'),
-    taskType: TASK_TYPE.EDITOR_AI_ENHANCE,
-    action: 'enhance',
-    body: defaultBody({ enhanceType: 'restore', selectedElementId: 'video-1', durationSeconds: 7 }),
-    expectedBilling: {
-      item: BILLING_ITEM.EDITOR_AI_ENHANCE_RESTORE,
-      quantity: 6,
-      unit: 'second',
-      maxFrozenCost: 0.09,
-    },
-  },
-  {
     name: 'enhance smart crop',
     path: '/api/novel-promotion/project-1/editor/ai/enhance',
     load: () => import('@/app/api/novel-promotion/[projectId]/editor/ai/enhance/route'),
@@ -433,6 +419,22 @@ describe('editor AI route skeletons', () => {
     const json = await res.json() as Record<string, unknown>
     expect(json.code).toBe('INVALID_PARAMS')
     expect(json.message).toBe('ENHANCE_VIDEO_ELEMENT_NOT_FOUND')
+    expect(submitTaskMock).not.toHaveBeenCalled()
+  })
+
+  it('enhance restore returns 400 at route layer and does not enqueue or freeze billing', async () => {
+    const routeCase = routeCases.find((item) => item.name === 'enhance smart crop')!
+    const { POST } = await routeCase.load()
+
+    const res = await POST(
+      buildEditorAiRequest(routeCase.path, defaultBody({ enhanceType: 'restore', selectedElementId: 'video-1', durationSeconds: 7 })),
+      buildContext(),
+    )
+
+    expect(res.status).toBe(400)
+    const json = await res.json() as Record<string, unknown>
+    expect(json.code).toBe('INVALID_PARAMS')
+    expect(json.message).toBe('ENHANCE_RESTORE_UNAVAILABLE')
     expect(submitTaskMock).not.toHaveBeenCalled()
   })
 

@@ -1,7 +1,7 @@
 import { ApiError } from '@/lib/api-errors'
 import { TASK_TYPE } from '@/lib/task/types'
 import { createEditorAiRoute, readEnhanceBillingSeconds } from '../_shared'
-import { ENHANCE_UNSUPPORTED_TYPE, ENHANCE_VIDEO_ELEMENT_NOT_FOUND, findVideoElementInProject } from '@/lib/twick/enhance'
+import { ENHANCE_RESTORE_UNAVAILABLE, ENHANCE_UNSUPPORTED_TYPE, ENHANCE_VIDEO_ELEMENT_NOT_FOUND, findVideoElementInProject } from '@/lib/twick/enhance'
 
 export const POST = createEditorAiRoute({
   taskType: TASK_TYPE.EDITOR_AI_ENHANCE,
@@ -13,6 +13,9 @@ export const POST = createEditorAiRoute({
       : 'smart_crop'
     if (enhanceType !== 'smart_crop' && enhanceType !== 'restore') {
       throw new ApiError('INVALID_PARAMS', { message: ENHANCE_UNSUPPORTED_TYPE })
+    }
+    if (enhanceType === 'restore') {
+      throw new ApiError('INVALID_PARAMS', { message: ENHANCE_RESTORE_UNAVAILABLE })
     }
 
     const selectedElementId = typeof body.selectedElementId === 'string' && body.selectedElementId.trim()

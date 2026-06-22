@@ -240,8 +240,9 @@ export function EnhancePanel() {
           <button
             type="button"
             onClick={() => setMode('restore')}
-            disabled={isRunning}
-            className={`rounded-lg border px-2 py-1 text-[11px] font-medium ${mode === 'restore' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600'}`}
+            disabled
+            title={t('enhance.restoreUnavailable')}
+            className="cursor-not-allowed rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-400 opacity-60"
           >
             {t('enhance.restore')}
           </button>

@@ -7,6 +7,7 @@ export type SmartCropAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right'
 
 export const ENHANCE_VIDEO_ELEMENT_NOT_FOUND = 'ENHANCE_VIDEO_ELEMENT_NOT_FOUND'
 export const ENHANCE_UNSUPPORTED_TYPE = 'ENHANCE_UNSUPPORTED_TYPE'
+export const ENHANCE_RESTORE_UNAVAILABLE = 'ENHANCE_RESTORE_UNAVAILABLE'
 
 function asRecord(value: unknown): JsonRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null
@@ -81,19 +82,81 @@ function normalizeAspectRatio(value: unknown): string | null {
   return trimmed
 }
 
-function readProjectAspectRatio(projectData: TwickTimelineProject): string | null {
+function readProjectSize(projectData: TwickTimelineProject): { width: number; height: number } | null {
   const metadata = asRecord(projectData.metadata)
   const custom = asRecord(metadata?.custom)
   const width = readNumber(custom?.width)
   const height = readNumber(custom?.height)
   if (!width || !height || width <= 0 || height <= 0) return null
-  return `${Math.round(width)}:${Math.round(height)}`
+  return { width, height }
+}
+
+function readProjectAspectRatio(projectData: TwickTimelineProject): string | null {
+  const size = readProjectSize(projectData)
+  if (!size) return null
+  return `${Math.round(size.width)}:${Math.round(size.height)}`
+}
+
+function parseAspectRatio(value: string): number | null {
+  const [widthPart, heightPart] = value.split(':')
+  const width = Number(widthPart)
+  const height = Number(heightPart)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null
+  return width / height
 }
 
 function readElementDurationSeconds(element: JsonRecord): number {
   const start = readNumber(element.s) ?? 0
   const end = readNumber(element.e) ?? start
   return Math.max(0, end - start)
+}
+
+function getAnchorOffset(params: {
+  containerLength: number
+  contentLength: number
+  negativeAnchor: boolean
+  positiveAnchor: boolean
+}): number {
+  if (params.negativeAnchor) return 0
+  if (params.positiveAnchor) return params.containerLength - params.contentLength
+  return (params.containerLength - params.contentLength) / 2
+}
+
+export function calculateSmartCropFrame(params: {
+  canvasWidth: number
+  canvasHeight: number
+  targetAspectRatio: string
+  anchor: SmartCropAnchor
+}): { x: number; y: number; size: [number, number] } {
+  const targetRatio = parseAspectRatio(params.targetAspectRatio) || (params.canvasWidth / params.canvasHeight)
+  const canvasRatio = params.canvasWidth / params.canvasHeight
+  let width = params.canvasWidth
+  let height = params.canvasHeight
+
+  if (targetRatio > canvasRatio) {
+    height = params.canvasWidth / targetRatio
+  } else if (targetRatio < canvasRatio) {
+    width = params.canvasHeight * targetRatio
+  }
+
+  const x = getAnchorOffset({
+    containerLength: params.canvasWidth,
+    contentLength: width,
+    negativeAnchor: params.anchor === 'left',
+    positiveAnchor: params.anchor === 'right',
+  })
+  const y = getAnchorOffset({
+    containerLength: params.canvasHeight,
+    contentLength: height,
+    negativeAnchor: params.anchor === 'top',
+    positiveAnchor: params.anchor === 'bottom',
+  })
+
+  return {
+    x: Number(x.toFixed(3)),
+    y: Number(y.toFixed(3)),
+    size: [Number(width.toFixed(3)), Number(height.toFixed(3))],
+  }
 }
 
 export function findVideoElementInProject(params: {
@@ -135,11 +198,15 @@ export function applySmartCropToVideoElement(params: {
   targetAspectRatio: string
   anchor: SmartCropAnchor
 } {
+  const projectSize = readProjectSize(params.projectData) || { width: 720, height: 1280 }
   const targetAspectRatio = normalizeAspectRatio(params.targetAspectRatio) || readProjectAspectRatio(params.projectData) || '9:16'
   const anchor = normalizeAnchor(params.anchor)
-  const cropStrength = typeof params.cropStrength === 'number' && Number.isFinite(params.cropStrength)
-    ? Math.min(1, Math.max(0, params.cropStrength))
-    : 1
+  const frame = calculateSmartCropFrame({
+    canvasWidth: projectSize.width,
+    canvasHeight: projectSize.height,
+    targetAspectRatio,
+    anchor,
+  })
 
   let replacedElementId: string | null = null
   let sourcePanelId: string | null = null
@@ -164,16 +231,13 @@ export function applySmartCropToVideoElement(params: {
 
       return {
         ...record,
+        objectFit: 'cover',
+        frame: {
+          ...(asRecord(record.frame) || {}),
+          ...frame,
+        },
         props: {
           ...props,
-          objectFit: 'cover',
-          fit: 'cover',
-          crop: {
-            mode: 'smart_crop',
-            targetAspectRatio,
-            anchor,
-            strength: cropStrength,
-          },
         },
         metadata: {
           ...metadata,

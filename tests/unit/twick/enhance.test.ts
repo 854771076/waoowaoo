@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applySmartCropToVideoElement,
+  calculateSmartCropFrame,
   ENHANCE_VIDEO_ELEMENT_NOT_FOUND,
   findVideoElementInProject,
 } from '@/lib/twick/enhance'
@@ -62,16 +63,48 @@ describe('editor enhance twick helpers', () => {
     const video = result.projectData.tracks?.[0]?.elements?.[0]
     expect(video).toEqual(expect.objectContaining({
       id: 'video-1',
+      objectFit: 'cover',
+      frame: expect.objectContaining({
+        x: 0,
+        y: 0,
+        size: [720, 405],
+      }),
       props: expect.objectContaining({
         src: 'mediaobj://video-1',
-        objectFit: 'cover',
-        fit: 'cover',
-        crop: expect.objectContaining({ mode: 'smart_crop', targetAspectRatio: '16:9', anchor: 'top' }),
       }),
       metadata: expect.objectContaining({ source: 'ai_enhanced', enhanceType: 'smart_crop', originalSrc: 'mediaobj://video-1' }),
     }))
+    expect(video?.props?.objectFit).toBeUndefined()
+    expect(video?.props?.fit).toBeUndefined()
+    expect(video?.props?.crop).toBeUndefined()
     expect(result.projectData.tracks?.[1]?.elements?.[0]?.props?.src).toBe('mediaobj://audio-1')
     expect(original.tracks?.[0]?.elements?.[0]?.props?.objectFit).toBeUndefined()
+  })
+
+  it('calculates centered 9:16 crop frame inside a 16:9 canvas with exact aspect math', () => {
+    expect(calculateSmartCropFrame({
+      canvasWidth: 1920,
+      canvasHeight: 1080,
+      targetAspectRatio: '9:16',
+      anchor: 'center',
+    })).toEqual({
+      x: 656.25,
+      y: 0,
+      size: [607.5, 1080],
+    })
+  })
+
+  it('calculates anchored 16:9 crop frame inside a 9:16 canvas with exact aspect math', () => {
+    expect(calculateSmartCropFrame({
+      canvasWidth: 720,
+      canvasHeight: 1280,
+      targetAspectRatio: '16:9',
+      anchor: 'bottom',
+    })).toEqual({
+      x: 0,
+      y: 875,
+      size: [720, 405],
+    })
   })
 
   it('throws a stable error when no selected video exists', () => {
