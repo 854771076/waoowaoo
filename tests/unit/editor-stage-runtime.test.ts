@@ -493,6 +493,90 @@ describe('useEditorProjectSync', () => {
     expect(savedProjects).toEqual([editedProject])
   })
 
+  it('flushProjectSave waits for an in-flight save and then persists edits queued during it', async () => {
+    const savedProjects: TwickTimelineProject[] = []
+    const saveDeferreds = [createDeferred<unknown>(), createDeferred<unknown>()]
+    const saveRequests: TwickTimelineProject[] = []
+
+    apiFetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        const requestIndex = saveRequests.length
+        const body = JSON.parse(String(options.body)) as { projectData: TwickTimelineProject }
+        saveRequests.push(body.projectData)
+        await saveDeferreds[requestIndex].promise
+        savedProjects.push(body.projectData)
+        return okJson({
+          data: {
+            id: 'editor-project-1',
+            version: savedProjects.length + 1,
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        })
+      }
+
+      if (url.includes('/editor?episodeId=')) {
+        return okJson({
+          data: {
+            id: 'editor-project-1',
+            version: 1,
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            projectData: createProject({ metadata: { custom: { marker: 'server' } } }),
+          },
+        })
+      }
+
+      return okJson({ data: null })
+    })
+
+    const hook = renderEditorProjectSyncHook(defaultHookProps)
+
+    await waitForExpectation(() => {
+      expect(hook.result.current?.projectData).not.toBeNull()
+    })
+
+    const editA = createProject({ metadata: { custom: { marker: 'in-flight-a' } } })
+    act(() => {
+      hook.result.current?.updateProjectData(editA)
+      hook.result.current?.saveNow()
+    })
+
+    await waitForExpectation(() => {
+      expect(saveRequests).toEqual([editA])
+    })
+
+    const editB = createProject({ metadata: { custom: { marker: 'queued-b' } } })
+    act(() => {
+      hook.result.current?.updateProjectData(editB)
+    })
+
+    let flushResolved = false
+    const flushPromise = hook.result.current?.flushProjectSave().then(() => {
+      flushResolved = true
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(flushResolved).toBe(false)
+    expect(saveRequests).toEqual([editA])
+    expect(savedProjects).toEqual([])
+
+    saveDeferreds[0].resolve({})
+    await waitForExpectation(() => {
+      expect(saveRequests).toEqual([editA, editB])
+    })
+    expect(flushResolved).toBe(false)
+    expect(savedProjects).toEqual([editA])
+
+    saveDeferreds[1].resolve({})
+    await act(async () => {
+      await flushPromise
+    })
+
+    expect(flushResolved).toBe(true)
+    expect(savedProjects).toEqual([editA, editB])
+  })
+
   it('flushProjectSave rejects when the pending save fails so callers can stop follow-up work', async () => {
     const saveError = new Error('save failed during flush')
 

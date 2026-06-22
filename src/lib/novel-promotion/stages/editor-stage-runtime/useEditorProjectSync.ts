@@ -14,6 +14,7 @@ import type {
 } from './types'
 
 export const EDITOR_PROJECT_SAVE_DEBOUNCE_MS = 1000
+const FLUSH_PROJECT_SAVE_MAX_ITERATIONS = 4
 
 export function createDebouncedAction<TArgs extends unknown[]>(
   action: (...args: TArgs) => void,
@@ -173,6 +174,8 @@ export function useEditorProjectSync({
   const initializedKeyRef = useRef<string | null>(null)
   const projectDataRef = useRef<TwickTimelineProject | null>(null)
   const versionRef = useRef(0)
+  const localProjectRevisionRef = useRef(0)
+  const lastSavedProjectRevisionRef = useRef(0)
   const savePendingRef = useRef(false)
   const saveMutationPendingRef = useRef(false)
   const saveErrorRef = useRef<string | null>(null)
@@ -255,6 +258,7 @@ export function useEditorProjectSync({
   const startSave = useCallback((data: TwickTimelineProject, saveVersion = versionRef.current) => {
     if (!projectId || !episodeId || saveMutationPendingRef.current) return null
 
+    const savedRevision = localProjectRevisionRef.current
     savePendingRef.current = false
     saveMutationPendingRef.current = true
 
@@ -262,6 +266,7 @@ export function useEditorProjectSync({
     savePromise = saveMutation.mutateAsync({ projectData: data, version: saveVersion })
       .then((result) => {
         versionRef.current = result.version
+        lastSavedProjectRevisionRef.current = Math.max(lastSavedProjectRevisionRef.current, savedRevision)
       })
       .finally(() => {
         if (inFlightSavePromiseRef.current === savePromise) {
@@ -301,9 +306,9 @@ export function useEditorProjectSync({
 
   const flushPendingSave = useCallback(() => {
     if (hasConflict) return null
-    if (saveMutationPendingRef.current) return inFlightSavePromiseRef.current
     const flushed = debounceRef.current?.flush() ?? false
     if (flushed) return inFlightSavePromiseRef.current
+    if (saveMutationPendingRef.current) return inFlightSavePromiseRef.current
     if (!savePendingRef.current) return null
     const currentProjectData = projectDataRef.current
     if (!currentProjectData) {
@@ -349,6 +354,8 @@ export function useEditorProjectSync({
     setSaveError(null)
     setHasConflict(false)
     setLastSavedAt(null)
+    localProjectRevisionRef.current = 0
+    lastSavedProjectRevisionRef.current = 0
     debounceRef.current?.cancel()
     if (!projectId || !episodeId) {
       initializedKeyRef.current = key
@@ -371,6 +378,8 @@ export function useEditorProjectSync({
     if (record?.projectData) {
       setProjectIdState(record.id)
       setProjectData(record.projectData)
+      localProjectRevisionRef.current = 0
+      lastSavedProjectRevisionRef.current = 0
       setVersion(record.version)
       setStatus('saved')
       setLastSavedAt(record.updatedAt ? new Date(record.updatedAt) : null)
@@ -380,6 +389,8 @@ export function useEditorProjectSync({
 
     if (panelVideos.length === 0) {
       setProjectData(null)
+      localProjectRevisionRef.current = 0
+      lastSavedProjectRevisionRef.current = 0
       setVersion(0)
       setStatus('idle')
       initializedKeyRef.current = key
@@ -412,6 +423,7 @@ export function useEditorProjectSync({
   ])
 
   const updateProjectData = useCallback((nextData: TwickTimelineProject) => {
+    localProjectRevisionRef.current += 1
     setProjectData(nextData)
     projectDataRef.current = nextData
     setSaveError(null)
@@ -430,19 +442,28 @@ export function useEditorProjectSync({
   }, [saveMutation.isPending, triggerSave])
 
   const flushProjectSave = useCallback(async () => {
-    const savePromise = flushPendingSave() ?? inFlightSavePromiseRef.current
-    if (!savePromise) {
+    const targetRevision = localProjectRevisionRef.current
+
+    for (let iteration = 0; iteration < FLUSH_PROJECT_SAVE_MAX_ITERATIONS; iteration += 1) {
+      const savePromise = flushPendingSave() ?? inFlightSavePromiseRef.current
+      if (savePromise) {
+        await savePromise
+      }
+
       if (saveErrorRef.current) {
         throw new Error(saveErrorRef.current)
       }
-      return
+
+      if (lastSavedProjectRevisionRef.current >= targetRevision) {
+        return
+      }
+
+      if (!inFlightSavePromiseRef.current && !savePendingRef.current && !debounceRef.current?.hasPending()) {
+        return
+      }
     }
 
-    await savePromise
-
-    if (saveErrorRef.current) {
-      throw new Error(saveErrorRef.current)
-    }
+    throw new Error('Timed out while flushing editor project save')
   }, [flushPendingSave])
 
   const forceSave = useCallback(() => {
@@ -473,6 +494,8 @@ export function useEditorProjectSync({
         setProjectIdState(record.id)
         setProjectData(record.projectData)
         projectDataRef.current = record.projectData
+        localProjectRevisionRef.current = 0
+        lastSavedProjectRevisionRef.current = 0
         setVersion(record.version)
         versionRef.current = record.version
         setLastSavedAt(record.updatedAt ? new Date(record.updatedAt) : null)
@@ -484,6 +507,8 @@ export function useEditorProjectSync({
 
       setProjectData(null)
       projectDataRef.current = null
+      localProjectRevisionRef.current = 0
+      lastSavedProjectRevisionRef.current = 0
       setVersion(0)
       versionRef.current = 0
       setStatus('idle')
