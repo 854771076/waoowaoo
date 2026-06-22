@@ -20,23 +20,40 @@ export function createDebouncedAction<TArgs extends unknown[]>(
   delayMs: number,
 ) {
   let timer: ReturnType<typeof setTimeout> | null = null
+  let latestArgs: TArgs | null = null
 
   const cancel = () => {
     if (timer) {
       clearTimeout(timer)
       timer = null
     }
+    latestArgs = null
   }
 
   const schedule = (...args: TArgs) => {
     cancel()
+    latestArgs = args
     timer = setTimeout(() => {
+      const argsToFlush = latestArgs
       timer = null
-      action(...args)
+      latestArgs = null
+      if (argsToFlush) action(...argsToFlush)
     }, delayMs)
   }
 
-  return { schedule, cancel }
+  const flush = () => {
+    if (!timer || !latestArgs) return false
+    const argsToFlush = latestArgs
+    clearTimeout(timer)
+    timer = null
+    latestArgs = null
+    action(...argsToFlush)
+    return true
+  }
+
+  const hasPending = () => Boolean(timer && latestArgs)
+
+  return { schedule, cancel, flush, hasPending }
 }
 
 export function editorProjectQueryKey(projectId: string | null, episodeId: string | null) {
@@ -124,11 +141,12 @@ async function saveEditorProject(params: {
   return normalizeSaveResponse(await response.json())
 }
 
-interface UseEditorProjectSyncParams {
+export interface UseEditorProjectSyncParams {
   projectId: string | null
   episodeId: string | null
   panelVideos: PanelVideoSource[]
   voiceLineSources: VoiceLineSource[]
+  isAssetDataLoaded: boolean
   videoWidth: number
   videoHeight: number
 }
@@ -138,6 +156,7 @@ export function useEditorProjectSync({
   episodeId,
   panelVideos,
   voiceLineSources,
+  isAssetDataLoaded,
   videoWidth,
   videoHeight,
 }: UseEditorProjectSyncParams) {
@@ -153,6 +172,8 @@ export function useEditorProjectSync({
   const initializedKeyRef = useRef<string | null>(null)
   const projectDataRef = useRef<TwickTimelineProject | null>(null)
   const versionRef = useRef(0)
+  const savePendingRef = useRef(false)
+  const saveMutationPendingRef = useRef(false)
   const debounceRef = useRef<ReturnType<typeof createDebouncedAction<[TwickTimelineProject]>> | null>(null)
 
   useEffect(() => {
@@ -172,8 +193,8 @@ export function useEditorProjectSync({
     enabled: !!projectId && !!episodeId,
   })
 
-  const saveMutation = useMutation({
-    mutationFn: (input: { projectData: TwickTimelineProject; version: number }) => {
+  const saveMutation = useMutation<EditorProjectSaveResult, Error, { projectData: TwickTimelineProject; version: number }>({
+    mutationFn: (input) => {
       if (!projectId || !episodeId) throw new Error('Project ID and episode ID are required')
       return saveEditorProject({
         projectId,
@@ -214,21 +235,75 @@ export function useEditorProjectSync({
     },
   })
 
+  useEffect(() => {
+    saveMutationPendingRef.current = saveMutation.isPending
+  }, [saveMutation.isPending])
+
+  useEffect(() => {
+    if (!saveMutation.isPending && savePendingRef.current && debounceRef.current?.hasPending() === false) {
+      const currentProjectData = projectDataRef.current
+      if (currentProjectData && !hasConflict) {
+        savePendingRef.current = false
+        saveMutation.mutate({ projectData: currentProjectData, version: versionRef.current })
+      }
+    }
+  }, [hasConflict, saveMutation, saveMutation.isPending])
+
   const triggerSave = useCallback((data: TwickTimelineProject, saveVersion = versionRef.current) => {
-    if (!projectId || !episodeId) return
+    if (!projectId || !episodeId || saveMutationPendingRef.current) return
+    savePendingRef.current = false
     saveMutation.mutate({ projectData: data, version: saveVersion })
   }, [episodeId, projectId, saveMutation])
 
   useEffect(() => {
-    debounceRef.current?.cancel()
+    debounceRef.current?.flush()
     debounceRef.current = createDebouncedAction((data: TwickTimelineProject) => {
       triggerSave(data, versionRef.current)
     }, EDITOR_PROJECT_SAVE_DEBOUNCE_MS)
 
     return () => {
-      debounceRef.current?.cancel()
+      debounceRef.current?.flush()
     }
   }, [triggerSave])
+
+  const flushPendingSave = useCallback(() => {
+    if (hasConflict || saveMutationPendingRef.current) return false
+    const flushed = debounceRef.current?.flush() ?? false
+    if (flushed) return true
+    if (!savePendingRef.current) return false
+    const currentProjectData = projectDataRef.current
+    if (!currentProjectData) {
+      savePendingRef.current = false
+      return false
+    }
+    triggerSave(currentProjectData, versionRef.current)
+    return true
+  }, [hasConflict, triggerSave])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+
+    const handleBlur = () => {
+      flushPendingSave()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingSave()
+      }
+    }
+
+    window.addEventListener('blur', handleBlur)
+    window.addEventListener('pagehide', handleBlur)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      flushPendingSave()
+      window.removeEventListener('blur', handleBlur)
+      window.removeEventListener('pagehide', handleBlur)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [flushPendingSave])
 
   useEffect(() => {
     const key = `${projectId ?? ''}:${episodeId ?? ''}`
@@ -247,7 +322,7 @@ export function useEditorProjectSync({
   }, [episodeId, projectId])
 
   useEffect(() => {
-    if (!projectId || !episodeId || editorProjectQuery.isLoading) return
+    if (!projectId || !episodeId || editorProjectQuery.isLoading || !isAssetDataLoaded) return
     const key = `${projectId}:${episodeId}`
     if (initializedKeyRef.current === key) return
 
@@ -269,7 +344,13 @@ export function useEditorProjectSync({
       return
     }
 
-    if (panelVideos.length === 0) return
+    if (panelVideos.length === 0) {
+      setProjectData(null)
+      setVersion(0)
+      setStatus('idle')
+      initializedKeyRef.current = key
+      return
+    }
 
     const initialProject = buildInitialProject(panelVideos, voiceLineSources, {
       width: videoWidth,
@@ -287,6 +368,7 @@ export function useEditorProjectSync({
     editorProjectQuery.error,
     editorProjectQuery.isLoading,
     episodeId,
+    isAssetDataLoaded,
     panelVideos,
     projectId,
     triggerSave,
@@ -297,9 +379,11 @@ export function useEditorProjectSync({
 
   const updateProjectData = useCallback((nextData: TwickTimelineProject) => {
     setProjectData(nextData)
+    projectDataRef.current = nextData
     setSaveError(null)
     if (hasConflict) return
     setStatus('idle')
+    savePendingRef.current = true
     debounceRef.current?.schedule(nextData)
   }, [hasConflict])
 
@@ -307,6 +391,7 @@ export function useEditorProjectSync({
     const currentProjectData = projectDataRef.current
     if (!currentProjectData || saveMutation.isPending) return
     debounceRef.current?.cancel()
+    savePendingRef.current = true
     triggerSave(currentProjectData, versionRef.current)
   }, [saveMutation.isPending, triggerSave])
 
@@ -314,6 +399,7 @@ export function useEditorProjectSync({
     const currentProjectData = projectDataRef.current
     if (!currentProjectData || saveMutation.isPending) return
     debounceRef.current?.cancel()
+    savePendingRef.current = true
     setHasConflict(false)
     setSaveError(null)
     triggerSave(currentProjectData, versionRef.current)
@@ -321,6 +407,7 @@ export function useEditorProjectSync({
 
   const reloadFromServer = useCallback(async () => {
     debounceRef.current?.cancel()
+    savePendingRef.current = false
     setHasConflict(false)
     setSaveError(null)
     setStatus('loading')

@@ -110,10 +110,13 @@ export function useEditorStageDataLoader(projectId: string | null, episodeId: st
     [matchedVoiceLinesQuery.data],
   )
 
+  const isLoading = storyboardsQuery.isLoading || matchedVoiceLinesQuery.isLoading
+
   return {
     panelVideos,
     voiceLineSources,
-    isLoading: storyboardsQuery.isLoading || matchedVoiceLinesQuery.isLoading,
+    isLoading,
+    isLoaded: !isLoading,
     isFetching: storyboardsQuery.isFetching || matchedVoiceLinesQuery.isFetching,
     error: storyboardsQuery.error || matchedVoiceLinesQuery.error,
     hasVideoPanels: panelVideos.length > 0,

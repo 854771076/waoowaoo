@@ -60,6 +60,7 @@ export function EditorStageRuntimeProvider({
     panelVideos,
     voiceLineSources,
     isLoading: isLoadingData,
+    isLoaded: isAssetDataLoaded,
     isFetching: isFetchingData,
     error: dataError,
     hasVideoPanels,
@@ -85,6 +86,7 @@ export function EditorStageRuntimeProvider({
     episodeId,
     panelVideos,
     voiceLineSources,
+    isAssetDataLoaded,
     videoWidth,
     videoHeight,
   })

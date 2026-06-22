@@ -1,9 +1,190 @@
-import { describe, expect, it, vi } from 'vitest'
-import { createDebouncedAction } from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorProjectSync'
+// @vitest-environment jsdom
+
+import { act } from 'react'
+import { createElement } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { PanelVideoSource, TwickTimelineProject, VoiceLineSource } from '@/lib/twick/types'
+import {
+  createDebouncedAction,
+  EDITOR_PROJECT_SAVE_DEBOUNCE_MS,
+  useEditorProjectSync,
+  type UseEditorProjectSyncParams,
+} from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorProjectSync'
 import {
   mapStoryboardsToPanelVideos,
   mapVoiceLinesToSources,
 } from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorStageDataLoader'
+
+const apiFetchMock = vi.hoisted(() => vi.fn())
+
+;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+vi.mock('@/lib/api-fetch', () => ({
+  apiFetch: apiFetchMock,
+}))
+
+const mountedRoots: Array<{ root: Root; container: HTMLDivElement }> = []
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  apiFetchMock.mockReset()
+
+  for (const { root, container } of mountedRoots.splice(0)) {
+    act(() => {
+      root.unmount()
+    })
+    container.remove()
+  }
+})
+
+function okJson(payload: unknown) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => payload,
+  }
+}
+
+function createEmptyEditorApiMock() {
+  const savedProjects: TwickTimelineProject[] = []
+
+  apiFetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'PUT') {
+      const body = JSON.parse(String(options.body)) as { projectData: TwickTimelineProject }
+      savedProjects.push(body.projectData)
+      return okJson({
+        data: {
+          id: 'editor-project-1',
+          version: savedProjects.length,
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      })
+    }
+
+    if (url.includes('/editor?episodeId=')) {
+      return okJson({ data: null })
+    }
+
+    return okJson({ data: null })
+  })
+
+  return { savedProjects }
+}
+
+function createProject(overrides: Partial<TwickTimelineProject> = {}): TwickTimelineProject {
+  return {
+    version: 1,
+    metadata: {
+      custom: {
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        duration: 3,
+      },
+    },
+    tracks: [
+      {
+        id: 'track-video-main',
+        name: '视频',
+        type: 'video',
+        elements: [],
+      },
+    ],
+    ...overrides,
+  } as TwickTimelineProject
+}
+
+const panelVideo: PanelVideoSource = {
+  panelId: 'panel-1',
+  storyboardId: 'storyboard-1',
+  videoMediaObjectId: 'video-media-1',
+  duration: 3,
+  description: 'panel motion',
+}
+
+const voiceLine: VoiceLineSource = {
+  voiceLineId: 'voice-line-1',
+  audioMediaObjectId: 'audio-media-1',
+  duration: 2,
+  text: 'Hello',
+  speaker: 'Alice',
+}
+
+const defaultHookProps: UseEditorProjectSyncParams = {
+  projectId: 'project-1',
+  episodeId: 'episode-1',
+  panelVideos: [],
+  voiceLineSources: [],
+  isAssetDataLoaded: true,
+  videoWidth: 1920,
+  videoHeight: 1080,
+}
+
+function renderEditorProjectSyncHook(initialProps: UseEditorProjectSyncParams) {
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  const result: { current: ReturnType<typeof useEditorProjectSync> | null } = { current: null }
+
+  function HookHarness(props: UseEditorProjectSyncParams) {
+    result.current = useEditorProjectSync(props)
+    return null
+  }
+
+  function render(props: UseEditorProjectSyncParams) {
+    act(() => {
+      root.render(createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(HookHarness, props),
+      ))
+    })
+  }
+
+  render(initialProps)
+  mountedRoots.push({ root, container })
+
+  return {
+    result,
+    rerender: render,
+    unmount: () => {
+      act(() => {
+        root.unmount()
+      })
+      const index = mountedRoots.findIndex((entry) => entry.root === root)
+      if (index >= 0) mountedRoots.splice(index, 1)
+      container.remove()
+    },
+  }
+}
+
+async function waitForExpectation(assertion: () => void) {
+  const start = Date.now()
+  let lastError: unknown
+
+  while (Date.now() - start < 2000) {
+    try {
+      assertion()
+      return
+    } catch (error) {
+      lastError = error
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      })
+    }
+  }
+
+  throw lastError
+}
 
 describe('editor-stage-runtime data mapping', () => {
   it('maps storyboard groups to Twick panel video sources using video media object ids', () => {
@@ -131,5 +312,123 @@ describe('editor-stage-runtime debounce helper', () => {
     expect(action).toHaveBeenCalledTimes(1)
 
     vi.useRealTimers()
+  })
+})
+
+describe('useEditorProjectSync', () => {
+  it('waits for voice line data before building and saving the initial Twick project', async () => {
+    const { savedProjects } = createEmptyEditorApiMock()
+    const hook = renderEditorProjectSyncHook({
+      ...defaultHookProps,
+      panelVideos: [panelVideo],
+      voiceLineSources: [],
+      isAssetDataLoaded: false,
+    })
+
+    await waitForExpectation(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/novel-promotion/project-1/editor?episodeId=episode-1')
+    })
+    expect(savedProjects).toEqual([])
+
+    hook.rerender({
+      ...defaultHookProps,
+      panelVideos: [panelVideo],
+      voiceLineSources: [voiceLine],
+      isAssetDataLoaded: true,
+    })
+
+    await waitForExpectation(() => {
+      expect(savedProjects).toHaveLength(1)
+      expect(savedProjects[0].tracks.some((track) => track.type === 'audio' && track.elements.length === 1)).toBe(true)
+    })
+  })
+
+  it('flushes a pending debounced save on window blur and hidden visibilitychange', async () => {
+    const { savedProjects } = createEmptyEditorApiMock()
+    const hook = renderEditorProjectSyncHook({
+      ...defaultHookProps,
+      panelVideos: [panelVideo],
+      voiceLineSources: [voiceLine],
+      isAssetDataLoaded: true,
+    })
+
+    await waitForExpectation(() => {
+      expect(savedProjects).toHaveLength(1)
+    })
+
+    const editedProject = createProject({
+      metadata: {
+        custom: {
+          width: 1920,
+          height: 1080,
+          fps: 30,
+          duration: 4,
+          marker: 'blur-save',
+        },
+      },
+    })
+
+    act(() => {
+      hook.result.current?.updateProjectData(editedProject)
+    })
+    expect(savedProjects).toHaveLength(1)
+
+    act(() => {
+      window.dispatchEvent(new Event('blur'))
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(savedProjects).toHaveLength(2)
+    expect(savedProjects[1]).toEqual(editedProject)
+
+    const secondEdit = createProject({
+      metadata: {
+        custom: {
+          width: 1920,
+          height: 1080,
+          fps: 30,
+          duration: 5,
+          marker: 'visibility-save',
+        },
+      },
+    })
+    const visibilityStateSpy = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+
+    act(() => {
+      hook.result.current?.updateProjectData(secondEdit)
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(savedProjects).toHaveLength(3)
+    expect(savedProjects[2]).toEqual(secondEdit)
+
+    visibilityStateSpy.mockRestore()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, EDITOR_PROJECT_SAVE_DEBOUNCE_MS + 20))
+    })
+    expect(savedProjects).toHaveLength(3)
+  })
+
+  it('enters idle instead of staying loading when assets are loaded but no panel videos exist', async () => {
+    createEmptyEditorApiMock()
+    const hook = renderEditorProjectSyncHook({
+      ...defaultHookProps,
+      panelVideos: [],
+      voiceLineSources: [],
+      isAssetDataLoaded: true,
+    })
+
+    await waitForExpectation(() => {
+      expect(hook.result.current?.status).toBe('idle')
+      expect(hook.result.current?.isLoading).toBe(false)
+      expect(hook.result.current?.projectData).toBeNull()
+    })
   })
 })
