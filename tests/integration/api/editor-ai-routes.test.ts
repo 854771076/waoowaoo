@@ -183,14 +183,6 @@ const routeCases: RouteCase[] = [
       apiType: 'voice',
     },
   },
-  {
-    name: 'transition',
-    path: '/api/novel-promotion/project-1/editor/ai/transition',
-    load: () => import('@/app/api/novel-promotion/[projectId]/editor/ai/transition/route'),
-    taskType: TASK_TYPE.EDITOR_AI_TRANSITION,
-    action: 'transition',
-    expectedBilling: null,
-  },
 ]
 
 describe('editor AI route skeletons', () => {
@@ -205,7 +197,10 @@ describe('editor AI route skeletons', () => {
         version: 1,
         metadata: { custom: { width: 720, height: 1280, duration: 6 } },
         tracks: [
-          { id: 'track-video-main', type: 'video', elements: [{ id: 'video-1', type: 'video', s: 0, e: 6, props: { src: 'mediaobj://video-1' }, metadata: { panelId: 'panel-1' } }] },
+          { id: 'track-video-main', type: 'video', elements: [
+            { id: 'video-1', type: 'video', s: 0, e: 6, props: { src: 'mediaobj://video-1' }, metadata: { panelId: 'panel-1', storyboardId: 'storyboard-1' } },
+            { id: 'video-2', type: 'video', s: 6, e: 10, props: { src: 'mediaobj://video-2' }, metadata: { panelId: 'panel-2', storyboardId: 'storyboard-2' } },
+          ] }
         ],
       },
     })
@@ -699,5 +694,60 @@ describe('editor AI route skeletons', () => {
     expect(firstSubmit?.requestId).not.toBe(secondSubmit?.requestId)
     expect(firstSubmit?.dedupeKey).toEqual(expect.stringMatching(/^editor-ai:smart-cut:editor-project-1:[a-f0-9]{16}$/))
     expect(secondSubmit?.dedupeKey).toBe(firstSubmit?.dedupeKey)
+  })
+
+  describe('transition synchronous route', () => {
+    const path = '/api/novel-promotion/project-1/editor/ai/transition'
+    const body = defaultBody({ fromElementId: 'video-1', toElementId: 'video-2' })
+
+    it('returns 401 when unauthenticated', async () => {
+      const { POST } = await import('@/app/api/novel-promotion/[projectId]/editor/ai/transition/route')
+      authState.userId = null
+
+      const res = await POST(buildEditorAiRequest(path, body), buildContext())
+
+      expect(res.status).toBe(401)
+      expect(submitTaskMock).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 for another user project', async () => {
+      const { POST } = await import('@/app/api/novel-promotion/[projectId]/editor/ai/transition/route')
+      prismaMock.project.findFirst.mockResolvedValueOnce(null)
+
+      const res = await POST(buildEditorAiRequest(path, body), buildContext())
+
+      expect(res.status).toBe(404)
+      expect(submitTaskMock).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 for another project editorProject', async () => {
+      const { POST } = await import('@/app/api/novel-promotion/[projectId]/editor/ai/transition/route')
+      prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValueOnce(null)
+
+      const res = await POST(buildEditorAiRequest(path, body), buildContext())
+
+      expect(res.status).toBe(404)
+      expect(submitTaskMock).not.toHaveBeenCalled()
+    })
+
+    it('returns free recommendations synchronously without enqueueing or billing', async () => {
+      const { POST } = await import('@/app/api/novel-promotion/[projectId]/editor/ai/transition/route')
+
+      const res = await POST(buildEditorAiRequest(path, body), buildContext())
+
+      expect(res.status).toBe(200)
+      const json = await res.json() as {
+        data: {
+          free: boolean
+          billing: null
+          recommendations: Array<{ kind: string; duration: number; confidence: number; reason: string }>
+        }
+      }
+      expect(json.data.free).toBe(true)
+      expect(json.data.billing).toBeNull()
+      expect(json.data.recommendations).toHaveLength(4)
+      expect(json.data.recommendations[0].kind).toBe('fade')
+      expect(submitTaskMock).not.toHaveBeenCalled()
+    })
   })
 })

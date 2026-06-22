@@ -313,6 +313,32 @@
           "anchorRight": "Right",
           "selected": "Selected {id} · duration about {seconds}s",
           "mvpNote": "MVP: smart crop updates Twick objectFit/frame parameters only, so it does not create a new MediaObject or EditorAsset."
+        },
+        "transition": {
+          "title": "Smart transition",
+          "description": "Select a video/image clip, then get free rule-based recommendations for the transition to the next clip.",
+          "button": "Recommend transitions",
+          "runningButton": "Analyzing...",
+          "running": "Analyzing adjacent clips...",
+          "failed": "Transition recommendation failed. Please try again.",
+          "saveConflict": "The editor project has a save conflict. Resolve it before recommending transitions.",
+          "unsavedChanges": "Current editor changes have not been saved. Save successfully before recommending transitions.",
+          "missingContext": "Missing current episode, editor project, or selected adjacent clips.",
+          "loading": "Loading editor data...",
+          "selectClip": "Select a video or image clip on the timeline first.",
+          "noNextClip": "Select a clip that has a following video/image clip on the same track.",
+          "elementNotFound": "Could not find the selected adjacent clips in the saved timeline.",
+          "applyFailed": "Could not apply transition to the timeline.",
+          "applied": "Applied {kind} transition and saved.",
+          "selectedPair": "Selected pair: {from} → {to}",
+          "duration": "Duration {seconds}s",
+          "freeNote": "Free: rule-based local analysis only, no provider call and no billing freeze.",
+          "kinds": {
+            "fade": "Fade",
+            "dissolve": "Dissolve",
+            "slide": "Slide",
+            "zoom": "Zoom"
+          }
         }
       },
       "properties": {

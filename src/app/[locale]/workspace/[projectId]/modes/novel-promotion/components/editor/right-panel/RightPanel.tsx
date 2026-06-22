@@ -6,6 +6,7 @@ import { useTimelineContext } from '@twick/timeline'
 import { CaptionPanel } from './ai/CaptionPanel'
 import { EnhancePanel } from './ai/EnhancePanel'
 import { SmartCutPanel } from './ai/SmartCutPanel'
+import { TransitionPanel } from './ai/TransitionPanel'
 import { VoiceOptimizePanel } from './ai/VoiceOptimizePanel'
 import { CaptionStylePanel } from './properties/CaptionStylePanel'
 
@@ -53,6 +54,7 @@ function AiPanel() {
       <CaptionPanel />
       <EnhancePanel />
       <VoiceOptimizePanel />
+      <TransitionPanel />
       <div className="text-center text-[10px] text-slate-400">{t('phase2Hint')}</div>
     </div>
   )

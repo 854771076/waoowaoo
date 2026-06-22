@@ -313,6 +313,32 @@
           "anchorRight": "右侧",
           "selected": "已选 {id} · 时长约 {seconds}s",
           "mvpNote": "MVP：智能裁剪仅更新 Twick objectFit/frame 参数，不生成新 MediaObject 或 EditorAsset。"
+        },
+        "transition": {
+          "title": "智能转场",
+          "description": "选中视频/图片片段后，免费基于规则推荐到下一个片段的转场。",
+          "button": "推荐转场",
+          "runningButton": "分析中...",
+          "running": "正在分析相邻片段...",
+          "failed": "转场推荐失败，请稍后重试。",
+          "saveConflict": "编辑器项目存在保存冲突，请先解决冲突后再推荐转场。",
+          "unsavedChanges": "当前编辑内容尚未保存，请保存成功后再推荐转场。",
+          "missingContext": "缺少当前剧集、编辑项目或选中的相邻片段。",
+          "loading": "正在加载编辑器数据...",
+          "selectClip": "请先在时间轴选中一个视频或图片片段。",
+          "noNextClip": "请选择同一轨道上后面还有视频/图片片段的片段。",
+          "elementNotFound": "保存的时间轴中找不到选中的相邻片段。",
+          "applyFailed": "无法将转场应用到时间轴。",
+          "applied": "已应用 {kind} 转场并保存。",
+          "selectedPair": "已选片段对：{from} → {to}",
+          "duration": "时长 {seconds}s",
+          "freeNote": "免费：仅使用规则分析，不调用 provider，也不预冻结费用。",
+          "kinds": {
+            "fade": "淡入淡出",
+            "dissolve": "叠化",
+            "slide": "滑动",
+            "zoom": "缩放"
+          }
         }
       },
       "properties": {
