@@ -48,12 +48,24 @@ function okJson(payload: unknown) {
   }
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
+}
+
 function createEmptyEditorApiMock() {
   const savedProjects: TwickTimelineProject[] = []
+  const saveAttempts: Array<{ projectData: TwickTimelineProject; version: number }> = []
 
   apiFetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
     if (options?.method === 'PUT') {
-      const body = JSON.parse(String(options.body)) as { projectData: TwickTimelineProject }
+      const body = JSON.parse(String(options.body)) as { projectData: TwickTimelineProject; version: number }
+      saveAttempts.push({ projectData: body.projectData, version: body.version })
       savedProjects.push(body.projectData)
       return okJson({
         data: {
@@ -71,7 +83,7 @@ function createEmptyEditorApiMock() {
     return okJson({ data: null })
   })
 
-  return { savedProjects }
+  return { savedProjects, saveAttempts }
 }
 
 function createProject(overrides: Partial<TwickTimelineProject> = {}): TwickTimelineProject {
@@ -414,6 +426,127 @@ describe('useEditorProjectSync', () => {
       await new Promise((resolve) => setTimeout(resolve, EDITOR_PROJECT_SAVE_DEBOUNCE_MS + 20))
     })
     expect(savedProjects).toHaveLength(3)
+  })
+
+  it('flushProjectSave waits for a pending debounced save to finish before resolving', async () => {
+    const savedProjects: TwickTimelineProject[] = []
+    const saveDeferred = createDeferred<unknown>()
+    let saveRequestStarted = false
+
+    apiFetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        const body = JSON.parse(String(options.body)) as { projectData: TwickTimelineProject }
+        saveRequestStarted = true
+        await saveDeferred.promise
+        savedProjects.push(body.projectData)
+        return okJson({
+          data: {
+            id: 'editor-project-1',
+            version: savedProjects.length,
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        })
+      }
+
+      if (url.includes('/editor?episodeId=')) {
+        return okJson({
+          data: {
+            id: 'editor-project-1',
+            version: 1,
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            projectData: createProject({ metadata: { custom: { marker: 'server' } } }),
+          },
+        })
+      }
+
+      return okJson({ data: null })
+    })
+
+    const hook = renderEditorProjectSyncHook(defaultHookProps)
+
+    await waitForExpectation(() => {
+      expect(hook.result.current?.projectData).not.toBeNull()
+    })
+
+    const editedProject = createProject({ metadata: { custom: { marker: 'flush-waits' } } })
+    act(() => {
+      hook.result.current?.updateProjectData(editedProject)
+    })
+
+    let flushResolved = false
+    const flushPromise = hook.result.current?.flushProjectSave().then(() => {
+      flushResolved = true
+    })
+
+    await waitForExpectation(() => {
+      expect(saveRequestStarted).toBe(true)
+    })
+    expect(flushResolved).toBe(false)
+    expect(savedProjects).toHaveLength(0)
+
+    saveDeferred.resolve({})
+    await act(async () => {
+      await flushPromise
+    })
+
+    expect(flushResolved).toBe(true)
+    expect(savedProjects).toEqual([editedProject])
+  })
+
+  it('flushProjectSave rejects when the pending save fails so callers can stop follow-up work', async () => {
+    const saveError = new Error('save failed during flush')
+
+    apiFetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'PUT') {
+        throw saveError
+      }
+
+      if (url.includes('/editor?episodeId=')) {
+        return okJson({
+          data: {
+            id: 'editor-project-1',
+            version: 1,
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            projectData: createProject({ metadata: { custom: { marker: 'server' } } }),
+          },
+        })
+      }
+
+      return okJson({ data: null })
+    })
+
+    const hook = renderEditorProjectSyncHook(defaultHookProps)
+
+    await waitForExpectation(() => {
+      expect(hook.result.current?.projectData).not.toBeNull()
+    })
+
+    act(() => {
+      hook.result.current?.updateProjectData(createProject({ metadata: { custom: { marker: 'flush-fails' } } }))
+    })
+
+    await expect(act(async () => {
+      await expect(hook.result.current?.flushProjectSave()).rejects.toThrow('save failed during flush')
+    })).resolves.toBeUndefined()
+  })
+
+  it('flushProjectSave returns immediately when there are no pending changes', async () => {
+    createEmptyEditorApiMock()
+    const hook = renderEditorProjectSyncHook({
+      ...defaultHookProps,
+      panelVideos: [],
+      voiceLineSources: [],
+      isAssetDataLoaded: true,
+    })
+
+    await waitForExpectation(() => {
+      expect(hook.result.current?.status).toBe('idle')
+    })
+
+    await expect(act(async () => {
+      await hook.result.current?.flushProjectSave()
+    })).resolves.toBeUndefined()
+    expect(apiFetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('reloads server project data and bumps reload revision even when version is unchanged', async () => {

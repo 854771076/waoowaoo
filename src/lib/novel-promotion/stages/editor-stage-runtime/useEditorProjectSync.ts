@@ -176,6 +176,7 @@ export function useEditorProjectSync({
   const savePendingRef = useRef(false)
   const saveMutationPendingRef = useRef(false)
   const saveErrorRef = useRef<string | null>(null)
+  const inFlightSavePromiseRef = useRef<Promise<void> | null>(null)
   const debounceRef = useRef<ReturnType<typeof createDebouncedAction<[TwickTimelineProject]>> | null>(null)
 
   useEffect(() => {
@@ -210,10 +211,12 @@ export function useEditorProjectSync({
       })
     },
     onMutate: () => {
+      saveErrorRef.current = null
       setStatus('saving')
       setSaveError(null)
     },
     onSuccess: (result) => {
+      saveErrorRef.current = null
       setProjectIdState((previous) => result.id ?? previous)
       setVersion(result.version)
       setLastSavedAt(new Date())
@@ -228,16 +231,20 @@ export function useEditorProjectSync({
     onError: (error: Error) => {
       const maybeConflict = error as Partial<EditorConflictError>
       if (maybeConflict.code === 'CONFLICT') {
+        const message = 'Editor project was changed elsewhere. Reload or force save to continue.'
+        saveErrorRef.current = message
         setStatus('conflict')
         setHasConflict(true)
-        setSaveError('Editor project was changed elsewhere. Reload or force save to continue.')
+        setSaveError(message)
         if (typeof maybeConflict.currentVersion === 'number') {
           setVersion(maybeConflict.currentVersion)
         }
         return
       }
+      const message = error.message || 'Failed to save editor project'
+      saveErrorRef.current = message
       setStatus('error')
-      setSaveError(error.message || 'Failed to save editor project')
+      setSaveError(message)
     },
   })
 
@@ -245,21 +252,41 @@ export function useEditorProjectSync({
     saveMutationPendingRef.current = saveMutation.isPending
   }, [saveMutation.isPending])
 
+  const startSave = useCallback((data: TwickTimelineProject, saveVersion = versionRef.current) => {
+    if (!projectId || !episodeId || saveMutationPendingRef.current) return null
+
+    savePendingRef.current = false
+    saveMutationPendingRef.current = true
+
+    let savePromise: Promise<void>
+    savePromise = saveMutation.mutateAsync({ projectData: data, version: saveVersion })
+      .then((result) => {
+        versionRef.current = result.version
+      })
+      .finally(() => {
+        if (inFlightSavePromiseRef.current === savePromise) {
+          inFlightSavePromiseRef.current = null
+        }
+        saveMutationPendingRef.current = false
+      })
+
+    inFlightSavePromiseRef.current = savePromise
+    void savePromise.catch(() => undefined)
+    return savePromise
+  }, [episodeId, projectId, saveMutation])
+
   useEffect(() => {
     if (!saveMutation.isPending && savePendingRef.current && debounceRef.current?.hasPending() === false) {
       const currentProjectData = projectDataRef.current
       if (currentProjectData && !hasConflict) {
-        savePendingRef.current = false
-        saveMutation.mutate({ projectData: currentProjectData, version: versionRef.current })
+        startSave(currentProjectData, versionRef.current)
       }
     }
-  }, [hasConflict, saveMutation, saveMutation.isPending])
+  }, [hasConflict, saveMutation.isPending, startSave])
 
   const triggerSave = useCallback((data: TwickTimelineProject, saveVersion = versionRef.current) => {
-    if (!projectId || !episodeId || saveMutationPendingRef.current) return
-    savePendingRef.current = false
-    saveMutation.mutate({ projectData: data, version: saveVersion })
-  }, [episodeId, projectId, saveMutation])
+    return startSave(data, saveVersion)
+  }, [startSave])
 
   useEffect(() => {
     debounceRef.current?.flush()
@@ -273,17 +300,17 @@ export function useEditorProjectSync({
   }, [triggerSave])
 
   const flushPendingSave = useCallback(() => {
-    if (hasConflict || saveMutationPendingRef.current) return false
+    if (hasConflict) return null
+    if (saveMutationPendingRef.current) return inFlightSavePromiseRef.current
     const flushed = debounceRef.current?.flush() ?? false
-    if (flushed) return true
-    if (!savePendingRef.current) return false
+    if (flushed) return inFlightSavePromiseRef.current
+    if (!savePendingRef.current) return null
     const currentProjectData = projectDataRef.current
     if (!currentProjectData) {
       savePendingRef.current = false
-      return false
+      return null
     }
-    triggerSave(currentProjectData, versionRef.current)
-    return true
+    return triggerSave(currentProjectData, versionRef.current)
   }, [hasConflict, triggerSave])
 
   useEffect(() => {
@@ -403,15 +430,16 @@ export function useEditorProjectSync({
   }, [saveMutation.isPending, triggerSave])
 
   const flushProjectSave = useCallback(async () => {
-    flushPendingSave()
-    const maxWaitMs = 5000
-    const startedAt = Date.now()
-    while (saveMutationPendingRef.current) {
-      if (Date.now() - startedAt >= maxWaitMs) {
-        throw new Error('Timed out waiting for editor project save')
+    const savePromise = flushPendingSave() ?? inFlightSavePromiseRef.current
+    if (!savePromise) {
+      if (saveErrorRef.current) {
+        throw new Error(saveErrorRef.current)
       }
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      return
     }
+
+    await savePromise
+
     if (saveErrorRef.current) {
       throw new Error(saveErrorRef.current)
     }
