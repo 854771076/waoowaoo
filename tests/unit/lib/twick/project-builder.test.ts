@@ -5,6 +5,10 @@ import {
   buildInitialProject,
   mergeCaptionTrackIntoProject,
 } from '@/lib/twick/project-builder'
+import {
+  calculateCaptionBillingDurationSeconds,
+  toCaptionVoiceLineSources,
+} from '@/lib/twick/caption-duration'
 import type { CaptionVoiceLineSource, PanelVideoSource, VoiceLineSource } from '@/lib/twick/types'
 
 describe('project-builder', () => {
@@ -204,5 +208,70 @@ describe('project-builder', () => {
     expect(result.captionCount).toBe(2)
     expect(result.totalDurationSeconds).toBe(3.5)
     expect(result.projectData.tracks.find((track) => track.type === 'caption')?.elements).toHaveLength(2)
+  })
+
+  it('calculates caption billing duration from matched editor audio ranges and keeps freeze >= worker actual', () => {
+    const project = buildInitialProject(panels.slice(0, 1), [], {
+      width: 720,
+      height: 1280,
+      includeAudio: false,
+    })
+    project.tracks.push({
+      id: 'track-audio-main',
+      name: '语音',
+      type: 'audio',
+      elements: [
+        { id: 'audio-vl1', type: 'audio', s: 2, e: 8, props: {}, metadata: { voiceLineId: 'vl1' } },
+      ],
+    })
+    const captionSources = [
+      { voiceLineId: 'vl1', duration: 1, text: 'One' },
+    ]
+
+    const freezeDurationSeconds = calculateCaptionBillingDurationSeconds(project, captionSources)
+    const workerResult = applyCaptionsToProject(project, captionSources)
+
+    expect(freezeDurationSeconds).toBe(6)
+    expect(workerResult.totalDurationSeconds).toBe(6)
+    expect(freezeDurationSeconds).toBeGreaterThanOrEqual(workerResult.totalDurationSeconds)
+  })
+
+  it('calculates caption billing duration from DB/fallback durations when editor audio is not matched', () => {
+    const project = buildInitialProject(panels.slice(0, 1), [], {
+      width: 720,
+      height: 1280,
+      includeAudio: false,
+    })
+    const captionSources = toCaptionVoiceLineSources([
+      { id: 'vl1', content: 'One', audioDuration: 1500, audioMedia: { durationMs: 9000 } },
+      { id: 'vl2', content: 'Two', audioDuration: null, audioMedia: { durationMs: 2500 } },
+      { id: 'vl3', content: 'Three', audioDuration: null, audioMedia: null },
+    ])
+
+    expect(calculateCaptionBillingDurationSeconds(project, captionSources)).toBe(6)
+  })
+
+  it('calculates caption billing duration with mixed matched editor audio and fallback sources', () => {
+    const project = buildInitialProject(panels.slice(0, 1), [], {
+      width: 720,
+      height: 1280,
+      includeAudio: false,
+    })
+    project.tracks.push({
+      id: 'track-audio-main',
+      name: '语音',
+      type: 'audio',
+      elements: [
+        { id: 'audio-vl2', type: 'audio', s: 10, e: 16, props: {}, metadata: { voiceLineId: 'vl2' } },
+      ],
+    })
+
+    const durationSeconds = calculateCaptionBillingDurationSeconds(project, [
+      { voiceLineId: 'vl1', duration: 1.5, text: 'One' },
+      { voiceLineId: 'vl2', duration: 2, text: 'Two' },
+      { voiceLineId: 'vl3', duration: 2.5, text: 'Three' },
+    ])
+
+    expect(durationSeconds).toBe(10)
   })
 })

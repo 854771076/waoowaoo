@@ -211,9 +211,14 @@ describe('editor AI route skeletons', () => {
     vi.clearAllMocks()
     authState.userId = 'user-1'
     prismaMock.project.findFirst.mockResolvedValue({ id: 'project-1', userId: 'user-1', name: 'Project' })
-    prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValue({ id: 'editor-project-1', episodeId: 'episode-1' })
+    prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValue({
+      id: 'editor-project-1',
+      episodeId: 'episode-1',
+      projectData: { version: 1, tracks: [] },
+    })
     prismaMock.novelPromotionPanel.count.mockResolvedValue(1)
     prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValue([{
+      id: 'voice-1',
       content: 'hello',
       audioDuration: 4200,
       audioMedia: { durationMs: 4200 },
@@ -348,7 +353,7 @@ describe('editor AI route skeletons', () => {
   it('caption returns 400 and does not enqueue when the episode has no voice-line text', async () => {
     const routeCase = routeCases[1]
     const { POST } = await routeCase.load()
-    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([{ content: '   ', audioDuration: 2000, audioMedia: null }])
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([{ id: 'voice-1', content: '   ', audioDuration: 2000, audioMedia: null }])
 
     const res = await POST(
       buildEditorAiRequest(routeCase.path, routeCase.body),
@@ -362,6 +367,7 @@ describe('editor AI route skeletons', () => {
     expect(prismaMock.novelPromotionVoiceLine.findMany).toHaveBeenCalledWith({
       where: { episodeId: 'episode-1' },
       select: {
+        id: true,
         content: true,
         audioDuration: true,
         audioMedia: {
@@ -370,6 +376,7 @@ describe('editor AI route skeletons', () => {
           },
         },
       },
+      orderBy: { lineIndex: 'asc' },
     })
     expect(submitTaskMock).not.toHaveBeenCalled()
   })
@@ -378,8 +385,8 @@ describe('editor AI route skeletons', () => {
     const routeCase = routeCases[1]
     const { POST } = await routeCase.load()
     prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
-      { content: null, audioDuration: 4200, audioMedia: { durationMs: 4200 } },
-      { content: '   ', audioDuration: 2800, audioMedia: { durationMs: 2800 } },
+      { id: 'voice-1', content: null, audioDuration: 4200, audioMedia: { durationMs: 4200 } },
+      { id: 'voice-2', content: '   ', audioDuration: 2800, audioMedia: { durationMs: 2800 } },
     ])
 
     const res = await POST(
@@ -398,9 +405,9 @@ describe('editor AI route skeletons', () => {
     const routeCase = routeCases[1]
     const { POST } = await routeCase.load()
     prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
-      { content: 'A', audioDuration: 120000, audioMedia: { durationMs: 120000 } },
-      { content: 'B', audioDuration: null, audioMedia: { durationMs: 60000 } },
-      { content: 'C', audioDuration: null, audioMedia: null },
+      { id: 'voice-1', content: 'A', audioDuration: 120000, audioMedia: { durationMs: 120000 } },
+      { id: 'voice-2', content: 'B', audioDuration: null, audioMedia: { durationMs: 60000 } },
+      { id: 'voice-3', content: 'C', audioDuration: null, audioMedia: null },
     ])
 
     const res = await POST(
@@ -417,6 +424,46 @@ describe('editor AI route skeletons', () => {
     expect(submit.billingInfo.quantity).toBeGreaterThan(0.01)
     expect(submit.payload).toEqual(expect.objectContaining({
       durationMinutes: 182 / 60,
+    }))
+  })
+
+  it('caption billing uses editor audio timeline when it is longer than DB audio duration', async () => {
+    const routeCase = routeCases[1]
+    const { POST } = await routeCase.load()
+    prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValueOnce({
+      id: 'editor-project-1',
+      episodeId: 'episode-1',
+      projectData: {
+        version: 1,
+        tracks: [
+          {
+            id: 'track-audio-main',
+            name: '语音',
+            type: 'audio',
+            elements: [
+              { id: 'audio-voice-1', type: 'audio', s: 5, e: 20, props: {}, metadata: { voiceLineId: 'voice-1' } },
+            ],
+          },
+        ],
+      },
+    })
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
+      { id: 'voice-1', content: 'A', audioDuration: 3000, audioMedia: { durationMs: 3000 } },
+    ])
+
+    const res = await POST(
+      buildEditorAiRequest(routeCase.path, defaultBody({ durationMinutes: 0.01 })),
+      buildContext(),
+    )
+
+    expect(res.status).toBe(200)
+    const submit = submitTaskMock.mock.calls[0]?.[0]
+    expect(submit.billingInfo).toEqual(expect.objectContaining({
+      quantity: 15 / 60,
+      unit: 'minute',
+    }))
+    expect(submit.payload).toEqual(expect.objectContaining({
+      durationMinutes: 15 / 60,
     }))
   })
 

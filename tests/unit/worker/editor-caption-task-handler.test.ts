@@ -160,6 +160,46 @@ describe('editor caption worker handler', () => {
     expect(result.totalDurationSeconds).toBe(5)
   })
 
+  it('settles billing from the same editor audio timeline source used for caption placement', async () => {
+    prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValueOnce({
+      id: 'editor-project-1',
+      version: 3,
+      projectData: {
+        version: 1,
+        metadata: { custom: { width: 1080, height: 1920, fps: 24, duration: 20 } },
+        tracks: [
+          {
+            id: 'track-audio-main',
+            name: '语音',
+            type: 'audio',
+            elements: [
+              { id: 'audio-1', type: 'audio', s: 2, e: 14, props: {}, metadata: { voiceLineId: 'voice-1' } },
+            ],
+          },
+        ],
+      },
+    })
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
+      {
+        id: 'voice-1',
+        lineIndex: 0,
+        speaker: 'A',
+        content: 'hello',
+        audioDuration: 3000,
+        audioMediaId: 'audio-media-1',
+        audioMedia: { id: 'audio-media-1', durationMs: 3000 },
+      },
+    ])
+
+    const result = await handleEditorCaptionTask(buildJob())
+
+    expect(result).toEqual(expect.objectContaining({
+      captionCount: 1,
+      totalDurationSeconds: 12,
+      actualQuantity: 12 / 60,
+    }))
+  })
+
   it('updates editor project data, increments version, and settles billing using caption minutes', async () => {
     const result = await handleEditorCaptionTask(buildJob())
 

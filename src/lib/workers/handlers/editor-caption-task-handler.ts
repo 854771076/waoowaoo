@@ -4,9 +4,8 @@ import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
 import { applyCaptionsToProject } from '@/lib/twick/project-builder'
-import type { CaptionVoiceLineSource } from '@/lib/twick/types'
+import { toCaptionVoiceLineSources } from '@/lib/twick/caption-duration'
 
-const DEFAULT_VOICE_DURATION_SECONDS = 2
 const MIN_BILLING_MINUTES = 0.01
 const MAX_CAPTION_MERGE_RETRIES = 3
 
@@ -21,11 +20,6 @@ function asJsonRecord(value: unknown): JsonRecord | null {
 
 function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function durationMsToSeconds(value: number | null | undefined, fallbackSeconds: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return fallbackSeconds
-  return value / 1000
 }
 
 function parseCaptionPayload(job: Job<TaskJobData>) {
@@ -75,25 +69,11 @@ async function loadEpisodeVoiceLines(episodeId: string) {
   })
 }
 
-function mapVoiceLinesToCaptionSources(voiceLines: VoiceLineRecord[]): CaptionVoiceLineSource[] {
-  return voiceLines
-    .map((line) => ({
-      voiceLineId: line.id,
-      duration: durationMsToSeconds(
-        line.audioDuration,
-        durationMsToSeconds(line.audioMedia?.durationMs, DEFAULT_VOICE_DURATION_SECONDS),
-      ),
-      text: line.content || '',
-      speaker: line.speaker || undefined,
-    }))
-    .filter((line) => line.duration > 0)
-}
-
 export async function buildCaptionedProject(params: {
   currentProjectData: unknown
   voiceLines: VoiceLineRecord[]
 }) {
-  const captionSources = mapVoiceLinesToCaptionSources(params.voiceLines)
+  const captionSources = toCaptionVoiceLineSources(params.voiceLines)
   const { projectData, captionCount, totalDurationSeconds } = applyCaptionsToProject(
     params.currentProjectData as Parameters<typeof applyCaptionsToProject>[0],
     captionSources,

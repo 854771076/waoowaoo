@@ -28,6 +28,7 @@ type SubmitEditorAiRouteParams = {
     episodeId: string
     editorProjectId: string
     body: EditorAiBody
+    editorProject: Awaited<ReturnType<typeof requireOwnedEditorProject>>
   }) => Promise<void | { body?: Partial<EditorAiBody> }>
   payload?: (body: EditorAiBody) => Record<string, unknown>
   dedupeKey?: (input: { action: string; editorProjectId: string; clientRequestId: string | null; requestId: string | null; body: EditorAiBody }) => string | null
@@ -168,6 +169,7 @@ async function requireOwnedEditorProject(params: {
     select: {
       id: true,
       episodeId: true,
+      projectData: true,
     },
   })
 
@@ -196,7 +198,7 @@ export function createEditorAiRoute(params: Omit<SubmitEditorAiRouteParams, 'req
       throw new ApiError('INVALID_PARAMS')
     }
 
-    await requireOwnedEditorProject({
+    const editorProject = await requireOwnedEditorProject({
       projectId,
       episodeId,
       editorProjectId,
@@ -207,6 +209,7 @@ export function createEditorAiRoute(params: Omit<SubmitEditorAiRouteParams, 'req
       episodeId,
       editorProjectId,
       body,
+      editorProject,
     })
     const effectiveBody = beforeSubmitResult?.body
       ? { ...body, ...beforeSubmitResult.body }
