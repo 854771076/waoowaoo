@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useTimelineContext } from '@twick/timeline'
+import { CaptionPanel } from './ai/CaptionPanel'
 import { SmartCutPanel } from './ai/SmartCutPanel'
+import { CaptionStylePanel } from './properties/CaptionStylePanel'
 
 type RightPanelTab = 'ai' | 'properties'
 
@@ -43,13 +45,13 @@ export function RightPanel() {
 function AiPanel() {
   const t = useTranslations('novelPromotion.editor.rightPanel.ai')
   const cards = [
-    { key: 'captions', button: 'generate' },
     { key: 'polish', button: 'open' },
   ] as const
 
   return (
     <div className="space-y-3 text-xs text-slate-500">
       <SmartCutPanel />
+      <CaptionPanel />
       {cards.map((card) => (
         <div key={card.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
           <div className="font-medium text-slate-950">{t(`${card.key}.title`)}</div>
@@ -73,12 +75,7 @@ function PropertiesPanel({ selectedId, trackCount }: { selectedId: string | null
 
   return (
     <div className="space-y-3 text-xs text-slate-500">
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-        <div className="font-medium text-slate-950">{t('selection')}</div>
-        <div className="mt-2 break-all font-mono text-[11px]">
-          {selectedId || t('noneSelected')}
-        </div>
-      </div>
+      <CaptionStylePanel selectedId={selectedId} />
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
         <div className="font-medium text-slate-950">{t('timeline')}</div>
         <div className="mt-2">{t('trackCount', { count: trackCount })}</div>

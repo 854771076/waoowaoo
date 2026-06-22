@@ -239,7 +239,20 @@
         },
         "captions": {
           "title": "Auto captions",
-          "description": "Create subtitles from voiceover and sync them to the timeline."
+          "description": "Use existing voice-line text to create a timed caption track."
+        },
+        "caption": {
+          "button": "Generate captions",
+          "runningButton": "Generating...",
+          "running": "Generating captions ({progress}%)",
+          "done": "Captions generated. Timeline refreshed.",
+          "failed": "Caption generation failed. Please try again.",
+          "saveConflict": "The editor project has a save conflict. Resolve it before generating captions.",
+          "unsavedChanges": "Current editor changes have not been saved. Save successfully before generating captions.",
+          "missingContext": "Missing current episode or editor project.",
+          "loading": "Loading editor data...",
+          "noVoiceLines": "Generate or add voice-line text first.",
+          "estimate": "Estimated {count} captions, about {minutes} minutes."
         },
         "polish": {
           "title": "Visual polish",
@@ -257,6 +270,11 @@
         "noneSelected": "No clip selected",
         "timeline": "Timeline",
         "trackCount": "{count} tracks",
+        "captionStyle": {
+          "title": "Caption style",
+          "noneSelected": "No caption clip selected",
+          "mvpHint": "MVP uses the default caption style (white text, black stroke, centered). Style editing will be connected later."
+        },
         "phase2Hint": "Clip property editing will be completed in Phase 2."
       }
     }

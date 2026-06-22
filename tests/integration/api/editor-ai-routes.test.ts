@@ -48,6 +48,9 @@ const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
     count: vi.fn(),
   },
+  novelPromotionVoiceLine: {
+    findMany: vi.fn(),
+  },
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -210,6 +213,7 @@ describe('editor AI route skeletons', () => {
     prismaMock.project.findFirst.mockResolvedValue({ id: 'project-1', userId: 'user-1', name: 'Project' })
     prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValue({ id: 'editor-project-1', episodeId: 'episode-1' })
     prismaMock.novelPromotionPanel.count.mockResolvedValue(1)
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValue([{ content: 'hello' }])
     submitTaskMock.mockResolvedValue({ taskId: 'task-1', async: true, success: true })
   })
 
@@ -330,6 +334,27 @@ describe('editor AI route skeletons', () => {
         storyboard: { episodeId: 'episode-1' },
         id: { in: ['panel-1'] },
       },
+    })
+    expect(submitTaskMock).not.toHaveBeenCalled()
+  })
+
+  it('caption returns 400 and does not enqueue when the episode has no voice-line text', async () => {
+    const routeCase = routeCases[1]
+    const { POST } = await routeCase.load()
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([{ content: '   ' }])
+
+    const res = await POST(
+      buildEditorAiRequest(routeCase.path, routeCase.body),
+      buildContext(),
+    )
+
+    expect(res.status).toBe(400)
+    const json = await res.json() as Record<string, unknown>
+    expect(json.code).toBe('INVALID_PARAMS')
+    expect(json.message).toBe('CAPTION_NO_VOICE_LINES')
+    expect(prismaMock.novelPromotionVoiceLine.findMany).toHaveBeenCalledWith({
+      where: { episodeId: 'episode-1' },
+      select: { content: true },
     })
     expect(submitTaskMock).not.toHaveBeenCalled()
   })

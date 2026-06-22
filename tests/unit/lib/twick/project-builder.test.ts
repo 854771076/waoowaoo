@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildInitialProject } from '@/lib/twick/project-builder'
-import type { PanelVideoSource, VoiceLineSource } from '@/lib/twick/types'
+import {
+  applyCaptionsToProject,
+  buildCaptionTrack,
+  buildInitialProject,
+  mergeCaptionTrackIntoProject,
+} from '@/lib/twick/project-builder'
+import type { CaptionVoiceLineSource, PanelVideoSource, VoiceLineSource } from '@/lib/twick/types'
 
 describe('project-builder', () => {
   const panels: PanelVideoSource[] = [
@@ -100,5 +105,74 @@ describe('project-builder', () => {
       ],
     })
     expect(project.metadata?.custom?.duration).toBe(0)
+  })
+
+  it('builds a caption track from existing voice-line text with sequential timing and default style', () => {
+    const captionVoiceLines: CaptionVoiceLineSource[] = [
+      { voiceLineId: 'vl1', duration: 1.5, text: '第一句', speaker: 'A' },
+      { voiceLineId: 'vl2', duration: 2, text: '第二句', speaker: 'B' },
+    ]
+
+    const track = buildCaptionTrack(captionVoiceLines)
+
+    expect(track).toMatchObject({ id: 'track-captions', name: '字幕', type: 'caption' })
+    expect(track.elements).toHaveLength(2)
+    expect(track.elements.map((element) => [element.s, element.e, element.t])).toEqual([
+      [0, 1.5, '第一句'],
+      [1.5, 3.5, '第二句'],
+    ])
+    expect(track.elements[0]).toMatchObject({
+      props: {
+        fontSize: 32,
+        fill: '#ffffff',
+        stroke: '#000000',
+        strokeWidth: 2,
+        textAlign: 'center',
+      },
+      metadata: {
+        voiceLineId: 'vl1',
+        speaker: 'A',
+        source: 'generated',
+      },
+    })
+  })
+
+  it('merges captions into an existing project by replacing the previous caption track only', () => {
+    const project = buildInitialProject(panels.slice(0, 1), voiceLines.slice(0, 1), {
+      width: 720,
+      height: 1280,
+      includeAudio: true,
+      includeCaptions: true,
+    })
+    const newCaptionTrack = buildCaptionTrack([
+      { voiceLineId: 'vl-new', duration: 2.25, text: 'New caption' },
+    ])
+
+    const merged = mergeCaptionTrackIntoProject(project, newCaptionTrack)
+
+    expect(merged.tracks.filter((track) => track.type === 'caption')).toHaveLength(1)
+    expect(merged.tracks.find((track) => track.type === 'video')?.elements).toHaveLength(1)
+    expect(merged.tracks.find((track) => track.type === 'audio')?.elements).toHaveLength(1)
+    const captionTrack = merged.tracks.find((track) => track.type === 'caption')
+    expect(captionTrack?.elements).toHaveLength(1)
+    expect(captionTrack?.elements[0].t).toBe('New caption')
+    expect(merged.metadata?.custom?.duration).toBe(3)
+  })
+
+  it('applyCaptionsToProject returns caption count and total covered minutes input', () => {
+    const project = buildInitialProject(panels.slice(0, 1), [], {
+      width: 720,
+      height: 1280,
+      includeAudio: false,
+    })
+
+    const result = applyCaptionsToProject(project, [
+      { voiceLineId: 'vl1', duration: 1, text: 'One' },
+      { voiceLineId: 'vl2', duration: 2.5, text: 'Two' },
+    ])
+
+    expect(result.captionCount).toBe(2)
+    expect(result.totalDurationSeconds).toBe(3.5)
+    expect(result.projectData.tracks.find((track) => track.type === 'caption')?.elements).toHaveLength(2)
   })
 })

@@ -1,5 +1,6 @@
 import { toMediaObjRef } from './media-url-resolver'
 import type {
+  CaptionVoiceLineSource,
   PanelVideoSource,
   TwickCaptionElement,
   TwickMediaElement,
@@ -68,7 +69,7 @@ export function voiceLineToAudioElement(
 }
 
 export function voiceLineToCaptionElement(
-  voiceLine: VoiceLineSource,
+  voiceLine: CaptionVoiceLineSource,
   startSec: number,
 ): TwickCaptionElement {
   const metadata: TwickSourceMetadata = {

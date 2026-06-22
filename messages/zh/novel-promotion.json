@@ -239,7 +239,20 @@
         },
         "captions": {
           "title": "自动字幕",
-          "description": "从配音生成字幕并同步到时间轴。"
+          "description": "使用已有配音文本生成带时间轴的字幕轨道。"
+        },
+        "caption": {
+          "button": "生成字幕",
+          "runningButton": "生成中...",
+          "running": "正在生成字幕（{progress}%）",
+          "done": "字幕已生成，时间轴已刷新。",
+          "failed": "字幕生成失败，请稍后重试。",
+          "saveConflict": "编辑器项目存在保存冲突，请先解决冲突后再生成字幕。",
+          "unsavedChanges": "当前编辑内容尚未保存，请保存成功后再生成字幕。",
+          "missingContext": "缺少当前剧集或编辑项目。",
+          "loading": "正在加载编辑器数据...",
+          "noVoiceLines": "请先生成或添加配音文本。",
+          "estimate": "预计 {count} 条字幕，约 {minutes} 分钟。"
         },
         "polish": {
           "title": "画面润色",
@@ -257,6 +270,11 @@
         "noneSelected": "未选中片段",
         "timeline": "时间轴",
         "trackCount": "{count} 条轨道",
+        "captionStyle": {
+          "title": "字幕样式",
+          "noneSelected": "未选中字幕片段",
+          "mvpHint": "MVP 使用默认字幕样式（白字、黑描边、居中）。样式编辑后续接入。"
+        },
         "phase2Hint": "片段属性编辑将在 Phase 2 完善。"
       }
     }

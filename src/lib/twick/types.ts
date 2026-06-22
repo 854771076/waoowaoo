@@ -35,12 +35,15 @@ export interface PanelVideoSource {
   description?: string
 }
 
-export interface VoiceLineSource {
+export interface CaptionVoiceLineSource {
   voiceLineId: string
-  audioMediaObjectId: string
   duration: number
   text: string
   speaker?: string
+}
+
+export interface VoiceLineSource extends CaptionVoiceLineSource {
+  audioMediaObjectId: string
 }
 
 export type MediaObjRef = `mediaobj://${string}`
