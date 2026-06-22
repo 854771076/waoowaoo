@@ -223,7 +223,17 @@
       "ai": {
         "roughCut": {
           "title": "智能粗剪",
-          "description": "AI 自动排序、裁切并组织节奏。"
+          "description": "按分镜顺序拼接已生成的视频和配音，重建初剪时间轴。"
+        },
+        "smartCut": {
+          "button": "执行智能粗剪",
+          "runningButton": "生成中...",
+          "running": "正在粗剪（{progress}%）",
+          "done": "智能粗剪已完成，时间轴已刷新。",
+          "failed": "智能粗剪失败，请稍后重试。",
+          "missingContext": "缺少当前剧集或编辑项目。",
+          "loading": "正在加载编辑器数据...",
+          "noVideos": "请先生成至少一个分镜视频。"
         },
         "captions": {
           "title": "自动字幕",

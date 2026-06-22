@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useTimelineContext } from '@twick/timeline'
+import { SmartCutPanel } from './ai/SmartCutPanel'
 
 type RightPanelTab = 'ai' | 'properties'
 
@@ -42,13 +43,13 @@ export function RightPanel() {
 function AiPanel() {
   const t = useTranslations('novelPromotion.editor.rightPanel.ai')
   const cards = [
-    { key: 'roughCut', button: 'execute' },
     { key: 'captions', button: 'generate' },
     { key: 'polish', button: 'open' },
   ] as const
 
   return (
     <div className="space-y-3 text-xs text-slate-500">
+      <SmartCutPanel />
       {cards.map((card) => (
         <div key={card.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
           <div className="font-medium text-slate-950">{t(`${card.key}.title`)}</div>
