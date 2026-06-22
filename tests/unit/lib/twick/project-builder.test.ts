@@ -159,6 +159,36 @@ describe('project-builder', () => {
     expect(merged.metadata?.custom?.duration).toBe(3)
   })
 
+  it('applyCaptionsToProject prefers audio element s/e matched by metadata.voiceLineId and falls back sequentially', () => {
+    const project = buildInitialProject(panels.slice(0, 1), [], {
+      width: 720,
+      height: 1280,
+      includeAudio: false,
+    })
+    project.tracks.push({
+      id: 'track-audio-main',
+      name: '语音',
+      type: 'audio',
+      elements: [
+        { id: 'audio-vl2', type: 'audio', s: 4, e: 6.5, props: {}, metadata: { voiceLineId: 'vl2' } },
+      ],
+    })
+
+    const result = applyCaptionsToProject(project, [
+      { voiceLineId: 'vl1', duration: 1, text: 'One' },
+      { voiceLineId: 'vl2', duration: 99, text: 'Two' },
+      { voiceLineId: 'vl3', duration: 1.5, text: 'Three' },
+    ])
+
+    const captionTrack = result.projectData.tracks.find((track) => track.type === 'caption')
+    expect(captionTrack?.elements.map((element) => [element.t, element.s, element.e])).toEqual([
+      ['One', 0, 1],
+      ['Two', 4, 6.5],
+      ['Three', 6.5, 8],
+    ])
+    expect(result.totalDurationSeconds).toBe(5)
+  })
+
   it('applyCaptionsToProject returns caption count and total covered minutes input', () => {
     const project = buildInitialProject(panels.slice(0, 1), [], {
       width: 720,

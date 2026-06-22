@@ -40,6 +40,8 @@ export interface CaptionVoiceLineSource {
   duration: number
   text: string
   speaker?: string
+  startTime?: number
+  endTime?: number
 }
 
 export interface VoiceLineSource extends CaptionVoiceLineSource {

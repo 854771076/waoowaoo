@@ -251,13 +251,19 @@ function normalizeBillingQuantity(value: unknown, fallback: number) {
   return Math.max(1, numeric)
 }
 
+function normalizeCaptionBillingMinutes(value: unknown, fallback: number) {
+  const numeric = toNumber(value, fallback)
+  return Math.max(0.01, numeric)
+}
+
 function buildEditorTaskInfo(
   taskType: TaskType,
   payload: AnyPayload,
   item: BillingItemKey,
   quantity: number,
+  options: { minQuantity?: number } = {},
 ): TaskBillingInfo {
-  const normalizedQuantity = normalizeBillingQuantity(quantity, 1)
+  const normalizedQuantity = Math.max(options.minQuantity ?? 1, toNumber(quantity, 1))
   const definition = getBillingItemDefinition(item)
   return {
     billable: true,
@@ -355,7 +361,8 @@ export function buildDefaultTaskBillingInfo(taskType: TaskType, payload: AnyPayl
         taskType,
         payload,
         BILLING_ITEM.EDITOR_CAPTION_GENERATE,
-        normalizeBillingQuantity(payload?.durationMinutes ?? payload?.quantity, 1),
+        normalizeCaptionBillingMinutes(payload?.durationMinutes ?? payload?.quantity, 1),
+        { minQuantity: 0.01 },
       )
     case TASK_TYPE.EDITOR_AI_ENHANCE: {
       const enhanceType = readString(payload?.enhanceType)

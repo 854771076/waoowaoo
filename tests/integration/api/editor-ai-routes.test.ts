@@ -134,12 +134,12 @@ const routeCases: RouteCase[] = [
     load: () => import('@/app/api/novel-promotion/[projectId]/editor/ai/caption/route'),
     taskType: TASK_TYPE.EDITOR_AI_CAPTION,
     action: 'caption',
-    body: defaultBody({ durationMinutes: 2.5 }),
+    body: defaultBody({ durationMinutes: 0.01 }),
     expectedBilling: {
       item: BILLING_ITEM.EDITOR_CAPTION_GENERATE,
-      quantity: 2.5,
+      quantity: 0.07,
       unit: 'minute',
-      maxFrozenCost: 0.05,
+      maxFrozenCost: 0.0014,
     },
   },
   {
@@ -213,7 +213,11 @@ describe('editor AI route skeletons', () => {
     prismaMock.project.findFirst.mockResolvedValue({ id: 'project-1', userId: 'user-1', name: 'Project' })
     prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValue({ id: 'editor-project-1', episodeId: 'episode-1' })
     prismaMock.novelPromotionPanel.count.mockResolvedValue(1)
-    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValue([{ content: 'hello' }])
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValue([{
+      content: 'hello',
+      audioDuration: 4200,
+      audioMedia: { durationMs: 4200 },
+    }])
     submitTaskMock.mockResolvedValue({ taskId: 'task-1', async: true, success: true })
   })
 
@@ -264,6 +268,9 @@ describe('editor AI route skeletons', () => {
       buildEditorAiRequest(routeCase.path, body, { 'x-request-id': `req-${routeCase.name}` }),
       buildContext(),
     )
+    const expectedPayload = routeCase.name === 'caption'
+      ? { ...body, durationMinutes: routeCase.expectedBilling?.quantity }
+      : body
 
     expect(res.status).toBe(200)
     const json = await res.json() as { data: { taskId: string } }
@@ -300,7 +307,7 @@ describe('editor AI route skeletons', () => {
         })
         : null,
       payload: expect.objectContaining({
-        ...body,
+        ...expectedPayload,
         episodeId: 'episode-1',
         editorProjectId: 'editor-project-1',
         action: routeCase.action,
@@ -308,7 +315,7 @@ describe('editor AI route skeletons', () => {
     }))
 
     if (routeCase.expectedBilling) {
-      expectDefaultBillingForPayload(routeCase.taskType, body, routeCase.expectedBilling)
+      expectDefaultBillingForPayload(routeCase.taskType, expectedPayload, routeCase.expectedBilling)
     } else {
       expect(buildDefaultTaskBillingInfo(routeCase.taskType, body)).toBeNull()
     }
@@ -341,7 +348,7 @@ describe('editor AI route skeletons', () => {
   it('caption returns 400 and does not enqueue when the episode has no voice-line text', async () => {
     const routeCase = routeCases[1]
     const { POST } = await routeCase.load()
-    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([{ content: '   ' }])
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([{ content: '   ', audioDuration: 2000, audioMedia: null }])
 
     const res = await POST(
       buildEditorAiRequest(routeCase.path, routeCase.body),
@@ -354,9 +361,63 @@ describe('editor AI route skeletons', () => {
     expect(json.message).toBe('CAPTION_NO_VOICE_LINES')
     expect(prismaMock.novelPromotionVoiceLine.findMany).toHaveBeenCalledWith({
       where: { episodeId: 'episode-1' },
-      select: { content: true },
+      select: {
+        content: true,
+        audioDuration: true,
+        audioMedia: {
+          select: {
+            durationMs: true,
+          },
+        },
+      },
     })
     expect(submitTaskMock).not.toHaveBeenCalled()
+  })
+
+  it('caption returns 400 instead of 500 when all voice-line content is nullable or blank', async () => {
+    const routeCase = routeCases[1]
+    const { POST } = await routeCase.load()
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
+      { content: null, audioDuration: 4200, audioMedia: { durationMs: 4200 } },
+      { content: '   ', audioDuration: 2800, audioMedia: { durationMs: 2800 } },
+    ])
+
+    const res = await POST(
+      buildEditorAiRequest(routeCase.path, routeCase.body),
+      buildContext(),
+    )
+
+    expect(res.status).toBe(400)
+    const json = await res.json() as Record<string, unknown>
+    expect(json.code).toBe('INVALID_PARAMS')
+    expect(json.message).toBe('CAPTION_NO_VOICE_LINES')
+    expect(submitTaskMock).not.toHaveBeenCalled()
+  })
+
+  it('caption billing uses server voice-line durations so pre-freeze is not underestimated by client payload', async () => {
+    const routeCase = routeCases[1]
+    const { POST } = await routeCase.load()
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
+      { content: 'A', audioDuration: 120000, audioMedia: { durationMs: 120000 } },
+      { content: 'B', audioDuration: null, audioMedia: { durationMs: 60000 } },
+      { content: 'C', audioDuration: null, audioMedia: null },
+    ])
+
+    const res = await POST(
+      buildEditorAiRequest(routeCase.path, defaultBody({ durationMinutes: 0.01 })),
+      buildContext(),
+    )
+
+    expect(res.status).toBe(200)
+    const submit = submitTaskMock.mock.calls[0]?.[0]
+    expect(submit.billingInfo).toEqual(expect.objectContaining({
+      quantity: 182 / 60,
+      unit: 'minute',
+    }))
+    expect(submit.billingInfo.quantity).toBeGreaterThan(0.01)
+    expect(submit.payload).toEqual(expect.objectContaining({
+      durationMinutes: 182 / 60,
+    }))
   })
 
   it('smart-cut propagates insufficient balance from task submission as 402', async () => {

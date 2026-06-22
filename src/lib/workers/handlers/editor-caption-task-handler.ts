@@ -8,6 +8,7 @@ import type { CaptionVoiceLineSource } from '@/lib/twick/types'
 
 const DEFAULT_VOICE_DURATION_SECONDS = 2
 const MIN_BILLING_MINUTES = 0.01
+const MAX_CAPTION_MERGE_RETRIES = 3
 
 export const CAPTION_NO_VOICE_LINES_ERROR = 'CAPTION_NO_VOICE_LINES'
 
@@ -106,6 +107,54 @@ export async function buildCaptionedProject(params: {
   }
 }
 
+async function persistCaptionedProjectWithVersionRetry(params: {
+  job: Job<TaskJobData>
+  episodeId: string
+  editorProjectId: string
+  initialVersion: number
+  initialProjectData: unknown
+  voiceLines: VoiceLineRecord[]
+}) {
+  let expectedVersion = params.initialVersion
+  let currentProjectData = params.initialProjectData
+  let lastBuildResult: Awaited<ReturnType<typeof buildCaptionedProject>> | null = null
+
+  for (let attempt = 1; attempt <= MAX_CAPTION_MERGE_RETRIES; attempt += 1) {
+    const buildResult = await buildCaptionedProject({
+      currentProjectData,
+      voiceLines: params.voiceLines,
+    })
+    lastBuildResult = buildResult
+
+    if (buildResult.captionCount === 0) {
+      throw new Error(CAPTION_NO_VOICE_LINES_ERROR)
+    }
+
+    await assertTaskActive(params.job, 'caption_persist_editor_project')
+    const updateResult = await prisma.novelPromotionEditorProject.updateMany({
+      where: {
+        id: params.editorProjectId,
+        version: expectedVersion,
+      },
+      data: {
+        projectData: buildResult.projectData as unknown as object,
+        version: { increment: 1 },
+      },
+    })
+
+    if (updateResult.count === 1) {
+      return buildResult
+    }
+
+    const latestProject = await loadEditorProject(params.editorProjectId, params.episodeId)
+    if (!latestProject) throw new Error('EDITOR_PROJECT_NOT_FOUND')
+    expectedVersion = latestProject.version
+    currentProjectData = latestProject.projectData
+  }
+
+  throw new Error(`CAPTION_PROJECT_VERSION_CONFLICT: failed after ${MAX_CAPTION_MERGE_RETRIES} retries${lastBuildResult ? '' : ' without build'}`)
+}
+
 export async function handleEditorCaptionTask(job: Job<TaskJobData>) {
   const { episodeId, editorProjectId } = parseCaptionPayload(job)
 
@@ -121,22 +170,13 @@ export async function handleEditorCaptionTask(job: Job<TaskJobData>) {
     voiceLineCount: voiceLines.length,
   })
 
-  const { projectData, captionCount, voiceLineCount, totalDurationSeconds } = await buildCaptionedProject({
-    currentProjectData: editorProject.projectData,
+  const { captionCount, voiceLineCount, totalDurationSeconds } = await persistCaptionedProjectWithVersionRetry({
+    job,
+    episodeId,
+    editorProjectId,
+    initialVersion: editorProject.version,
+    initialProjectData: editorProject.projectData,
     voiceLines,
-  })
-
-  if (captionCount === 0) {
-    throw new Error(CAPTION_NO_VOICE_LINES_ERROR)
-  }
-
-  await assertTaskActive(job, 'caption_persist_editor_project')
-  await prisma.novelPromotionEditorProject.update({
-    where: { id: editorProjectId },
-    data: {
-      projectData: projectData as unknown as object,
-      version: { increment: 1 },
-    },
   })
 
   const actualQuantity = Math.max(MIN_BILLING_MINUTES, totalDurationSeconds / 60)

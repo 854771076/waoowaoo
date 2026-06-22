@@ -6,7 +6,7 @@ import { withTaskLifecycle } from '@/lib/workers/shared'
 const prismaMock = vi.hoisted(() => ({
   novelPromotionEditorProject: {
     findFirst: vi.fn(),
-    update: vi.fn(async () => undefined),
+    updateMany: vi.fn(async () => ({ count: 1 })),
   },
   novelPromotionVoiceLine: {
     findMany: vi.fn(),
@@ -104,6 +104,7 @@ describe('editor caption worker handler', () => {
       },
     })
     prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValue(buildVoiceLines())
+    prismaMock.novelPromotionEditorProject.updateMany.mockResolvedValue({ count: 1 })
   })
 
   it('buildCaptionedProject adds a new caption track while preserving existing non-caption tracks', async () => {
@@ -131,6 +132,34 @@ describe('editor caption worker handler', () => {
     ])
   })
 
+  it('aligns captions to existing audio element ranges by metadata.voiceLineId', async () => {
+    const result = await buildCaptionedProject({
+      currentProjectData: {
+        version: 1,
+        metadata: { custom: { width: 1080, height: 1920, fps: 24, duration: 12 } },
+        tracks: [
+          {
+            id: 'track-audio-main',
+            name: '语音',
+            type: 'audio',
+            elements: [
+              { id: 'audio-1', type: 'audio', s: 1.25, e: 3.75, props: {}, metadata: { voiceLineId: 'voice-1' } },
+              { id: 'audio-2', type: 'audio', s: 6, e: 8.5, props: {}, metadata: { voiceLineId: 'voice-2' } },
+            ],
+          },
+        ],
+      },
+      voiceLines: buildVoiceLines(),
+    })
+
+    const captionTrack = result.projectData.tracks.find((track) => track.type === 'caption')
+    expect(captionTrack?.elements.map((element) => [element.t, element.s, element.e])).toEqual([
+      ['hello', 1.25, 3.75],
+      ['world', 6, 8.5],
+    ])
+    expect(result.totalDurationSeconds).toBe(5)
+  })
+
   it('updates editor project data, increments version, and settles billing using caption minutes', async () => {
     const result = await handleEditorCaptionTask(buildJob())
 
@@ -139,8 +168,8 @@ describe('editor caption worker handler', () => {
       orderBy: { lineIndex: 'asc' },
     }))
     expect(workerMock.assertTaskActive).toHaveBeenCalledWith(expect.anything(), 'caption_persist_editor_project')
-    expect(prismaMock.novelPromotionEditorProject.update).toHaveBeenCalledWith({
-      where: { id: 'editor-project-1' },
+    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledWith({
+      where: { id: 'editor-project-1', version: 3 },
       data: {
         projectData: expect.objectContaining({ tracks: expect.any(Array) }),
         version: { increment: 1 },
@@ -155,6 +184,59 @@ describe('editor caption worker handler', () => {
       totalDurationSeconds: 7,
       actualQuantity: 7 / 60,
     }))
+  })
+
+  it('rereads latest projectData and remerges captions when version changed before persist', async () => {
+    prismaMock.novelPromotionEditorProject.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 })
+    prismaMock.novelPromotionEditorProject.findFirst
+      .mockResolvedValueOnce({
+        id: 'editor-project-1',
+        version: 3,
+        projectData: {
+          version: 1,
+          metadata: { custom: { width: 1080, height: 1920, fps: 24, duration: 7 } },
+          tracks: [
+            { id: 'track-video-main', name: '视频', type: 'video', elements: [{ id: 'video-1', type: 'video', s: 0, e: 7, props: {} }] },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'editor-project-1',
+        version: 4,
+        projectData: {
+          version: 1,
+          metadata: { custom: { width: 1080, height: 1920, fps: 24, duration: 9 } },
+          tracks: [
+            { id: 'track-video-main', name: '视频', type: 'video', elements: [{ id: 'video-1', type: 'video', s: 0, e: 7, props: {} }] },
+            { id: 'user-overlay', name: '用户新编辑', type: 'overlay', elements: [{ id: 'overlay-1', type: 'image', s: 2, e: 5, props: {} }] },
+          ],
+        },
+      })
+
+    await handleEditorCaptionTask(buildJob())
+
+    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledTimes(2)
+    const updateManyCalls = prismaMock.novelPromotionEditorProject.updateMany.mock.calls as unknown as Array<[{
+      where: Record<string, unknown>
+      data: { projectData: unknown }
+    }]>
+    const firstUpdate = updateManyCalls[0]?.[0]
+    const secondUpdate = updateManyCalls[1]?.[0]
+    expect(firstUpdate?.where).toEqual({
+      id: 'editor-project-1',
+      version: 3,
+    })
+    expect(secondUpdate?.where).toEqual({
+      id: 'editor-project-1',
+      version: 4,
+    })
+    const persistedProject = secondUpdate?.data.projectData
+    expect(persistedProject).toBeTruthy()
+    const persistedTracks = (persistedProject as { tracks: Array<{ id: string; type: string; elements: unknown[] }> }).tracks
+    expect(persistedTracks.find((track) => track.id === 'user-overlay')?.elements).toHaveLength(1)
+    expect(persistedTracks.find((track) => track.type === 'caption')?.elements).toHaveLength(2)
   })
 
   it('throws when no usable voice-line text exists and does not overwrite projectData', async () => {
@@ -172,7 +254,7 @@ describe('editor caption worker handler', () => {
 
     await expect(handleEditorCaptionTask(buildJob())).rejects.toThrow('CAPTION_NO_VOICE_LINES')
     expect(workerMock.assertTaskActive).not.toHaveBeenCalled()
-    expect(prismaMock.novelPromotionEditorProject.update).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalled()
   })
 
   it('propagates empty-caption failures through withTaskLifecycle so billing rollback path runs', async () => {
@@ -180,13 +262,13 @@ describe('editor caption worker handler', () => {
 
     await expect(withTaskLifecycle(buildJob(), () => handleEditorCaptionTask(buildJob()))).rejects.toThrow('CAPTION_NO_VOICE_LINES')
     expect(workerMock.withTaskLifecycle).toHaveBeenCalled()
-    expect(prismaMock.novelPromotionEditorProject.update).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalled()
   })
 
   it('throws explicit error when editor project does not belong to the episode', async () => {
     prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValueOnce(null)
 
     await expect(handleEditorCaptionTask(buildJob())).rejects.toThrow('EDITOR_PROJECT_NOT_FOUND')
-    expect(prismaMock.novelPromotionEditorProject.update).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalled()
   })
 })

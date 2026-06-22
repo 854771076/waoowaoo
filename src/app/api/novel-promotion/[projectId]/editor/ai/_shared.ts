@@ -28,7 +28,7 @@ type SubmitEditorAiRouteParams = {
     episodeId: string
     editorProjectId: string
     body: EditorAiBody
-  }) => Promise<void>
+  }) => Promise<void | { body?: Partial<EditorAiBody> }>
   payload?: (body: EditorAiBody) => Record<string, unknown>
   dedupeKey?: (input: { action: string; editorProjectId: string; clientRequestId: string | null; requestId: string | null; body: EditorAiBody }) => string | null
 }
@@ -202,14 +202,17 @@ export function createEditorAiRoute(params: Omit<SubmitEditorAiRouteParams, 'req
       editorProjectId,
     })
 
-    await params.beforeSubmit?.({
+    const beforeSubmitResult = await params.beforeSubmit?.({
       projectId,
       episodeId,
       editorProjectId,
       body,
     })
+    const effectiveBody = beforeSubmitResult?.body
+      ? { ...body, ...beforeSubmitResult.body }
+      : body
 
-    const locale = resolveRequiredTaskLocale(request, body)
+    const locale = resolveRequiredTaskLocale(request, effectiveBody)
     const requestId = getRequestId(request) || null
     const clientRequestId = readBodyRequestId(body) || readHeaderRequestId(request)
     const billingItem = params.taskType === TASK_TYPE.EDITOR_AI_ENHANCE
@@ -219,7 +222,7 @@ export function createEditorAiRoute(params: Omit<SubmitEditorAiRouteParams, 'req
       ? buildEditorBillingInfo({
         taskType: params.taskType,
         billingItem,
-        quantity: params.billingQuantity?.(body) ?? 1,
+        quantity: params.billingQuantity?.(effectiveBody) ?? 1,
         requestId,
         editorProjectId,
       })
@@ -230,12 +233,12 @@ export function createEditorAiRoute(params: Omit<SubmitEditorAiRouteParams, 'req
       editorProjectId,
       clientRequestId,
       requestId,
-      body,
+      body: effectiveBody,
     }) || buildDefaultEditorAiDedupeKey({
       action: params.action,
       editorProjectId,
       clientRequestId,
-      body,
+      body: effectiveBody,
     })
 
     const result = await submitTask({
@@ -248,11 +251,11 @@ export function createEditorAiRoute(params: Omit<SubmitEditorAiRouteParams, 'req
       targetType: 'NovelPromotionEditorProject',
       targetId: editorProjectId,
       payload: {
-        ...body,
+        ...effectiveBody,
         episodeId,
         editorProjectId,
         action: params.action,
-        ...(params.payload?.(body) || {}),
+        ...(params.payload?.(effectiveBody) || {}),
       },
       dedupeKey,
       billingInfo,
