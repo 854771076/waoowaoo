@@ -10,6 +10,7 @@ const STARSTONE_CATALOG: Readonly<Record<OfficialModelModality, readonly string[
   ],
   video: [
     'dreamina-seedance-2-0-fast-260128',
+    'dreamina-seedance-2-0-260128',
   ],
   audio: [],
 }

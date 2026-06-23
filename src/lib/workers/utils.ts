@@ -1,6 +1,6 @@
 import sharp from 'sharp'
 import { type Job } from 'bullmq'
-import { createScopedLogger } from '@/lib/logging/core'
+import { createScopedLogger, logTaskPayload } from '@/lib/logging/core'
 import { withLogContext } from '@/lib/logging/context'
 import { generateImage, generateVideo } from '@/lib/generator-api'
 import { generateLipSync } from '@/lib/lipsync'
@@ -14,13 +14,45 @@ import {
   resolveProjectModelCapabilityGenerationOptions,
 } from '@/lib/config-service'
 import { TaskTerminatedError } from '@/lib/task/errors'
-import { isTaskActive, trySetTaskExternalId } from '@/lib/task/service'
+import { isTaskActive, trySetTaskExternalId, clearTaskExternalId } from '@/lib/task/service'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from './shared'
 import { prisma } from '@/lib/prisma'
 
-const DEFAULT_POLL_TIMEOUT_MS = Number.parseInt(process.env.WORKER_EXTERNAL_TIMEOUT_MS || String(20 * 60 * 1000), 10)
+const DEFAULT_POLL_TIMEOUT_MS = Number.parseInt(process.env.WORKER_EXTERNAL_TIMEOUT_MS || String(40 * 60 * 1000), 10)
 const DEFAULT_POLL_INTERVAL_MS = Number.parseInt(process.env.WORKER_EXTERNAL_POLL_MS || '3000', 10)
+// 外部任务瞬时失败（如 Gemini batch 刚提交短暂 404）的宽限窗口：
+// 在该窗口内将瞬时失败当作 pending 继续轮询；超窗仍失败才真正判定外部任务失效。
+const EXTERNAL_TRANSIENT_GRACE_MS = Number.parseInt(process.env.WORKER_EXTERNAL_TRANSIENT_GRACE_MS || '90000', 10)
+
+/**
+ * 为日志摘要图片引用：避免把超长的 base64/data URL 整段塞进日志，
+ * 只保留类型、长度与前缀，足以判断"有没有传、传的是什么"。
+ */
+function summarizeImageRef(ref: string | null | undefined): Record<string, unknown> | null {
+  if (typeof ref !== 'string' || !ref) return null
+  const isDataUrl = ref.startsWith('data:')
+  return {
+    present: true,
+    kind: isDataUrl ? 'data-url' : 'url',
+    length: ref.length,
+    preview: ref.slice(0, 120),
+  }
+}
+
+/**
+ * 为日志摘要生成 options：把可能超长的 referenceImages（base64 数组）替换为逐项摘要，
+ * 其余字段原样保留。
+ */
+function summarizeGenOptions(options: Record<string, unknown> | undefined | null): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...(options || {}) }
+  if (Array.isArray(next.referenceImages)) {
+    next.referenceImages = (next.referenceImages as unknown[]).map((item) =>
+      summarizeImageRef(typeof item === 'string' ? item : null),
+    )
+  }
+  return next
+}
 
 /**
  * 查询 DB 中任务是否已有 externalId（服务重启后续接轮询用，避免重复提交外部 API）
@@ -132,6 +164,43 @@ export async function waitExternalResult(
     }
 
     if (status.status === 'failed') {
+      // 瞬时失败（如 Gemini batch 刚提交的传播延迟 404）：宽限窗口内继续轮询，不立即判失败。
+      if (status.transient && Date.now() - startAt < EXTERNAL_TRANSIENT_GRACE_MS) {
+        logger.info({
+          message: 'external task transient failure, keep polling within grace window',
+          durationMs: Date.now() - startAt,
+          details: {
+            externalId,
+            graceMs: EXTERNAL_TRANSIENT_GRACE_MS,
+            reason: status.error || 'transient',
+          },
+        })
+        await reportTaskProgress(job, progressStart, { stage: 'polling_external_transient', externalId })
+        await assertTaskActive(job, 'polling_external_transient_wait')
+        await sleep(intervalMs)
+        continue
+      }
+
+      // 瞬时失败超出宽限窗口：外部任务已确认失效。清除 externalId，使任务重试时重新提交外部任务，
+      // 而非续接到这个已死的 externalId；并以可重试的 EXTERNAL_ERROR 抛出（避免 "not found" 被归类为不可重试）。
+      if (status.transient) {
+        await clearTaskExternalId(job.data.taskId)
+        logger.error({
+          message: 'external task gone after grace window, cleared externalId for resubmit',
+          errorCode: 'EXTERNAL_ERROR',
+          retryable: true,
+          durationMs: Date.now() - startAt,
+          details: {
+            externalId,
+            reason: status.error || 'transient',
+          },
+        })
+        const retryableError = new Error(`External task gone (will resubmit): ${externalId}`) as Error & { code?: string; retryable?: boolean }
+        retryableError.code = 'EXTERNAL_ERROR'
+        retryableError.retryable = true
+        throw retryableError
+      }
+
       logger.error({
         message: status.error || 'external task failed',
         errorCode: 'EXTERNAL_ERROR',
@@ -231,6 +300,17 @@ export async function resolveImageSourceFromGeneration(
       capabilityOptions,
       optionKeys: Object.keys(params.options || {}),
     },
+  })
+
+  logTaskPayload({
+    message: 'image source generation payload',
+    prompt: params.prompt,
+    params: {
+      model: params.modelId,
+      referenceImageCount: params.options?.referenceImages?.length ?? 0,
+      options: summarizeGenOptions({ ...params.options, ...capabilityOptions }),
+    },
+    context: { module: 'worker.image', action: 'generate_source', taskId: job.data.taskId, projectId: job.data.projectId, userId: params.userId },
   })
 
   const result = await withLogContext(
@@ -345,6 +425,17 @@ export async function resolveImageSourcesFromGeneration(
     modelType: 'image',
     modelKey: params.modelId,
     runtimeSelections,
+  })
+
+  logTaskPayload({
+    message: 'image sources generation payload',
+    prompt: params.prompt,
+    params: {
+      model: params.modelId,
+      referenceImageCount: params.options?.referenceImages?.length ?? 0,
+      options: summarizeGenOptions({ ...params.options, ...capabilityOptions }),
+    },
+    context: { module: 'worker.image', action: 'generate_sources', taskId: job.data.taskId, projectId: job.data.projectId, userId: params.userId },
   })
 
   const result = await withLogContext(
@@ -490,6 +581,24 @@ export async function resolveVideoSourceFromGeneration(
     if (key === 'generationMode' || value === undefined) continue
     providerRequestOptions[key] = value
   }
+
+  logTaskPayload({
+    message: 'video source generation payload',
+    prompt: params.options?.prompt,
+    params: {
+      model: params.modelId,
+      imageUrl: summarizeImageRef(params.imageUrl),
+      lastFrameImageUrl: summarizeImageRef(params.options?.lastFrameImageUrl),
+      // prompt 与 lastFrameImageUrl 已单独记录，从 options 中剔除避免日志重复与超长
+      options: (() => {
+        const merged: Record<string, unknown> = { ...providerRequestOptions, ...providerCapabilityOptions }
+        delete merged.prompt
+        delete merged.lastFrameImageUrl
+        return merged
+      })(),
+    },
+    context: { module: 'worker.video', action: 'generate_source', taskId: job.data.taskId, projectId: job.data.projectId, userId: params.userId },
+  })
 
   const result = await withLogContext(
     { projectId: job.data.projectId, taskId: job.data.taskId, userId: params.userId },

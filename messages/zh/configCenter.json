@@ -10,7 +10,8 @@
     "locale": "语言",
     "status": "状态",
     "allLocales": "全部语言",
-    "allStatuses": "全部状态"
+    "allStatuses": "全部状态",
+    "searchPlaceholder": "搜索名称 / ID / 备注..."
   },
   "locales": {
     "zh": "中文",
@@ -32,6 +33,10 @@
   },
   "variables": {
     "none": "无变量"
+  },
+  "note": {
+    "label": "备注",
+    "placeholder": "为该提示词添加备注..."
   },
   "versions": {
     "title": "版本",
@@ -57,13 +62,15 @@
     "publish": "发布",
     "disable": "停用",
     "createDraft": "创建草稿",
-    "saveOverride": "保存覆盖"
+    "saveOverride": "保存覆盖",
+    "saveNote": "保存备注"
   },
   "messages": {
     "draftCreated": "草稿已创建",
     "published": "版本已发布",
     "disabled": "版本已停用",
-    "overrideSaved": "项目覆盖已保存"
+    "overrideSaved": "项目覆盖已保存",
+    "noteSaved": "备注已保存"
   },
   "errors": {
     "loadFailed": "加载提示词失败",
@@ -71,7 +78,8 @@
     "actionFailed": "更新版本状态失败",
     "overrideFailed": "保存项目覆盖失败",
     "emptyContent": "提示词内容不能为空",
-    "overrideRequired": "请填写项目 ID 并选择版本"
+    "overrideRequired": "请填写项目 ID 并选择版本",
+    "noteSaveFailed": "保存备注失败"
   },
   "artStyles": {
     "title": "画风库管理",

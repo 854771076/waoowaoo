@@ -14,6 +14,11 @@ export interface TaskStatus {
     videoUrl?: string
     actualVideoTokens?: number
     error?: string
+    /**
+     * 瞬时性失败标记：表示该失败可能是暂时的（如外部任务刚提交尚未可见、或服务端短暂不可达），
+     * 调用方（waitExternalResult）应在宽限窗口内继续轮询，而非立即判定永久失败。
+     */
+    transient?: boolean
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -177,9 +182,10 @@ export async function queryGeminiBatchStatus(batchName: string, apiKey: string):
         const message = getErrorMessage(error)
         const status = getErrorStatus(error)
         logInternal('GeminiBatch', 'ERROR', 'Query error', { batchName, error: message, status })
-        // 如果是 404 或任务不存在，标记为失败（不再重试）
+        // 404 / 任务不存在：标记为瞬时失败。batch 刚提交存在传播延迟、或服务端短暂不可见时会返回 404，
+        // 由 waitExternalResult 在宽限窗口内继续轮询；超窗仍 404 才真正判失败并清除 externalId 触发重提交。
         if (status === 404 || message.includes('404') || message.includes('not found') || message.includes('NOT_FOUND')) {
-            return { status: 'failed', error: `Batch task not found` }
+            return { status: 'failed', error: 'Batch task not found', transient: true }
         }
         return { status: 'pending' }
     }

@@ -1,6 +1,7 @@
 import type OpenAI from 'openai'
 import { getCompletionContent } from '@/lib/llm-client'
 import { getCompletionParts } from '@/lib/llm/completion-parts'
+import { logTaskPayload } from '@/lib/logging/core'
 import {
   runModelGatewayTextCompletion,
   runModelGatewayVisionCompletion,
@@ -48,6 +49,23 @@ function extractTextAndReasoning(completion: OpenAI.Chat.Completions.ChatComplet
 
 export async function executeAiTextStep(input: AiStepExecutionInput): Promise<AiStepExecutionResult> {
   try {
+    logTaskPayload({
+      message: 'ai text step payload',
+      prompt: input.messages.map((m) => `[${m.role}] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`).join('\n\n'),
+      params: {
+        model: input.model,
+        temperature: input.temperature,
+        reasoning: input.reasoning,
+        reasoningEffort: input.reasoningEffort,
+        action: input.action,
+      },
+      context: {
+        module: 'ai-runtime.text',
+        action: input.action || 'execute_ai_text_step',
+        projectId: input.projectId,
+        userId: input.userId,
+      },
+    })
     const completion = await runModelGatewayTextCompletion({
       userId: input.userId,
       model: input.model,
@@ -80,6 +98,24 @@ export async function executeAiTextStep(input: AiStepExecutionInput): Promise<Ai
 
 export async function executeAiVisionStep(input: AiVisionStepExecutionInput): Promise<AiVisionStepExecutionResult> {
   try {
+    logTaskPayload({
+      message: 'ai vision step payload',
+      prompt: input.prompt,
+      params: {
+        model: input.model,
+        temperature: input.temperature,
+        reasoning: input.reasoning,
+        reasoningEffort: input.reasoningEffort,
+        action: input.action,
+        imageCount: input.imageUrls?.length ?? 0,
+      },
+      context: {
+        module: 'ai-runtime.vision',
+        action: input.action || 'execute_ai_vision_step',
+        projectId: input.projectId,
+        userId: input.userId,
+      },
+    })
     const completion = await runModelGatewayVisionCompletion({
       userId: input.userId,
       model: input.model,

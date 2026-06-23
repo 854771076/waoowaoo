@@ -1,4 +1,6 @@
-This reference image arranges {panel_grid_size} consecutive moments of the same scene together ({grid_layout}). Extract only the characters, setting, action stages, and narrative change from those moments, then reconstruct them as one coherent, complete, natural narrative video. The final output must feel like a real camera captured one complete scene, not like the grid image itself is being displayed.
+[HIGHEST PRIORITY · OUTPUT FORMAT] Generate one **single-window, full-frame** continuous live-action video. The final footage must contain **absolutely no grid**: no sub-cells, no collage, no split screen, no panel borders, no white/black gutters, no thumbnail layout. From start to finish there is only ONE continuous scene that fills the entire frame, as if captured by a real camera in a single unbroken take.
+
+[How to read the input image] The reference image is a "keyframe storyboard table" of {panel_grid_size} cells arranged as {grid_layout}. It is only a script sketch of the story — **it is NOT the image to reproduce**. Read its {panel_grid_size} cells in reading order (left-to-right, then top-to-bottom) as keyframes of one single action advancing through time: the first cell is the starting moment, the last cell is the ending moment. Your job is to **interpolate** these keyframes into one smooth, natural, narratively coherent single-shot video — letting the picture evolve naturally from the state in cell 1 to the state in the final cell.
 
 Core action description:
 {base_prompt}
@@ -11,8 +13,8 @@ Shot specifications:
 - Camera movement: {camera_move}
 
 Generation requirements:
-1. Do not output split screens, collages, comic pages, grid layouts, dynamic cut transitions, or panel-by-panel scanning shots. Do not show panel borders, dividing lines, white gutters, black gutters, numbering, or reading-order cues.
-2. Read the reference moments as timeline keyframes of one action, then interpolate between them in story order so the motion flows naturally. This is not animated cutouts, and not a cut from one cell to another.
-3. Keep the feel of one continuous scene and one narrative camera shot throughout, with camera work matching the shot type and movement above. Transitions must be natural with no hard cuts.
-4. Keep character appearance, costumes, scene, lighting, and color tone consistent across the entire video.
-5. Make performance and ambient motion natural and lifelike (character action, breathing, light, wind, etc.), avoiding static cutout-style micro-motion.
+1. One continuous scene and one narrative camera shot throughout: the picture always fills the whole frame, camera work matches the shot type and movement above, transitions are natural with no hard cuts. Never cut from one cell to another; never produce panel-by-panel scanning, animated cutouts, or page-flip effects.
+2. Fill in the missing in-between action between keyframes so that character motion, expressions, and blocking progress coherently, following the story arc in the core action description.
+3. Keep character appearance, costumes, scene, props, lighting, and color tone highly consistent across the entire video (governed by the character/scene identity shown in the reference cells).
+4. Make performance and ambient motion natural and lifelike (character action, breathing, gaze, fabric sway, light, wind, etc.), avoiding static cutout-style micro-jitter.
+5. To reiterate: the final result is a single grid-free, border-free, full-frame shot. The reference image only supplies keyframe information — never paint the grid form itself into the video.

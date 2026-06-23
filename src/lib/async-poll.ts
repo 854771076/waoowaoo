@@ -33,6 +33,8 @@ export interface PollResult {
     actualVideoTokens?: number
     downloadHeaders?: Record<string, string>
     error?: string
+    /** 瞬时性失败标记，详见 TaskStatus.transient */
+    transient?: boolean
 }
 
 function getErrorMessage(error: unknown): string {
@@ -549,7 +551,8 @@ async function pollGeminiTask(
         status: result.status,
         imageUrl: result.imageUrl,
         resultUrl: result.imageUrl,
-        error: result.error
+        error: result.error,
+        transient: result.transient,
     }
 }
 

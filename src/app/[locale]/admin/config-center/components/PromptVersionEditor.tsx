@@ -38,6 +38,8 @@ export default function PromptVersionEditor({ prompt, variableKeys, onChanged }:
   const [draftLocale, setDraftLocale] = useState<PromptLocale>('zh')
   const [draftContent, setDraftContent] = useState('')
   const [changeNote, setChangeNote] = useState('')
+  const [note, setNote] = useState(prompt.description ?? '')
+  const [savingNote, setSavingNote] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
   const [versionAction, setVersionAction] = useState<string | null>(null)
   const [overrideVersionId, setOverrideVersionId] = useState('')
@@ -58,6 +60,10 @@ export default function PromptVersionEditor({ prompt, variableKeys, onChanged }:
   }, [latestForDraftLocale?.content, latestForDraftLocale?.id, prompt.promptId])
 
   useEffect(() => {
+    setNote(prompt.description ?? '')
+  }, [prompt.promptId, prompt.description])
+
+  useEffect(() => {
     const preferred = versions.find((version) => version.status === 'published') ?? versions[0]
     setOverrideVersionId(preferred?.id ?? '')
     setOverrideProjectId('')
@@ -67,6 +73,32 @@ export default function PromptVersionEditor({ prompt, variableKeys, onChanged }:
   }, [prompt.promptId, versions])
 
   const selectedOverrideVersion = versions.find((version) => version.id === overrideVersionId) ?? null
+
+  async function handleSaveNote() {
+    setMessage(null)
+    setError(null)
+    setSavingNote(true)
+    try {
+      const response = await apiFetch(`/api/admin/config-center/prompts/${encodeURIComponent(prompt.promptId)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ description: note.trim() || null }),
+      })
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, t('errors.noteSaveFailed')))
+      }
+      const successMessage = t('messages.noteSaved')
+      setMessage(successMessage)
+      showToast(successMessage, 'success')
+      await onChanged()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : t('errors.noteSaveFailed')
+      setError(errorMessage)
+      showToastError(errorMessage)
+    } finally {
+      setSavingNote(false)
+    }
+  }
 
   async function handleCreateDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -186,6 +218,24 @@ export default function PromptVersionEditor({ prompt, variableKeys, onChanged }:
               </span>
             </div>
             <p className="mt-1 break-all text-xs text-[var(--glass-text-tertiary)]">{prompt.promptId}</p>
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder={t('note.placeholder')}
+                aria-label={t('note.label')}
+                className="min-w-0 flex-1 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-3 py-1.5 text-xs text-[var(--glass-text-primary)] outline-none focus:border-[var(--glass-stroke-focus)]"
+              />
+              <button
+                type="button"
+                onClick={() => void handleSaveNote()}
+                disabled={savingNote || note.trim() === (prompt.description ?? '').trim()}
+                className="glass-btn-base glass-btn-tone-info inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <AppIcon name={savingNote ? 'loader' : 'bookmark'} className={`h-3.5 w-3.5 ${savingNote ? 'animate-spin' : ''}`} />
+                {t('actions.saveNote')}
+              </button>
+            </div>
           </div>
           <div className="flex max-w-full flex-wrap gap-1.5">
             {variableKeys.length > 0 ? variableKeys.map((key) => (

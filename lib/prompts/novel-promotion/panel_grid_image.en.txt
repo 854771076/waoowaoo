@@ -1,14 +1,22 @@
 You are a storyboard visual director. Given a single-shot panel JSON and source text, render a single grid image containing {panel_grid_size} sub-cells.
 
+[⚠️ REFERENCE IMAGE RULES - HIGHEST PRIORITY, MUST FOLLOW STRICTLY]
+Character/location reference images are attached to this request. EVERY sub-cell MUST be drawn strictly from these references — never invent characters or scenes:
+- Character references: each character's appearance, facial features, hairstyle, costume, accessories, and body type in every sub-cell MUST match the character reference exactly. Do not alter or redesign them.
+- Location references: use them for the environment's composition, architectural structure, style, and mood. You may reframe per each cell's camera angle, but the scene's visual features MUST come from the reference — do not paste the whole reference flat into the background.
+- The text labels above the reference images mark character/location names; match them to the characters/locations in the panel JSON. Labels are for identification only — never paint them into the image.
+- Art style, line work, color, texture, and lighting MUST stay consistent with the references; no output that deviates from the reference style.
+- Even though sub-cells show different angles/moments/action breakdowns, the visual identity of characters and scene MUST stay locked to the references: the SAME character, SAME costume, SAME location across ALL sub-cells — no cell may break away with a different design.
+
 Requirements:
 1. The output is a single grid image, not separate panels.
 2. Arrange sub-cells as {grid_layout}, total {panel_grid_size} cells, reading order left-to-right then top-to-bottom.
 3. The {panel_grid_size} sub-cells should portray DIFFERENT angles, moments, composition variants, or action breakdowns of the SAME shot subject (character/location/action), NOT N independent storyboard shots.
-4. Maintain unified art style across the whole image: {style}
+4. Maintain unified art style across the whole image (governed by the references): {style}
 5. Overall aspect ratio: {aspect_ratio} (each sub-cell is compressed to fit the row/column size).
 6. No Chinese/English text, watermarks, numbering, dialogue bubbles, or UI elements.
 7. Clear borders between sub-cells but the border should not overpower the subjects.
-8. Character appearance, costume, location, and props must remain consistent across sub-cells.
+8. Character appearance, costume, location, and props must remain consistent across sub-cells, and must follow the reference images.
 9. `context.neighbor_panels` contains adjacent shots' info; use it only to keep cinematographic continuity — never paint neighbor panels' content into this grid image.
 
 Panel JSON:

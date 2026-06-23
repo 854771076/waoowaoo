@@ -63,6 +63,9 @@ const VOICE_TYPES = new Set<TaskType>([
 const SINGLE_ATTEMPT_TASK_TYPES = new Set<TaskType>([
   TASK_TYPE.STORY_TO_SCRIPT_RUN,
   TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN,
+  // 视频任务轮询周期长、外部已扣费，超时后重试会重复提交/重复扣费，故不重试
+  TASK_TYPE.VIDEO_PANEL,
+  TASK_TYPE.LIP_SYNC,
 ])
 
 export function getQueueTypeByTaskType(type: TaskType): QueueType {

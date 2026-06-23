@@ -72,12 +72,20 @@ function promptMatchesFilters(prompt: PromptDefinition, locale: LocaleFilter, st
   })
 }
 
+function promptMatchesSearch(prompt: PromptDefinition, query: string) {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) return true
+  return [prompt.name, prompt.promptId, prompt.category, prompt.description ?? '']
+    .some((field) => field.toLowerCase().includes(normalized))
+}
+
 export default function PromptLibraryPanel() {
   const t = useTranslations('configCenter')
   const [prompts, setPrompts] = useState<PromptDefinition[]>([])
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [localeFilter, setLocaleFilter] = useState<LocaleFilter>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -107,8 +115,10 @@ export default function PromptLibraryPanel() {
   }, [loadPrompts])
 
   const filteredPrompts = useMemo(
-    () => prompts.filter((prompt) => promptMatchesFilters(prompt, localeFilter, statusFilter)),
-    [localeFilter, prompts, statusFilter],
+    () => prompts.filter(
+      (prompt) => promptMatchesFilters(prompt, localeFilter, statusFilter) && promptMatchesSearch(prompt, searchQuery),
+    ),
+    [localeFilter, prompts, statusFilter, searchQuery],
   )
 
   const selectedPrompt = useMemo(() => {
@@ -159,7 +169,21 @@ export default function PromptLibraryPanel() {
             </span>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="relative mt-4">
+            <AppIcon
+              name="search"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--glass-text-tertiary)]"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t('filters.searchPlaceholder')}
+              className="w-full rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] py-2 pl-9 pr-3 text-xs text-[var(--glass-text-primary)] outline-none focus:border-[var(--glass-stroke-focus)]"
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <label className="min-w-0 text-xs font-medium text-[var(--glass-text-secondary)]">
               <span className="mb-1 block">{t('filters.locale')}</span>
               <select

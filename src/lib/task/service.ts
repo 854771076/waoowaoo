@@ -422,6 +422,19 @@ export async function trySetTaskExternalId(taskId: string, externalId: string) {
   return result.count > 0
 }
 
+/**
+ * 清除任务的 externalId。
+ * 用于外部任务已失效（如 Gemini batch 中途 404）时，让任务重试可重新提交外部任务，
+ * 而不会被 resolveXxxFromGeneration 的「续接已有 externalId」逻辑续接到已死的任务。
+ */
+export async function clearTaskExternalId(taskId: string) {
+  const result = await taskModel.updateMany({
+    where: activeTaskWhere(taskId),
+    data: { externalId: null },
+  })
+  return result.count > 0
+}
+
 export async function touchTaskHeartbeat(taskId: string) {
   const result = await taskModel.updateMany({
     where: activeTaskWhere(taskId),

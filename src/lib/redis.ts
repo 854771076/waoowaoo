@@ -69,6 +69,10 @@ export function createSubscriber() {
   const client = new Redis({
     ...buildBaseConfig(),
     maxRetriesPerRequest: null,
+    // 订阅连接进入 subscriber 模式后，ioredis 的就绪检查（INFO 命令）会被 Redis 拒绝，
+    // 触发 "Connection in subscriber mode, only subscriber commands may be used" 错误（尤其断线重连时）。
+    // 订阅连接不需要就绪检查，显式关闭。
+    enableReadyCheck: false,
   })
   onConnectLog('sub', client)
   return client

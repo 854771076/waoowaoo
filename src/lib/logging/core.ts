@@ -94,10 +94,10 @@ function nowChinaISOString(): string {
   return cstTime.toISOString().replace('Z', '+08:00')
 }
 
-function write(level: LogLevel, event: Omit<LogEvent, 'ts' | 'level' | 'service'>): void {
+function write(level: LogLevel, event: Omit<LogEvent, 'ts' | 'level' | 'service'>, options?: { forceEmit?: boolean }): void {
   const shouldEmitByLevel = shouldLogLevel(level)
   const shouldEmitAudit = Boolean(event.audit) && LOG_CONFIG.auditEnabled
-  if (!shouldEmitByLevel && !shouldEmitAudit) return
+  if (!shouldEmitByLevel && !shouldEmitAudit && !options?.forceEmit) return
 
   const context = getLogContext()
   const merged: LogEvent = {
@@ -299,4 +299,45 @@ export function createScopedLogger(baseContext: Partial<SemanticContext>): Scope
     },
     child: (context: Partial<SemanticContext>) => createScopedLogger({ ...baseContext, ...context }),
   }
+}
+
+/**
+ * 是否启用异步任务提示词/参数日志输出。
+ * 由环境变量 LOG_ASYNC_TASK_PAYLOAD_ENABLED 控制（默认关闭）。
+ */
+export function isTaskPayloadLogEnabled(): boolean {
+  return LOG_CONFIG.taskPayloadEnabled
+}
+
+type TaskPayloadLogInput = {
+  message: string
+  prompt?: string
+  /** 生成请求参数（模型、温度、参考图等），会按 redactKeys 脱敏 */
+  params?: Record<string, unknown>
+  context?: Partial<SemanticContext>
+}
+
+/**
+ * 在异步任务的生成调用边界输出完整 prompt 与请求参数。
+ * 仅当 LOG_ASYNC_TASK_PAYLOAD_ENABLED 开启时才写日志，否则直接返回（零开销）。
+ * 输出级别为 INFO，不依赖 LOG_DEBUG_ENABLED，便于在生产临时排查时单独打开。
+ */
+export function logTaskPayload(input: TaskPayloadLogInput): void {
+  if (!LOG_CONFIG.taskPayloadEnabled) return
+  const context = input.context ?? {}
+  write('INFO', {
+    audit: false,
+    message: input.message,
+    module: context.module,
+    action: context.action || 'task.payload',
+    requestId: context.requestId,
+    taskId: context.taskId,
+    projectId: context.projectId,
+    userId: context.userId,
+    provider: context.provider,
+    details: {
+      prompt: input.prompt,
+      params: input.params ?? null,
+    },
+  }, { forceEmit: true })
 }

@@ -189,6 +189,7 @@ export const PRESET_MODELS: PresetModel[] = [
     { modelId: 'doubao-seed-2-0-pro-260215', name: 'Doubao Seed 2.0 Pro', type: 'llm', provider: 'starrouter' },
     { modelId: 'gpt-image-2', name: 'GPT Image 2', type: 'image', provider: 'starrouter' },
     { modelId: 'dreamina-seedance-2-0-fast-260128', name: 'Dreamina Seedance 2.0 Fast', type: 'video', provider: 'starrouter' },
+    { modelId: 'dreamina-seedance-2-0-260128', name: 'Dreamina Seedance 2.0', type: 'video', provider: 'starrouter' },
 ]
 
 const PRESET_COMING_SOON_MODEL_KEYS = new Set<string>([])

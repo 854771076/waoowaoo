@@ -10,7 +10,8 @@
     "locale": "Locale",
     "status": "Status",
     "allLocales": "All locales",
-    "allStatuses": "All statuses"
+    "allStatuses": "All statuses",
+    "searchPlaceholder": "Search name / ID / note..."
   },
   "locales": {
     "zh": "Chinese",
@@ -32,6 +33,10 @@
   },
   "variables": {
     "none": "No variables"
+  },
+  "note": {
+    "label": "Note",
+    "placeholder": "Add a note for this prompt..."
   },
   "versions": {
     "title": "Versions",
@@ -57,13 +62,15 @@
     "publish": "Publish",
     "disable": "Disable",
     "createDraft": "Create draft",
-    "saveOverride": "Save override"
+    "saveOverride": "Save override",
+    "saveNote": "Save note"
   },
   "messages": {
     "draftCreated": "Draft created",
     "published": "Version published",
     "disabled": "Version disabled",
-    "overrideSaved": "Project override saved"
+    "overrideSaved": "Project override saved",
+    "noteSaved": "Note saved"
   },
   "errors": {
     "loadFailed": "Failed to load prompts",
@@ -71,7 +78,8 @@
     "actionFailed": "Failed to update version status",
     "overrideFailed": "Failed to save project override",
     "emptyContent": "Prompt content is required",
-    "overrideRequired": "Enter a project ID and choose a version"
+    "overrideRequired": "Enter a project ID and choose a version",
+    "noteSaveFailed": "Failed to save note"
   },
   "artStyles": {
     "title": "Art Style Library",
