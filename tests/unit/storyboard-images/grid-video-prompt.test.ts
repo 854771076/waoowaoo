@@ -299,10 +299,12 @@ describe('rewriteGridVideoPrompt', () => {
     expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
       promptId: 'np_panel_grid_video',
       variables: expect.objectContaining({
+        storyboard_context_json: expect.any(String),
+        base_prompt: '男人开门',
+        grid_layout: '3 列 × 2 行',
         panel_grid_size: '4',
         shot_type: '中景',
         camera_move: '跟拍',
-        base_prompt: '男人开门',
       }),
     }))
     expect(aiMock.executeAiTextStep).toHaveBeenCalledWith(expect.objectContaining({
@@ -324,6 +326,23 @@ describe('rewriteGridVideoPrompt', () => {
     })
     expect(result).toBeNull()
     expect(aiMock.executeAiTextStep).not.toHaveBeenCalled()
+  })
+
+  it('returns null when model is empty', async () => {
+    const result = await rewriteGridVideoPrompt({
+      panelContext: { description: '男人下班回家' },
+      basePrompt: '男人开门',
+      gridSize: 4,
+      shotType: '中景',
+      cameraMove: '跟拍',
+      locale: 'zh',
+      projectId: null,
+      userId: 'u1',
+      model: '',
+    })
+    expect(result).toBeNull()
+    expect(aiMock.executeAiTextStep).not.toHaveBeenCalled()
+    expect(promptMock.buildPromptAsync).not.toHaveBeenCalled()
   })
 
   it('returns null when LLM returns empty text', async () => {
