@@ -19,7 +19,10 @@ import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
-import { buildGridVideoPrompt, isGridLayout } from '@/lib/storyboard-images/grid-video-prompt'
+import { isGridLayout } from '@/lib/storyboard-images/grid-video-prompt'
+import { resolveGridVideoPrompt } from '@/lib/workers/grid-video-prompt-resolver'
+import { resolveAnalysisModel } from './handlers/resolve-analysis-model'
+import { withTextBilling } from '@/lib/billing'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -122,22 +125,61 @@ async function generateVideoForPanel(
   let usedGridPrompt = false
   if (isGridImage && !firstLastFramePayload) {
     const payloadGridSize = typeof payload.gridSize === 'number' ? payload.gridSize : null
-    // 宫格数量：优先用 payload 传入的值，其次用项目级默认配置
     const gridSize = payloadGridSize && payloadGridSize > 1
       ? payloadGridSize
       : (defaultGridSize > 1 ? defaultGridSize : 4)
-    const gridPrompt = await buildGridVideoPrompt({
+    const alreadyRewritten = panel.gridVideoPromptAt != null
+    let analysisModel = ''
+    try {
+      analysisModel = await resolveAnalysisModel({
+        userId: job.data.userId,
+        inputModel: payload.analysisModel,
+      })
+    } catch (error) {
+      logger.warn({ message: 'grid video prompt rewrite skipped: analysis model unresolved', details: { panelId: panel.id, error: String(error) } })
+    }
+    const locale = (job.data.locale as 'zh' | 'en') || 'zh'
+    const panelContext = {
+      shot_type: panel.shotType || '',
+      camera_move: panel.cameraMove || '',
+      description: panel.description || '',
+      location: panel.location || '',
+      characters: panel.characters || '',
+      text_segment: panel.srtSegment || '',
+    }
+
+    const runResolve = () => resolveGridVideoPrompt({
       basePrompt,
-      panelDescription: panel.description || basePrompt,
+      panelContext,
       gridSize,
       shotType: panel.shotType || '',
       cameraMove: panel.cameraMove || '',
-      locale: (job.data.locale as 'zh' | 'en') || 'zh',
+      locale,
       projectId: job.data.projectId,
+      userId: job.data.userId,
+      model: analysisModel,
+      alreadyRewritten,
     })
-    if (gridPrompt) {
-      prompt = gridPrompt
-      usedGridPrompt = true
+
+    // 缓存命中或无可用模型：不计费直接解析；需要重写时用 withTextBilling 包裹
+    const resolved = (alreadyRewritten || !analysisModel)
+      ? await runResolve()
+      : await withTextBilling(
+          job.data.userId,
+          analysisModel,
+          3000,
+          1200,
+          { projectId: job.data.projectId, action: 'grid_video_prompt_rewrite', metadata: { panelId: panel.id } },
+          runResolve,
+        )
+
+    prompt = resolved.prompt
+    usedGridPrompt = resolved.prompt !== basePrompt
+    if (resolved.rewritten) {
+      await prisma.novelPromotionPanel.update({
+        where: { id: panel.id },
+        data: { videoPrompt: resolved.prompt, gridVideoPromptAt: new Date() },
+      })
     }
   }
 
