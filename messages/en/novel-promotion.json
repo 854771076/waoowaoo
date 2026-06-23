@@ -354,6 +354,41 @@
         },
         "phase2Hint": "Clip property editing will be completed in Phase 2."
       }
+    },
+    "export": {
+      "openButton": "Export",
+      "title": "Export video",
+      "description": "Set resolution, frame rate, format, and bitrate. The latest timeline is saved automatically before export.",
+      "close": "Close export panel",
+      "resolution": "Resolution",
+      "presets": {
+        "720p": "720p Standard",
+        "1080p": "1080p HD"
+      },
+      "fps": "Frame rate",
+      "format": "Format",
+      "bitrate": "Bitrate",
+      "bitrateRequired": "Enter an export bitrate.",
+      "ready": "Ready. Click start to export.",
+      "starting": "Saving and submitting export task...",
+      "processing": "Exporting ({progress}%)",
+      "done": "Export complete. Ready to download.",
+      "failed": "Export failed. Please try again.",
+      "cancelled": "Export cancelled.",
+      "conflict": "An export is already in progress. Wait for it to finish or cancel it first.",
+      "missingContext": "Missing current episode or editor project.",
+      "loading": "Loading editor data...",
+      "saveConflict": "The editor project has a save conflict. Resolve it before exporting.",
+      "unsavedChanges": "Current editor changes have not been saved. Save successfully before exporting.",
+      "startFailed": "Failed to submit export task. Please try again.",
+      "statusFailed": "Failed to refresh export status.",
+      "cancelFailed": "Failed to cancel export. Please try again.",
+      "mediaObjectId": "Output {id}",
+      "start": "Start export",
+      "runningButton": "Exporting...",
+      "cancel": "Cancel export",
+      "retry": "Retry",
+      "download": "Download video"
     }
   }
 }

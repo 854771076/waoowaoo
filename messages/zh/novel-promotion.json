@@ -354,6 +354,41 @@
         },
         "phase2Hint": "片段属性编辑将在 Phase 2 完善。"
       }
+    },
+    "export": {
+      "openButton": "导出",
+      "title": "导出视频",
+      "description": "设置分辨率、帧率、格式和码率。导出前会自动保存最新时间轴。",
+      "close": "关闭导出面板",
+      "resolution": "分辨率",
+      "presets": {
+        "720p": "720p 标清",
+        "1080p": "1080p 高清"
+      },
+      "fps": "帧率",
+      "format": "格式",
+      "bitrate": "码率",
+      "bitrateRequired": "请输入导出码率。",
+      "ready": "准备就绪，点击开始导出。",
+      "starting": "正在保存并提交导出任务...",
+      "processing": "正在导出（{progress}%）",
+      "done": "导出完成，可以下载。",
+      "failed": "导出失败，请稍后重试。",
+      "cancelled": "导出已取消。",
+      "conflict": "已有导出进行中，请等待完成或取消后再试。",
+      "missingContext": "缺少当前剧集或编辑项目。",
+      "loading": "正在加载编辑器数据...",
+      "saveConflict": "编辑器项目存在保存冲突，请先解决冲突后再导出。",
+      "unsavedChanges": "当前编辑内容尚未保存，请保存成功后再导出。",
+      "startFailed": "导出任务提交失败，请稍后重试。",
+      "statusFailed": "导出状态刷新失败。",
+      "cancelFailed": "取消导出失败，请稍后重试。",
+      "mediaObjectId": "产物 {id}",
+      "start": "开始导出",
+      "runningButton": "导出中...",
+      "cancel": "取消导出",
+      "retry": "重试",
+      "download": "下载视频"
     }
   }
 }
