@@ -1,12 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
+import { useEditorStageRuntime } from '@/lib/novel-promotion/stages/editor-stage-runtime-core'
+import { useEditorExport } from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorExport'
 import { AssetPanel } from './left-panel/AssetPanel'
 import { ExportPanel } from './ExportPanel'
 import { RightPanel } from './right-panel/RightPanel'
 import { SaveStatusIndicator } from './SaveStatusIndicator'
 import { TwickEditor } from './TwickEditor'
+import { useWorkspaceProvider } from '../../WorkspaceProvider'
 
 interface EditorStageShellProps {
   videoWidth: number
@@ -15,7 +18,26 @@ interface EditorStageShellProps {
 
 export function EditorStageShell({ videoWidth, videoHeight }: EditorStageShellProps) {
   const t = useTranslations('novelPromotion.editor')
+  const exportT = useTranslations('novelPromotion.editor.export')
+  const { projectId, episodeId, subscribeTaskEvents } = useWorkspaceProvider()
+  const { editorProjectId, editorProjectRender, isLoadingData, isLoadingProject, flushProjectSave } = useEditorStageRuntime()
   const [isExportPanelOpen, setIsExportPanelOpen] = useState(false)
+
+  const exportRuntime = useEditorExport({
+    projectId,
+    episodeId: episodeId || null,
+    editorProjectId,
+    flushProjectSave,
+    subscribeTaskEvents,
+    initialRenderState: editorProjectRender,
+    t: (key) => exportT(key as never),
+  })
+
+  const exportDisabledReason = useMemo(() => {
+    if (!episodeId || !editorProjectId) return exportT('missingContext')
+    if (isLoadingData || isLoadingProject) return exportT('loading')
+    return null
+  }, [editorProjectId, episodeId, exportT, isLoadingData, isLoadingProject])
 
   return (
     <div className="relative flex h-[calc(100vh-220px)] min-h-[720px] w-full flex-col overflow-hidden rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] shadow-xl backdrop-blur-xl">
@@ -42,7 +64,13 @@ export function EditorStageShell({ videoWidth, videoHeight }: EditorStageShellPr
         <TwickEditor videoWidth={videoWidth} videoHeight={videoHeight} />
       </div>
 
-      {isExportPanelOpen ? <ExportPanel onClose={() => setIsExportPanelOpen(false)} /> : null}
+      {isExportPanelOpen ? (
+        <ExportPanel
+          exportRuntime={exportRuntime}
+          disabledReason={exportDisabledReason}
+          onClose={() => setIsExportPanelOpen(false)}
+        />
+      ) : null}
     </div>
   )
 }

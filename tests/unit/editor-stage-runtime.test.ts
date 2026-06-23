@@ -454,6 +454,7 @@ describe('useEditorProjectSync', () => {
             projectData: createProject({
               tracks: [{
                 id: 'track-video-main',
+                name: 'Main video',
                 type: 'video',
                 elements: [
                   { id: 'clip-1', type: 'video', s: 0, e: 4, props: { src: 'mediaobj://video-1' }, metadata: { panelId: 'panel-1', storyboardId: 'storyboard-1' } },

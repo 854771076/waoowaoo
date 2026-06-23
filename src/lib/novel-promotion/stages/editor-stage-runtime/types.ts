@@ -23,6 +23,9 @@ export interface EditorProjectRecord {
   projectData: TwickTimelineProject | null
   version: number
   renderStatus?: string | null
+  renderTaskId?: string | null
+  renderOutputMediaObjectId?: string | null
+  renderSettings?: Record<string, unknown> | null
   outputUrl?: string | null
   updatedAt?: string | null
 }

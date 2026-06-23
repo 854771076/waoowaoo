@@ -224,4 +224,60 @@ describe('useEditorExport', () => {
     expect(result.current?.state.isConcurrencyConflict).toBe(true)
     expect(result.current?.state.error).toBe('An export is already in progress.')
   })
+
+  it('adopts active taskId from 409 conflict and resumes polling/cancel ability', async () => {
+    apiFetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        return okJson({ message: 'Editor render task already in progress', taskId: 'task-active-1' }, 409)
+      }
+      if (url.includes('taskId=task-active-1')) {
+        return okJson({
+          data: {
+            task: { id: 'task-active-1', status: 'processing', progress: 35 },
+            editorProject: { renderStatus: 'PROCESSING', renderTaskId: 'task-active-1', renderSettings: settings },
+          },
+        })
+      }
+      return okJson({})
+    })
+    const { result } = renderEditorExportHook()
+
+    await act(async () => {
+      await result.current?.startExport(settings)
+    })
+
+    expect(result.current?.state.taskId).toBe('task-active-1')
+    await waitForExpectation(() => {
+      expect(result.current?.state.phase).toBe('processing')
+      expect(result.current?.state.progress).toBe(35)
+    })
+    expect(result.current?.isRunning).toBe(true)
+  })
+
+  it('restores initial PROCESSING render task and polls it', async () => {
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('taskId=task-existing-1')) {
+        return okJson({
+          data: {
+            task: { id: 'task-existing-1', status: 'processing', progress: 64 },
+            editorProject: { renderStatus: 'PROCESSING', renderTaskId: 'task-existing-1', renderSettings: settings },
+          },
+        })
+      }
+      return okJson({})
+    })
+    const { result } = renderEditorExportHook({
+      initialRenderState: {
+        renderStatus: 'PROCESSING',
+        renderTaskId: 'task-existing-1',
+        renderSettings: settings,
+      },
+    })
+
+    await waitForExpectation(() => {
+      expect(result.current?.state.phase).toBe('processing')
+      expect(result.current?.state.taskId).toBe('task-existing-1')
+      expect(result.current?.state.progress).toBe(64)
+    })
+  })
 })

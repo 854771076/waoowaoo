@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useEditorStageDataLoader } from './editor-stage-runtime/useEditorStageDataLoader'
 import { useEditorProjectSync } from './editor-stage-runtime/useEditorProjectSync'
 import type { PanelVideoSource, TwickTimelineProject, VoiceLineSource } from '@/lib/twick/types'
-import type { EditorProjectStatus } from './editor-stage-runtime/types'
+import type { EditorProjectRecord, EditorProjectStatus } from './editor-stage-runtime/types'
 
 interface EditorStageRuntimeContextValue {
   panelVideos: PanelVideoSource[]
@@ -15,6 +15,7 @@ interface EditorStageRuntimeContextValue {
   hasVideoPanels: boolean
 
   editorProjectId: string | null
+  editorProjectRender: Pick<EditorProjectRecord, 'renderStatus' | 'renderTaskId' | 'renderOutputMediaObjectId' | 'renderSettings'> | null
   projectData: TwickTimelineProject | null
   projectVersion: number
   projectReloadRevision: number
@@ -71,6 +72,7 @@ export function EditorStageRuntimeProvider({
 
   const {
     id: editorProjectId,
+    renderState: editorProjectRender,
     projectData,
     version: projectVersion,
     reloadRevision: projectReloadRevision,
@@ -103,6 +105,7 @@ export function EditorStageRuntimeProvider({
     dataError: dataError instanceof Error ? dataError : null,
     hasVideoPanels,
     editorProjectId,
+    editorProjectRender,
     projectData,
     projectVersion,
     projectReloadRevision,
@@ -121,6 +124,7 @@ export function EditorStageRuntimeProvider({
   }), [
     dataError,
     editorProjectId,
+    editorProjectRender,
     flushProjectSave,
     forceSave,
     hasConflict,

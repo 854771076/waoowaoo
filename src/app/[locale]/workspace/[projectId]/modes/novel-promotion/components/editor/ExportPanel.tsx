@@ -1,17 +1,19 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { useEditorStageRuntime } from '@/lib/novel-promotion/stages/editor-stage-runtime-core'
 import {
   DEFAULT_EDITOR_EXPORT_SETTINGS,
   type EditorExportFormat,
   type EditorExportSettings,
-  useEditorExport,
+  type useEditorExport,
 } from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorExport'
-import { useWorkspaceProvider } from '../../WorkspaceProvider'
+
+type EditorExportRuntime = ReturnType<typeof useEditorExport>
 
 interface ExportPanelProps {
+  exportRuntime: EditorExportRuntime
+  disabledReason: string | null
   onClose: () => void
 }
 
@@ -37,30 +39,12 @@ function settingsFromPreset(preset: ResolutionPreset): EditorExportSettings {
   }
 }
 
-export function ExportPanel({ onClose }: ExportPanelProps) {
+export function ExportPanel({ exportRuntime, disabledReason, onClose }: ExportPanelProps) {
   const t = useTranslations('novelPromotion.editor.export')
-  const { projectId, episodeId, subscribeTaskEvents } = useWorkspaceProvider()
-  const { editorProjectId, isLoadingData, isLoadingProject, flushProjectSave } = useEditorStageRuntime()
   const [selectedPresetKey, setSelectedPresetKey] = useState('1080p')
   const [settings, setSettings] = useState<EditorExportSettings>(() => settingsFromPreset(RESOLUTION_PRESETS[1]))
 
-  const exportRuntime = useEditorExport({
-    projectId,
-    episodeId: episodeId || null,
-    editorProjectId,
-    flushProjectSave,
-    subscribeTaskEvents,
-    t: (key) => t(key as never),
-  })
-
-  const disabledReason = useMemo(() => {
-    if (!episodeId || !editorProjectId) return t('missingContext')
-    if (isLoadingData || isLoadingProject) return t('loading')
-    if (!settings.bitrate.trim()) return t('bitrateRequired')
-    return null
-  }, [editorProjectId, episodeId, isLoadingData, isLoadingProject, settings.bitrate, t])
-
-  const canStart = exportRuntime.canStart && !disabledReason
+  const canStart = exportRuntime.canStart && !disabledReason && !!settings.bitrate.trim()
   const status = exportRuntime.state
   const progress = status.progress
   const showProgress = status.phase === 'starting' || status.phase === 'processing'
@@ -71,7 +55,9 @@ export function ExportPanel({ onClose }: ExportPanelProps) {
     if (status.phase === 'done') return t('done')
     if (status.phase === 'cancelled') return t('cancelled')
     if (status.error) return status.isConcurrencyConflict ? t('conflict') : status.error
-    return disabledReason || t('ready')
+    if (disabledReason) return disabledReason
+    if (!settings.bitrate.trim()) return t('bitrateRequired')
+    return t('ready')
   })()
 
   const updatePreset = (presetKey: string) => {

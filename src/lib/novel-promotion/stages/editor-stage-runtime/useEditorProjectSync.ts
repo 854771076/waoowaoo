@@ -86,6 +86,11 @@ function normalizeEditorProjectResponse(payload: unknown): EditorProjectRecord {
     projectData: record.projectData as TwickTimelineProject,
     version: typeof record.version === 'number' ? record.version : versionFromUpdatedAt(record.updatedAt),
     renderStatus: record.renderStatus,
+    renderTaskId: typeof record.renderTaskId === 'string' ? record.renderTaskId : null,
+    renderOutputMediaObjectId: typeof record.renderOutputMediaObjectId === 'string' ? record.renderOutputMediaObjectId : null,
+    renderSettings: record.renderSettings && typeof record.renderSettings === 'object'
+      ? record.renderSettings as Record<string, unknown>
+      : null,
     outputUrl: record.outputUrl,
     updatedAt: record.updatedAt,
   }
@@ -165,6 +170,7 @@ export function useEditorProjectSync({
   const queryKey = useMemo(() => editorProjectQueryKey(projectId, episodeId), [projectId, episodeId])
   const [projectIdState, setProjectIdState] = useState<string | null>(null)
   const [projectData, setProjectData] = useState<TwickTimelineProject | null>(null)
+  const [renderState, setRenderState] = useState<Pick<EditorProjectRecord, 'renderStatus' | 'renderTaskId' | 'renderOutputMediaObjectId' | 'renderSettings'> | null>(null)
   const [version, setVersion] = useState(0)
   const [reloadRevision, setReloadRevision] = useState(0)
   const [status, setStatus] = useState<EditorProjectStatus>('idle')
@@ -357,6 +363,7 @@ export function useEditorProjectSync({
     initializedKeyRef.current = null
     setProjectIdState(null)
     setProjectData(null)
+    setRenderState(null)
     setVersion(0)
     setReloadRevision(0)
     setStatus(projectId && episodeId ? 'loading' : 'idle')
@@ -387,6 +394,12 @@ export function useEditorProjectSync({
     if (record?.projectData) {
       setProjectIdState(record.id)
       setProjectData(record.projectData)
+      setRenderState({
+        renderStatus: record.renderStatus,
+        renderTaskId: record.renderTaskId,
+        renderOutputMediaObjectId: record.renderOutputMediaObjectId,
+        renderSettings: record.renderSettings,
+      })
       localProjectRevisionRef.current = 0
       lastSavedProjectRevisionRef.current = 0
       setVersion(record.version)
@@ -398,6 +411,7 @@ export function useEditorProjectSync({
 
     if (panelVideos.length === 0) {
       setProjectData(null)
+      setRenderState(null)
       localProjectRevisionRef.current = 0
       lastSavedProjectRevisionRef.current = 0
       setVersion(0)
@@ -413,6 +427,7 @@ export function useEditorProjectSync({
       includeCaptions: false,
     })
     setProjectData(initialProject)
+    setRenderState(null)
     setVersion(0)
     setStatus('idle')
     initializedKeyRef.current = key
@@ -517,6 +532,12 @@ export function useEditorProjectSync({
       if (record?.projectData) {
         setProjectIdState(record.id)
         setProjectData(record.projectData)
+        setRenderState({
+          renderStatus: record.renderStatus,
+          renderTaskId: record.renderTaskId,
+          renderOutputMediaObjectId: record.renderOutputMediaObjectId,
+          renderSettings: record.renderSettings,
+        })
         projectDataRef.current = record.projectData
         localProjectRevisionRef.current = 0
         lastSavedProjectRevisionRef.current = 0
@@ -530,6 +551,7 @@ export function useEditorProjectSync({
       }
 
       setProjectData(null)
+      setRenderState(null)
       projectDataRef.current = null
       localProjectRevisionRef.current = 0
       lastSavedProjectRevisionRef.current = 0
@@ -547,6 +569,7 @@ export function useEditorProjectSync({
 
   return {
     id: projectIdState,
+    renderState,
     projectData,
     version,
     reloadRevision,

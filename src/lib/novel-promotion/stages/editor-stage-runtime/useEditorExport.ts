@@ -30,12 +30,20 @@ export interface EditorExportState {
 
 type TaskEventSubscriber = (listener: (event: SSEEvent) => void) => () => void
 
+export interface InitialEditorExportRenderState {
+  renderStatus?: EditorRenderStatus | string | null
+  renderTaskId?: string | null
+  renderOutputMediaObjectId?: string | null
+  renderSettings?: Partial<EditorExportSettings> | Record<string, unknown> | null
+}
+
 export interface UseEditorExportParams {
   projectId: string | null
   episodeId: string | null
   editorProjectId: string | null
   flushProjectSave: () => Promise<void>
   subscribeTaskEvents?: TaskEventSubscriber
+  initialRenderState?: InitialEditorExportRenderState | null
   pollIntervalMs?: number
   t?: (key: string) => string
 }
@@ -45,6 +53,14 @@ type RenderStartResponse = {
     taskId?: string
     status?: string
     settings?: Partial<EditorExportSettings>
+  }
+  taskId?: string
+  status?: string
+  error?: {
+    details?: {
+      taskId?: string
+      status?: string
+    }
   }
 }
 
@@ -110,6 +126,12 @@ function readOutputFromRecord(record: Record<string, unknown> | null | undefined
   }
 }
 
+function readConflictTaskId(payload: RenderStartResponse & Record<string, unknown>): string | null {
+  return readString(payload.data?.taskId)
+    || readString(payload.taskId)
+    || readString(payload.error?.details?.taskId)
+}
+
 function normalizeRenderStatus(value: unknown, taskStatus?: string | null): EditorRenderStatus {
   if (value === 'DONE' || taskStatus === 'completed') return 'DONE'
   if (value === 'FAILED' || taskStatus === 'failed' || taskStatus === 'canceled' || taskStatus === 'cancelled') return 'FAILED'
@@ -147,6 +169,7 @@ export function useEditorExport({
   editorProjectId,
   flushProjectSave,
   subscribeTaskEvents,
+  initialRenderState,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
   t,
 }: UseEditorExportParams) {
@@ -154,6 +177,7 @@ export function useEditorExport({
   const activeTaskIdRef = useRef<string | null>(null)
   const lastSettingsRef = useRef<EditorExportSettings | null>(null)
   const mountedRef = useRef(true)
+  const restoredTaskIdRef = useRef<string | null>(null)
 
   const translate = useCallback((key: string, fallback: string) => {
     try {
@@ -202,6 +226,7 @@ export function useEditorExport({
   const pollStatus = useCallback(async (taskId?: string | null) => {
     const currentTaskId = taskId || activeTaskIdRef.current
     if (!projectId || !currentTaskId) return null
+    activeTaskIdRef.current = currentTaskId
     const response = await apiFetch(`/api/novel-promotion/${projectId}/editor/render?taskId=${encodeURIComponent(currentTaskId)}`)
     const json = await parseJsonSafely<RenderStatusResponse>(response)
     if (!response.ok) {
@@ -210,6 +235,25 @@ export function useEditorExport({
     applyStatusPayload(json.data)
     return json.data || null
   }, [applyStatusPayload, projectId, translate])
+
+  useEffect(() => {
+    if (!initialRenderState || initialRenderState.renderStatus !== 'PROCESSING' || !initialRenderState.renderTaskId) return
+    if (restoredTaskIdRef.current === initialRenderState.renderTaskId) return
+
+    restoredTaskIdRef.current = initialRenderState.renderTaskId
+    activeTaskIdRef.current = initialRenderState.renderTaskId
+    setState((previous) => ({
+      ...previous,
+      phase: 'processing',
+      renderStatus: 'PROCESSING',
+      taskId: initialRenderState.renderTaskId || previous.taskId,
+      outputMediaObjectId: initialRenderState.renderOutputMediaObjectId || previous.outputMediaObjectId,
+      settings: (initialRenderState.renderSettings as EditorExportSettings | null) || previous.settings,
+      error: null,
+      isConcurrencyConflict: false,
+    }))
+    void pollStatus(initialRenderState.renderTaskId).catch(() => undefined)
+  }, [initialRenderState, pollStatus])
 
   const startExport = useCallback(async (settings: EditorExportSettings) => {
     if (!projectId || !episodeId || !editorProjectId) {
@@ -246,6 +290,20 @@ export function useEditorExport({
 
       if (!response.ok) {
         const isConflict = response.status === 409
+        const activeTaskId = isConflict ? readConflictTaskId(json) : null
+        if (activeTaskId) {
+          activeTaskIdRef.current = activeTaskId
+          setState((previous) => ({
+            ...previous,
+            phase: 'processing',
+            renderStatus: 'PROCESSING',
+            taskId: activeTaskId,
+            error: null,
+            isConcurrencyConflict: true,
+          }))
+          void pollStatus(activeTaskId).catch(() => undefined)
+          return activeTaskId
+        }
         throw Object.assign(
           new Error(isConflict
             ? translate('conflict', 'An export is already in progress.')
