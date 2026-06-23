@@ -84,7 +84,10 @@
 **⑤ 重写 task（新，手动重生）**
 - 新增 `TASK_TYPE.AI_GRID_VIDEO_PROMPT = 'ai_grid_video_prompt'`，路由到 text 队列。
 - handler：`src/lib/workers/handlers/grid-video-prompt-rewrite.ts`，调用 `rewriteGridVideoPrompt` 并回写。
-- 进度/intent/计费接线参照 `AI_MODIFY_SHOT_PROMPT` 现有模式（`intent.ts` / `progress-message.ts`）。
+- 进度 / intent 接线参照 `AI_MODIFY_SHOT_PROMPT` 现有模式（`intent.ts` / `progress-message.ts`）。
+- **计费（与自动路径不同）**：手动 task 本身就是一个 text task，计费走标准 task 生命周期——创建该 task 的 route/mutation 需在 `billingInfo` 里以 `apiType='text'` + analysisModel 冻结，`withTaskLifecycle` 自动结算（正是 commit `616f851` 给 route 补 analysisModel 的模式）。**handler 内不要再调 `withTextBilling`**，否则重复计费。
+
+> 计费两条路径小结：自动路径（video.worker 内嵌）用 `withTextBilling` 即时记账；手动路径（独立 text task）靠创建时冻结的 `billingInfo` 经生命周期结算。两者都按 analysisModel 的 text 价计费，但接入点不同，实现时勿混用。
 
 **⑥ UI：手动重生按钮**
 - 位置：视频阶段面板卡片提示词编辑区（`panel-card/runtime/hooks` + `useVideoMutations`）。现有 `useUpdateProjectPanelVideoPrompt`（`src/lib/query/mutations/useVideoMutations.ts:51`）已提供 videoPrompt 回写通道，可在其旁新增一个触发 `AI_GRID_VIDEO_PROMPT` task 的 mutation。
@@ -93,19 +96,21 @@
 
 ### 4.3 缓存与手改判定
 
-新增字段（`NovelPromotionPanel`）：
-- `gridVideoPromptHash String? @db.Text` — 记录上次成功重写后 `videoPrompt` 的内容指纹（如该字段值的 hash 或直接存重写后的副本指纹）。
+**新增字段**（`NovelPromotionPanel`）：`gridVideoPromptAt DateTime?` —— 非空即表示「该面板的 `videoPrompt` 已由 LLM 宫格重写过」。
 
-判定逻辑：
-- **复用条件**：`imageLayout==='grid'` 且 `gridVideoPromptHash` 非空 且 `hash(panel.videoPrompt) === gridVideoPromptHash`（说明当前 videoPrompt 正是上次 LLM 重写产物，用户没手改）。→ 跳过 LLM。
-- **触发重写**：上述条件不满足（首次、或用户手改使 hash 不匹配、或手动重生按钮强制）。→ 调 LLM，成功后同时更新 `videoPrompt` 与 `gridVideoPromptHash`。
-- **用户手改优先**：用户在 UI 改了 `videoPrompt` → hash 不再匹配 → 但**这正是我们想要的「以手改为准」**？需要区分两种语义：
-  - 自动路径（生成视频时）：若用户手改过，hash 不匹配会触发重写，可能覆盖手改。**为避免覆盖手改，自动路径的复用条件放宽为：只要 `videoPrompt` 非空且 `gridVideoPromptHash` 非空就复用**（即一旦重写过，自动路径不再二次重写，无论是否手改）。重写仅由「首次（hash 为空）」或「手动按钮（强制）」触发。
-  - 手动按钮：强制重写并覆盖（用户主动要求）。
+**判定规则**（两条入口、一个字段）：
 
-> 决议：**自动路径** = 「首次 hash 为空才重写，之后一律复用现有 videoPrompt」；**手动按钮** = 强制重写覆盖。这样既缓存、又不覆盖手改、又给用户主动重生的出口。`gridVideoPromptHash` 实际只需作为「是否已重写过」的布尔标记即可（存任意非空值/时间戳）。简化为 `gridVideoPromptAt DateTime?`。
+| 入口 | 条件 | 行为 |
+| --- | --- | --- |
+| 自动（生成视频时） | `gridVideoPromptAt` 为空 | 调 LLM 重写 → 回写 `videoPrompt` + 置 `gridVideoPromptAt` |
+| 自动（生成视频时） | `gridVideoPromptAt` 非空 | 直接复用现有 `videoPrompt`（含用户手改版），不调 LLM |
+| 手动按钮 | —— | 强制重写并覆盖 `videoPrompt`，刷新 `gridVideoPromptAt` |
 
-**最终字段**：`gridVideoPromptAt DateTime?`（非空表示已重写过；自动路径仅在为空时重写，手动按钮强制重写并刷新此时间戳）。
+**设计理由**：自动路径只认「是否已重写过」这一个布尔信号，因此一旦重写过就不再自动覆盖——既实现缓存（省 LLM 调用），又天然保护用户手改（手改后的内容就是被复用的 `videoPrompt`）。需要重新生成时，用户走手动按钮主动触发。
+
+> 备选方案（已否决）：用 `videoPrompt` 内容 hash 区分「重写产物 vs 用户手改」。否决原因：徒增复杂度，且自动路径无论如何都不该覆盖手改，hash 带来的「检测到手改」信息没有用武之地。`gridVideoPromptAt` 作为布尔标记（用时间戳类型，便于排查）已足够。
+
+**边界——重新生成宫格图后的失效**：若用户重新生成了宫格图（cells 内容变了），旧的 `videoPrompt` 会变陈旧，但 `gridVideoPromptAt` 仍非空，自动路径不会重新重写。处理方式：在宫格图重新生成的写库点（`panel-image-task-handler.ts` 写 `imageLayout='grid'` 处）**一并清空 `gridVideoPromptAt`**，使下次生成视频时自动重写。详见 §8 开放问题。
 
 ## 5. 错误处理
 
@@ -121,7 +126,8 @@
 - **单测 `rewriteGridVideoPrompt`**：mock `executeAiTextStep`，验证：宫格上下文正确组装进 prompt 变量；返回提示词被正确解析/去包裹；失败返回 null。
 - **单测缓存判定**：`gridVideoPromptAt` 为空→触发重写；非空→自动路径复用；手动强制→重写。
 - **单测 video.worker 宫格分支**：mock 重写函数，验证命中缓存时不调 LLM、未命中时回写字段与时间戳、重写失败时回退 basePrompt。
-- **handler 单测**：`AI_GRID_VIDEO_PROMPT` task 回写 `videoPrompt` + `gridVideoPromptAt`，计费 payload 含 LLM usage。
+- **handler 单测**：`AI_GRID_VIDEO_PROMPT` task 回写 `videoPrompt` + `gridVideoPromptAt`；LLM 调用被 `withTextBilling` 包裹（验证传入的 model 为 analysisModel）。
+- **单测宫格图失效**：重新生成宫格图（写 `imageLayout='grid'`）时清空 `gridVideoPromptAt`。
 - 既有 `tests/unit/storyboard-images/grid-video-prompt.test.ts` 需相应更新（当前测的是模板填充行为）。
 
 ## 7. 影响面 / 迁移
@@ -130,16 +136,18 @@
 - i18n：新增按钮文案、task 进度文案（`messages/{zh,en}`）。
 - Prompt 模板内容改写：`panel_grid_video.{zh,en}.txt`（这两个文件已在 commit `f8dcec4` 提交、当前工作区干净；需在现有「视频模型包装指令」内容基础上**改写为「给 LLM 的重写指令」**）。
 - TASK_TYPE / 队列路由 / intent / progress-message 新增 `AI_GRID_VIDEO_PROMPT` 接线。队列路由无需改动 `getQueueTypeByTaskType`——未列入 IMAGE/VIDEO/VOICE 集合的 type 默认进 text 队列（`src/lib/task/queues.ts:71`）；但需在 `text.worker.ts` 的 switch 中注册 handler（参照 `AI_MODIFY_SHOT_PROMPT`，`text.worker.ts:691`）。
+- 宫格图失效：`panel-image-task-handler.ts` 写 `imageLayout='grid'` 的两处 `prisma.novelPromotionPanel.update`（首次生成 / 重新生成）需在 `data` 中一并写 `gridVideoPromptAt: null`，使宫格图变更后下次生成视频自动重写。
 
 ## 8. 开放问题
 
-- 暂无阻塞项。`gridVideoPromptAt` 命名/类型在实现时可再微调（布尔 vs 时间戳），不影响整体设计。
+- **`gridVideoPromptAt` 命名/类型**：用时间戳还是布尔，实现时可微调，不影响整体设计（语义上只用作布尔标记）。
+- **宫格图失效的清空时机**（已决议，列此备查）：在宫格图写库点清空 `gridVideoPromptAt`（见 §4.3 边界、§7）。若后续发现宫格图还有其他变更入口（如 modify/variant），需同样补清空逻辑——实现时应搜索所有写 `imageLayout='grid'` 的位置统一处理。
 
 ## 9. 审计记录（2026-06-23）
 
 对照实际代码核实假设，修正两处错误：
 
-1. **计费**（实质修正）：原 spec 称「把 LLM token 累加进 video task 计费 payload」。核实 `resolveTaskActual`/`settleTaskBilling`（`src/lib/billing/service.ts`）后确认：计费是「一 task = 单一 apiType + 单一 model」，video task 无法附加文本费。已改为用 `withTextBilling`（`service.ts:624`）即时独立计费。commit `616f851` 实为给「创建独立 text task 的 route」补 analysisModel，与本场景不同。
+1. **计费**（实质修正）：原 spec 称「把 LLM token 累加进 video task 计费 payload」。核实 `resolveTaskActual`/`settleTaskBilling`（`src/lib/billing/service.ts`）后确认：计费是「一 task = 单一 apiType + 单一 model」，video task 无法附加文本费。最终方案为两条路径：自动路径（video.worker 内）用 `withTextBilling`（`service.ts:624`）即时独立计费；手动路径（独立 text task）按 commit `616f851` 模式在创建时冻结 analysisModel 计费、经生命周期结算（见 §4.2 ⑤）。
 2. **模板状态**（事实修正）：原 spec 称两个 `panel_grid_video` 模板「有未提交改动」。实际它们已在 commit `f8dcec4` 提交、工作区干净。
 
 核实无误的假设：text 队列路由（默认分支，无需改 `getQueueTypeByTaskType`）；`text.worker.ts` switch 注册 handler 的模式（`AI_MODIFY_SHOT_PROMPT`）；`executeAiTextStep` + `resolveAnalysisModel` 复用路径；UI 回写通道 `useUpdateProjectPanelVideoPrompt` 已存在；现有 grid 测试 `tests/unit/storyboard-images/grid-video-prompt.test.ts` 测的是模板填充行为，需更新。
