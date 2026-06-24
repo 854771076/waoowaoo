@@ -277,8 +277,7 @@ export function useEditorProjectSync({
     savePendingRef.current = false
     saveMutationPendingRef.current = true
 
-    let savePromise: Promise<void>
-    savePromise = saveMutation.mutateAsync({ projectData: data, version: saveVersion })
+    const savePromise: Promise<void> = saveMutation.mutateAsync({ projectData: data, version: saveVersion })
       .then((result) => {
         versionRef.current = result.version
         lastSavedProjectRevisionRef.current = Math.max(lastSavedProjectRevisionRef.current, savedRevision)
