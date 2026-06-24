@@ -83,3 +83,18 @@ export function useUpdateProjectPanelVideoPrompt(projectId: string) {
     },
   })
 }
+
+export function useRegenerateGridVideoPrompt(projectId: string) {
+  return useMutation({
+    mutationFn: async (payload: { panelId: string; episodeId?: string; gridSize?: number }) =>
+      await requestJsonWithError(
+        `/api/novel-promotion/${projectId}/ai-grid-video-prompt`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+        '重新生成宫格视频提示词失败',
+      ),
+  })
+}

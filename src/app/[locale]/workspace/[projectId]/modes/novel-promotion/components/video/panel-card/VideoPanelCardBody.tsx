@@ -115,6 +115,18 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
               </div>
             )}
 
+            {panel.imageLayout === 'grid' && (
+              <div className="mt-2 flex justify-end">
+                <button
+                  onClick={() => { void actions.onRegenerateGridVideoPrompt() }}
+                  disabled={computed.isRegeneratingGridVideoPrompt || !panel.panelId}
+                  className="px-2 py-1 text-[10px] bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {computed.isRegeneratingGridVideoPrompt ? '...' : t('panelCard.regenerateGridVideoPrompt')}
+                </button>
+              </div>
+            )}
+
             {showsFirstLastFrameActions ? (() => {
               const linkedNextPanel = layout.nextPanel!
               return (
