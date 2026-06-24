@@ -118,9 +118,11 @@ describe('media-url-resolver', () => {
   })
 
   describe('resolveMediaUrlForServerRender', () => {
-    it('returns non-mediaobj refs unchanged for server rendering', async () => {
-      await expect(resolveMediaUrlForServerRender('/api/files/video.mp4')).resolves.toBe('/api/files/video.mp4')
-      await expect(resolveMediaUrlForServerRender('https://example.com/video.mp4')).resolves.toBe('https://example.com/video.mp4')
+    it('rejects non-mediaobj refs for server rendering (SSRF guard)', async () => {
+      await expect(resolveMediaUrlForServerRender('/api/files/video.mp4', serverRenderContext))
+        .rejects.toThrow('Invalid editor render media source: /api/files/video.mp4')
+      await expect(resolveMediaUrlForServerRender('https://example.com/video.mp4', serverRenderContext))
+        .rejects.toThrow('Invalid editor render media source: https://example.com/video.mp4')
     })
 
     it('resolves accessible mediaobj references to signed fetchable storage URLs', async () => {
@@ -147,14 +149,19 @@ describe('media-url-resolver', () => {
   })
 
   describe('resolveMediaUrlsForServerRender', () => {
-    it('resolves a batch for server rendering', async () => {
+    it('resolves accessible mediaobj refs in a batch for server rendering', async () => {
       const result = await resolveMediaUrlsForServerRender([
         'mediaobj://mo-video-1',
-        '/api/files/audio.mp3',
       ], serverRenderContext)
 
       expect(result.get('mediaobj://mo-video-1')).toBe('http://localhost:3000/api/storage/sign?key=videos%2Fmo-video-1.mp4')
-      expect(result.get('/api/files/audio.mp3')).toBe('/api/files/audio.mp3')
+    })
+
+    it('rejects a batch containing non-mediaobj refs (SSRF guard)', async () => {
+      await expect(resolveMediaUrlsForServerRender([
+        'mediaobj://mo-video-1',
+        '/api/files/audio.mp3',
+      ], serverRenderContext)).rejects.toThrow('Invalid editor render media source: /api/files/audio.mp3')
     })
   })
 })
