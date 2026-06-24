@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Ponytail (always active)
+
+Use the ponytail plugin on every task: lazy-senior-dev discipline — climb the ladder (YAGNI → reuse → stdlib → native → existing deps → one line → minimum code), shortest working diff, no unrequested abstractions. Default level: full.
+
 ## Project Overview
 
 **vvicat** - An AI-powered short-form video/comic production tool that automatically generates storyboards, characters, scenes, and complete videos from novel text content.
