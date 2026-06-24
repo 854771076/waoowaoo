@@ -25,6 +25,7 @@ import {
   parseLocationAvailableSlots,
 } from '@/lib/location-available-slots'
 import { buildStoryboardGridLayout } from '@/lib/storyboard-images/grid'
+import { buildGridInvalidationPatch } from './panel-image-grid-invalidate'
 
 function formatPanelGridLayout(layout: ReturnType<typeof buildStoryboardGridLayout>, locale: TaskJobData['locale']) {
   if (locale === 'zh') {
@@ -371,6 +372,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         imageUrl: candidates[0] || null,
         candidateImages: candidateCount > 1 ? JSON.stringify(candidates) : null,
         imageLayout,
+        ...buildGridInvalidationPatch(imageLayout),
       },
     })
   } else {
@@ -380,6 +382,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         previousImageUrl: panel.imageUrl,
         candidateImages: JSON.stringify(candidates),
         imageLayout,
+        ...buildGridInvalidationPatch(imageLayout),
       },
     })
   }
