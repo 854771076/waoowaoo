@@ -36,13 +36,6 @@ function durationMsToSeconds(durationMs: number | null | undefined, fallbackSeco
   return durationMs / 1000
 }
 
-function durationToSeconds(duration: number | null | undefined, fallbackSeconds: number): number {
-  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) {
-    return fallbackSeconds
-  }
-  return duration
-}
-
 export function mapStoryboardsToPanelVideos(
   storyboards: EditorStoryboardData | null | undefined,
 ): PanelVideoSource[] {
@@ -80,7 +73,7 @@ export function mapVoiceLinesToSources(
     sources.push({
       voiceLineId: line.id,
       audioMediaObjectId,
-      duration: durationToSeconds(
+      duration: durationMsToSeconds(
         line.audioDuration,
         durationMsToSeconds(line.audioMedia?.durationMs || line.media?.durationMs, DEFAULT_VOICE_DURATION_SECONDS),
       ),

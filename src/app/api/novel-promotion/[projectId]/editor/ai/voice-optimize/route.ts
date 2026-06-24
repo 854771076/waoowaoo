@@ -30,7 +30,7 @@ function buildStableVoiceOptimizeDedupeKey(input: {
   editorProjectId: string
   body: Record<string, unknown>
 }) {
-  const selectedElementId = readString(input.body.selectedElementId) || 'no-element'
+  const voiceLineId = readString(input.body.voiceLineId) || 'no-voice-line'
   const content = typeof input.body.content === 'string'
     ? input.body.content.trim()
     : (typeof input.body.text === 'string' ? input.body.text.trim() : '')
@@ -44,7 +44,7 @@ function buildStableVoiceOptimizeDedupeKey(input: {
     .update(speaker)
     .digest('hex')
     .slice(0, 12)
-  return `editor-ai:voice-optimize:${input.editorProjectId}:${selectedElementId}:${contentHash}:${speakerHash}:${speed}`
+  return `editor-ai:voice-optimize:${input.editorProjectId}:${voiceLineId}:${contentHash}:${speakerHash}:${speed}`
 }
 
 export const POST = createEditorAiRoute({

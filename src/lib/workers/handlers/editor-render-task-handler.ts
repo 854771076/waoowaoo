@@ -42,6 +42,11 @@ function readPositiveNumber(value: unknown, fallback: number): number {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback
 }
 
+function readOptionalPositiveNumber(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null
+}
+
 function readFormat(value: unknown): RenderSettings['format'] {
   return value === 'webm' ? 'webm' : DEFAULT_RENDER_FORMAT
 }
@@ -59,6 +64,7 @@ function parseRenderPayload(job: Job<TaskJobData>) {
     episodeId,
     editorProjectId,
     settings: asRecord(payload.settings) || {},
+    frozenDurationMinutes: readOptionalPositiveNumber(payload.durationMinutes ?? payload.quantity),
   }
 }
 
@@ -107,20 +113,55 @@ type ServerRenderContext = {
   episodeId: string
 }
 
-async function resolveMediaRefsDeep(value: unknown, context?: ServerRenderContext): Promise<unknown> {
+const MEDIA_FIELD_KEYS = new Set([
+  'src',
+  'source',
+  'url',
+  'poster',
+  'posterSrc',
+  'maskSrc',
+  'imageSrc',
+  'videoSrc',
+  'audioSrc',
+])
+const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i
+
+function isMediaFieldKey(key: string) {
+  return MEDIA_FIELD_KEYS.has(key) || key.endsWith('Src') || key.endsWith('Url')
+}
+
+function isPotentialUrl(value: string) {
+  return URL_SCHEME_PATTERN.test(value.trim())
+}
+
+async function resolveMediaRefsDeep(
+  value: unknown,
+  context?: ServerRenderContext,
+  mediaContext = false,
+  pathParts: string[] = [],
+): Promise<unknown> {
   if (typeof value === 'string') {
-    return isMediaObjRef(value) ? await resolveMediaUrlForServerRender(value, context) : value
+    if (isMediaObjRef(value)) {
+      return await resolveMediaUrlForServerRender(value, context)
+    }
+    if (mediaContext && value.trim() && isPotentialUrl(value)) {
+      throw new Error(`EDITOR_RENDER_INVALID_MEDIA_SOURCE: ${pathParts.join('.') || 'media'} must use mediaobj://`)
+    }
+    return value
   }
   if (Array.isArray(value)) {
-    return await Promise.all(value.map((item) => resolveMediaRefsDeep(item, context)))
+    return await Promise.all(value.map((item, index) => resolveMediaRefsDeep(item, context, mediaContext, [...pathParts, String(index)])))
   }
   const record = asRecord(value)
   if (!record) return value
 
-  const entries = await Promise.all(Object.entries(record).map(async ([key, entryValue]) => [
-    key,
-    await resolveMediaRefsDeep(entryValue, context),
-  ] as const))
+  const entries = await Promise.all(Object.entries(record).map(async ([key, entryValue]) => {
+    const nextMediaContext = mediaContext || isMediaFieldKey(key)
+    return [
+      key,
+      await resolveMediaRefsDeep(entryValue, context, nextMediaContext, [...pathParts, key]),
+    ] as const
+  }))
   return Object.fromEntries(entries)
 }
 
@@ -184,7 +225,7 @@ async function uploadRenderedVideo(filePath: string, editorProjectId: string, se
 }
 
 export async function handleEditorRenderTask(job: Job<TaskJobData>) {
-  const { episodeId, editorProjectId, settings: rawSettings } = parseRenderPayload(job)
+  const { episodeId, editorProjectId, settings: rawSettings, frozenDurationMinutes } = parseRenderPayload(job)
   let renderedFilePath: string | null = null
   let expectedOutputPath: string | null = null
 
@@ -211,6 +252,10 @@ export async function handleEditorRenderTask(job: Job<TaskJobData>) {
     const { variables, settings, durationSeconds } = await buildTwickRenderInput(editorProject.projectData, rawSettings, renderContext)
     expectedOutputPath = buildRenderOutputPath(job.data.taskId, settings.format)
     const durationMinutes = Math.max(0.01, durationSeconds / 60)
+    const frozenMinutes = frozenDurationMinutes ?? durationMinutes
+    if (durationMinutes > frozenMinutes + 0.000001) {
+      throw new Error('EDITOR_RENDER_BILLING_FREEZE_UNDERESTIMATED')
+    }
 
     await assertTaskActive(job, 'editor_render_mark_processing')
     const processingUpdate = await prisma.novelPromotionEditorProject.updateMany({
@@ -248,7 +293,7 @@ export async function handleEditorRenderTask(job: Job<TaskJobData>) {
     const mediaObject = await uploadRenderedVideo(renderedFilePath, editorProjectId, settings, durationSeconds)
 
     await assertTaskActive(job, 'editor_render_persist_output')
-    await prisma.novelPromotionEditorProject.updateMany({
+    const doneUpdate = await prisma.novelPromotionEditorProject.updateMany({
       where: {
         id: editorProjectId,
         renderTaskId: job.data.taskId,
@@ -261,6 +306,9 @@ export async function handleEditorRenderTask(job: Job<TaskJobData>) {
         renderTaskId: job.data.taskId,
       },
     })
+    if (doneUpdate.count === 0) {
+      throw new Error('EDITOR_RENDER_TASK_STALE')
+    }
 
     await reportTaskProgress(job, 95, {
       stage: 'editor_render_completed',
@@ -279,17 +327,21 @@ export async function handleEditorRenderTask(job: Job<TaskJobData>) {
       actualQuantity: durationMinutes,
     }
   } catch (error) {
-    await prisma.novelPromotionEditorProject.updateMany({
-      where: {
-        id: editorProjectId,
-        renderTaskId: job.data.taskId,
-        renderStatus: 'PROCESSING',
-      },
-      data: {
-        renderStatus: 'FAILED',
-        renderTaskId: job.data.taskId,
-      },
-    }).catch(() => undefined)
+    const attemptsMade = typeof job.attemptsMade === 'number' ? job.attemptsMade : 0
+    const maxAttempts = typeof job.opts?.attempts === 'number' && job.opts.attempts > 0 ? job.opts.attempts : 1
+    if (attemptsMade + 1 >= maxAttempts) {
+      await prisma.novelPromotionEditorProject.updateMany({
+        where: {
+          id: editorProjectId,
+          renderTaskId: job.data.taskId,
+          renderStatus: 'PROCESSING',
+        },
+        data: {
+          renderStatus: 'FAILED',
+          renderTaskId: job.data.taskId,
+        },
+      }).catch(() => undefined)
+    }
     throw error
   } finally {
     const cleanupPaths = new Set<string>()

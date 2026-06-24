@@ -82,7 +82,7 @@ function buildProjectData() {
   }
 }
 
-function buildJob(payload: Record<string, unknown> = {}): Job<TaskJobData> {
+function buildJob(payload: Record<string, unknown> = {}, jobOverrides: Partial<Job<TaskJobData>> = {}): Job<TaskJobData> {
   return {
     queueName: 'video',
     data: {
@@ -101,6 +101,9 @@ function buildJob(payload: Record<string, unknown> = {}): Job<TaskJobData> {
       },
       userId: 'user-1',
     },
+    attemptsMade: 0,
+    opts: { attempts: 1 },
+    ...jobOverrides,
   } as unknown as Job<TaskJobData>
 }
 
@@ -133,12 +136,64 @@ describe('editor render worker handler', () => {
 
     expect(result.settings).toEqual(expect.objectContaining({ width: 720, height: 1280, fps: 30, format: 'mp4' }))
     expect(result.durationSeconds).toBe(8)
-    const tracks = (result.variables.input as { tracks: Array<{ elements: Array<{ props: { src: string; label?: string } }> }> }).tracks
+    const tracks = (result.variables.input as { tracks: Array<{ elements: Array<{ props: { src: string; label?: string; volume?: number } }> }> }).tracks
     expect(tracks[0].elements[0].props.src).toBe('https://media.example/video-media-1')
     expect(tracks[0].elements[0].props.label).toBe('/subtitle/not-media')
     expect(tracks[1].elements[0].props.src).toBe('https://media.example/audio-media-1')
     expect(resolverMock.resolveMediaUrlForServerRender).toHaveBeenCalledWith('mediaobj://video-media-1', undefined)
     expect(resolverMock.resolveMediaUrlForServerRender).not.toHaveBeenCalledWith('/subtitle/not-media', expect.anything())
+  })
+
+
+  it('rejects non-mediaobj URL schemes in media fields before render-server sees them', async () => {
+    const maliciousProject = buildProjectData()
+    maliciousProject.tracks[0].elements[0].props.src = 'http://127.0.0.1:8080/internal'
+
+    await expect(buildTwickRenderInput(maliciousProject, { width: 720, height: 1280, fps: 30, format: 'mp4' }))
+      .rejects.toThrow('EDITOR_RENDER_INVALID_MEDIA_SOURCE')
+    expect(resolverMock.resolveMediaUrlForServerRender).not.toHaveBeenCalledWith('http://127.0.0.1:8080/internal', expect.anything())
+  })
+
+  it('rejects file/data URL schemes in media fields but leaves ordinary text untouched', async () => {
+    const fileProject = buildProjectData()
+    fileProject.tracks[0].elements[0].props.src = 'file:///etc/passwd'
+    ;(fileProject.tracks[0].elements[0].props as Record<string, unknown>).label = 'http://127.0.0.1 appears as subtitle text'
+    await expect(buildTwickRenderInput(fileProject, { width: 720, height: 1280, fps: 30, format: 'mp4' }))
+      .rejects.toThrow('EDITOR_RENDER_INVALID_MEDIA_SOURCE')
+
+    const dataProject = buildProjectData()
+    dataProject.tracks[0].elements[0].props.src = 'data:text/html;base64,PHNjcmlwdD4='
+    await expect(buildTwickRenderInput(dataProject, { width: 720, height: 1280, fps: 30, format: 'mp4' }))
+      .rejects.toThrow('EDITOR_RENDER_INVALID_MEDIA_SOURCE')
+  })
+
+  it('fails before rendering when actual render duration exceeds frozen billing minutes', async () => {
+    await expect(handleEditorRenderTask(buildJob({ durationMinutes: 0.01 }))).rejects.toThrow('EDITOR_RENDER_BILLING_FREEZE_UNDERESTIMATED')
+
+    expect(renderServerMock.renderTwickVideo).not.toHaveBeenCalled()
+    expect(mediaMock.ensureMediaObjectFromStorageKey).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'editor-project-1',
+        renderTaskId: 'task-render-1',
+        renderStatus: 'PROCESSING',
+      },
+      data: {
+        renderStatus: 'FAILED',
+        renderTaskId: 'task-render-1',
+      },
+    })
+  })
+
+  it('leaves PROCESSING lock intact for retryable render failures', async () => {
+    renderServerMock.renderTwickVideo.mockRejectedValueOnce(new Error('temporary render failure'))
+
+    await expect(handleEditorRenderTask(buildJob({}, { attemptsMade: 0, opts: { attempts: 2 } }))).rejects.toThrow('temporary render failure')
+
+    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledTimes(1)
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ renderStatus: 'FAILED' }),
+    }))
   })
 
   it('renders, uploads to storage, creates MediaObject, updates editor render fields, and returns actual billing quantity', async () => {
@@ -231,9 +286,8 @@ describe('editor render worker handler', () => {
       }
     })
 
-    const result = await handleEditorRenderTask(buildJob())
+    await expect(handleEditorRenderTask(buildJob())).rejects.toThrow('EDITOR_RENDER_TASK_STALE')
 
-    expect(result).toEqual(expect.objectContaining({ success: true, mediaObjectId: 'media-render-1' }))
     expect(renderStatus).toBe('FAILED')
     expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenNthCalledWith(2, {
       where: {

@@ -200,6 +200,13 @@ describe('editor caption worker handler', () => {
     }))
   })
 
+  it('fails before persisting captions when actual minutes exceed frozen billing minutes', async () => {
+    await expect(handleEditorCaptionTask(buildJob({ durationMinutes: 0.01 }))).rejects.toThrow('CAPTION_BILLING_FREEZE_UNDERESTIMATED')
+
+    expect(workerMock.assertTaskActive).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalled()
+  })
+
   it('updates editor project data, increments version, and settles billing using caption minutes', async () => {
     const result = await handleEditorCaptionTask(buildJob())
 

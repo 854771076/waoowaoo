@@ -6,7 +6,7 @@ import { withTaskLifecycle } from '@/lib/workers/shared'
 const prismaMock = vi.hoisted(() => ({
   novelPromotionEditorProject: {
     findFirst: vi.fn(),
-    update: vi.fn(async () => undefined),
+    updateMany: vi.fn(async () => ({ count: 1 })),
   },
   novelPromotionStoryboard: {
     findMany: vi.fn(),
@@ -172,8 +172,8 @@ describe('editor smart cut worker handler', () => {
       orderBy: { lineIndex: 'asc' },
     }))
     expect(workerMock.assertTaskActive).toHaveBeenCalledWith(expect.anything(), 'smart_cut_persist_editor_project')
-    expect(prismaMock.novelPromotionEditorProject.update).toHaveBeenCalledWith({
-      where: { id: 'editor-project-1' },
+    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledWith({
+      where: { id: 'editor-project-1', version: 3 },
       data: {
         projectData: expect.objectContaining({ tracks: expect.any(Array) }),
         version: { increment: 1 },
@@ -189,10 +189,47 @@ describe('editor smart cut worker handler', () => {
     }))
   })
 
+  it('rereads latest projectData and retries with version CAS when a concurrent edit wins first', async () => {
+    prismaMock.novelPromotionEditorProject.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 })
+    prismaMock.novelPromotionEditorProject.findFirst
+      .mockResolvedValueOnce({
+        id: 'editor-project-1',
+        version: 3,
+        projectData: {
+          metadata: { custom: { width: 1080, height: 1920, fps: 24 } },
+          backgroundColor: '#111111',
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'editor-project-1',
+        version: 4,
+        projectData: {
+          metadata: { custom: { width: 1080, height: 1920, fps: 24 } },
+          backgroundColor: '#111111',
+          tracks: [
+            { id: 'user-overlay', name: '用户新编辑', type: 'overlay', elements: [{ id: 'overlay-1', type: 'image', s: 0, e: 2, props: {} }] },
+          ],
+        },
+      })
+
+    await handleEditorSmartCutTask(buildJob())
+
+    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledTimes(2)
+    const calls = prismaMock.novelPromotionEditorProject.updateMany.mock.calls as unknown as Array<[{
+      where: Record<string, unknown>
+      data: { projectData: { tracks: Array<{ id: string; elements: unknown[] }> } }
+    }]>
+    expect(calls[0][0].where).toEqual({ id: 'editor-project-1', version: 3 })
+    expect(calls[1][0].where).toEqual({ id: 'editor-project-1', version: 4 })
+    expect(calls[1][0].data.projectData.tracks.find((track) => track.id === 'user-overlay')?.elements).toHaveLength(1)
+  })
+
   it('filters panelIds when the route payload scopes the rough cut', async () => {
     await handleEditorSmartCutTask(buildJob({ panelIds: ['panel-2'] }))
 
-    const updateMock = prismaMock.novelPromotionEditorProject.update as unknown as {
+    const updateMock = prismaMock.novelPromotionEditorProject.updateMany as unknown as {
       mock: { calls: Array<[{
         data: { projectData: { tracks: Array<{ elements: Array<{ props: { src: string } }> }> } }
       }]> }
@@ -224,7 +261,7 @@ describe('editor smart cut worker handler', () => {
 
     await expect(handleEditorSmartCutTask(buildJob())).rejects.toThrow('SMART_CUT_NO_VIDEO_PANELS')
     expect(workerMock.assertTaskActive).not.toHaveBeenCalled()
-    expect(prismaMock.novelPromotionEditorProject.update).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalled()
   })
 
   it('propagates empty-video failures through withTaskLifecycle so billing rollback path runs', async () => {
@@ -232,13 +269,13 @@ describe('editor smart cut worker handler', () => {
 
     await expect(withTaskLifecycle(buildJob(), () => handleEditorSmartCutTask(buildJob()))).rejects.toThrow('SMART_CUT_NO_VIDEO_PANELS')
     expect(workerMock.withTaskLifecycle).toHaveBeenCalled()
-    expect(prismaMock.novelPromotionEditorProject.update).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalled()
   })
 
   it('throws explicit error when editor project does not belong to the episode', async () => {
     prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValueOnce(null)
 
     await expect(handleEditorSmartCutTask(buildJob())).rejects.toThrow('EDITOR_PROJECT_NOT_FOUND')
-    expect(prismaMock.novelPromotionEditorProject.update).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalled()
   })
 })

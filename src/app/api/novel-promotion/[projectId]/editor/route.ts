@@ -6,6 +6,19 @@ import { getAuthSession, isErrorResponse, notFound, unauthorized } from '@/lib/a
 import { apiHandler, ApiError } from '@/lib/api-errors'
 
 const MAX_PROJECT_DATA_JSON_CHARS = 5 * 1024 * 1024
+const MEDIA_OBJ_PREFIX = 'mediaobj://'
+const MEDIA_FIELD_KEYS = new Set([
+  'src',
+  'source',
+  'url',
+  'poster',
+  'posterSrc',
+  'maskSrc',
+  'imageSrc',
+  'videoSrc',
+  'audioSrc',
+])
+const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i
 
 const editorProjectSelect = {
   id: true,
@@ -61,6 +74,36 @@ async function requireEpisode(projectId: string, episodeId: string) {
   return episode
 }
 
+function isMediaFieldKey(key: string) {
+  return MEDIA_FIELD_KEYS.has(key) || key.endsWith('Src') || key.endsWith('Url')
+}
+
+function isPotentialUrl(value: string) {
+  return URL_SCHEME_PATTERN.test(value.trim())
+}
+
+function assertNoRawMediaUrls(value: unknown, mediaContext = false, pathParts: string[] = []): void {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (mediaContext && trimmed && !trimmed.startsWith(MEDIA_OBJ_PREFIX) && isPotentialUrl(trimmed)) {
+      throw new ApiError('INVALID_PARAMS', {
+        message: 'EDITOR_RENDER_INVALID_MEDIA_SOURCE',
+        path: pathParts.join('.') || 'media',
+      })
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoRawMediaUrls(item, mediaContext, [...pathParts, String(index)]))
+    return
+  }
+  if (!value || typeof value !== 'object') return
+
+  for (const [key, entryValue] of Object.entries(value as Record<string, unknown>)) {
+    assertNoRawMediaUrls(entryValue, mediaContext || isMediaFieldKey(key), [...pathParts, key])
+  }
+}
+
 function assertValidProjectData(projectData: unknown): asserts projectData is TwickTimelineProject {
   if (
     projectData === undefined
@@ -81,6 +124,8 @@ function assertValidProjectData(projectData: unknown): asserts projectData is Tw
   if (serialized === undefined || serialized.length > MAX_PROJECT_DATA_JSON_CHARS) {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  assertNoRawMediaUrls(projectData)
 }
 
 function isUniqueConstraintError(error: unknown) {

@@ -112,7 +112,7 @@ describe('editor enhance worker handler', () => {
     expect(videoElement?.props?.crop).toBeUndefined()
   })
 
-  it('updates editor project data, increments version, and returns zero actualQuantity for free MVP smart crop settlement', async () => {
+  it('updates editor project data, increments version, and returns billed seconds for smart crop settlement', async () => {
     const result = await handleEditorEnhanceTask(buildJob())
 
     expect(workerMock.assertTaskActive).toHaveBeenCalledWith(expect.anything(), 'enhance_persist_editor_project')
@@ -135,9 +135,18 @@ describe('editor enhance worker handler', () => {
       mode: 'timeline_parameter_smart_crop',
       replacedElementId: 'video-1',
       sourcePanelId: 'panel-1',
-      actualSeconds: 0,
-      actualQuantity: 0,
+      actualSeconds: 6,
+      actualQuantity: 6,
       editorAssetCreated: false,
+    }))
+  })
+
+  it('ceil-bills fractional smart crop duration seconds', async () => {
+    const result = await handleEditorEnhanceTask(buildJob({ durationSeconds: 6.2 }))
+
+    expect(result).toEqual(expect.objectContaining({
+      actualSeconds: 7,
+      actualQuantity: 7,
     }))
   })
 

@@ -299,7 +299,7 @@ describe('editor AI route skeletons', () => {
       targetType: 'NovelPromotionEditorProject',
       targetId: 'editor-project-1',
       dedupeKey: routeCase.name.startsWith('voice-optimize')
-        ? expect.stringMatching(/^editor-ai:voice-optimize:editor-project-1:no-element:[a-f0-9]{16}:[a-f0-9]{12}:1$/)
+        ? expect.stringMatching(new RegExp(`^editor-ai:voice-optimize:editor-project-1:voice-1:[a-f0-9]{16}:[a-f0-9]{12}:${routeCase.body && 'speed' in routeCase.body ? routeCase.body.speed : 1}$`))
         : `editor-ai:${routeCase.action}:editor-project-1:req-${routeCase.name}`,
       billingInfo: routeCase.expectedBilling?.item
         ? expect.objectContaining({
@@ -564,7 +564,34 @@ describe('editor AI route skeletons', () => {
     const secondSubmit = submitTaskMock.mock.calls[1]?.[0]
     expect(firstSubmit.requestId).not.toBe(secondSubmit.requestId)
     expect(firstSubmit.dedupeKey).toBe(secondSubmit.dedupeKey)
-    expect(firstSubmit.dedupeKey).toEqual(expect.stringMatching(/^editor-ai:voice-optimize:editor-project-1:audio-1:[a-f0-9]{16}:[a-f0-9]{12}:1.25$/))
+    expect(firstSubmit.dedupeKey).toEqual(expect.stringMatching(/^editor-ai:voice-optimize:editor-project-1:voice-1:[a-f0-9]{16}:[a-f0-9]{12}:1.25$/))
+  })
+
+  it('voice-optimize dedupeKey includes voiceLineId so identical lines do not collide', async () => {
+    const routeCase = routeCases.find((item) => item.name === 'voice-optimize durationSeconds')!
+    const { POST } = await routeCase.load()
+    const common = {
+      selectedElementId: 'audio-1',
+      content: 'same content',
+      speaker: 'A',
+      speed: 1.25,
+      durationSeconds: 3,
+    }
+
+    await POST(buildEditorAiRequest(routeCase.path, defaultBody({ ...common, voiceLineId: 'voice-1' })), buildContext())
+    prismaMock.novelPromotionVoiceLine.findFirst.mockResolvedValueOnce({
+      id: 'voice-2',
+      content: 'same content',
+      audioDuration: 3000,
+      audioMedia: { durationMs: 3000 },
+    })
+    await POST(buildEditorAiRequest(routeCase.path, defaultBody({ ...common, voiceLineId: 'voice-2' })), buildContext())
+
+    const firstSubmit = submitTaskMock.mock.calls[0]?.[0]
+    const secondSubmit = submitTaskMock.mock.calls[1]?.[0]
+    expect(firstSubmit.dedupeKey).not.toBe(secondSubmit.dedupeKey)
+    expect(firstSubmit.dedupeKey).toContain(':voice-1:')
+    expect(secondSubmit.dedupeKey).toContain(':voice-2:')
   })
 
   it('caption billing uses server voice-line durations so pre-freeze is not underestimated by client payload', async () => {

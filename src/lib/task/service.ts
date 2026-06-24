@@ -441,6 +441,19 @@ export async function tryUpdateTaskProgress(taskId: string, progress: number, pa
   return result.count > 0
 }
 
+async function releaseEditorRenderLockForTask(taskId: string, nextStatus: 'FAILED' | 'IDLE' = 'FAILED') {
+  await prisma.novelPromotionEditorProject.updateMany({
+    where: {
+      renderTaskId: taskId,
+      renderStatus: 'PROCESSING',
+    },
+    data: {
+      renderStatus: nextStatus,
+      ...(nextStatus === 'IDLE' ? { renderTaskId: null } : {}),
+    },
+  })
+}
+
 export async function tryMarkTaskCompleted(taskId: string, resultPayload?: Record<string, unknown> | null) {
   const result = await taskModel.updateMany({
     where: activeTaskWhere(taskId),
@@ -466,6 +479,9 @@ export async function tryMarkTaskFailed(taskId: string, errorCode: string, error
       heartbeatAt: null,
     },
   })
+  if (result.count > 0) {
+    await releaseEditorRenderLockForTask(taskId).catch(() => undefined)
+  }
   return result.count > 0
 }
 
@@ -480,6 +496,9 @@ export async function tryMarkTaskCanceled(taskId: string, errorCode: string, err
       heartbeatAt: null,
     },
   })
+  if (result.count > 0) {
+    await releaseEditorRenderLockForTask(taskId, 'IDLE').catch(() => undefined)
+  }
   return result.count > 0
 }
 
@@ -609,6 +628,7 @@ export async function sweepStaleTasks(params: {
       },
     })
     if (updated.count > 0) {
+      await releaseEditorRenderLockForTask(task.id).catch(() => undefined)
       timedOut.push({
         ...task,
         errorCode: failure.errorCode,

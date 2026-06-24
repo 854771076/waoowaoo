@@ -200,6 +200,29 @@ async function waitForExpectation(assertion: () => void) {
 }
 
 describe('editor-stage-runtime data mapping', () => {
+  it('maps voice-line audioDuration from milliseconds to seconds', () => {
+    const result = mapVoiceLinesToSources({
+      voiceLines: [
+        {
+          id: 'voice-1',
+          speaker: 'A',
+          content: 'hello',
+          audioUrl: '/audio.wav',
+          audioDuration: 5000,
+          audioMedia: { id: 'audio-media-1', durationMs: 5000 },
+        },
+      ],
+    })
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        voiceLineId: 'voice-1',
+        audioMediaObjectId: 'audio-media-1',
+        duration: 5,
+      }),
+    ])
+  })
+
   it('maps storyboard groups to Twick panel video sources using video media object ids', () => {
     const result = mapStoryboardsToPanelVideos({
       groups: [
@@ -270,7 +293,7 @@ describe('editor-stage-runtime data mapping', () => {
           speaker: 'Alice',
           content: 'Hello',
           audioUrl: '/audio.mp3',
-          audioDuration: 1.25,
+          audioDuration: 1250,
           audioMedia: {
             id: 'media-audio-1',
             durationMs: 1300,

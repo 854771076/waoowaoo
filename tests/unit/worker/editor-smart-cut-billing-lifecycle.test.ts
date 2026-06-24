@@ -31,10 +31,15 @@ const publisherMock = vi.hoisted(() => ({
   publishTaskStreamEvent: vi.fn(async () => undefined),
 }))
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
-    project: { findUnique: vi.fn(async () => null) },
+const prismaMock = vi.hoisted(() => ({
+  project: { findUnique: vi.fn(async () => null) },
+  novelPromotionEditorProject: {
+    updateMany: vi.fn(async () => ({ count: 1 })),
   },
+}))
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: prismaMock,
 }))
 vi.mock('@/lib/logging/core', () => ({
   createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -110,6 +115,49 @@ function buildJob(): Job<TaskJobData> {
   } as unknown as Job<TaskJobData>
 }
 
+const renderBillingInfo: TaskBillingInfo = {
+  billable: true,
+  source: 'task',
+  taskType: TASK_TYPE.EDITOR_RENDER,
+  apiType: 'editor',
+  model: BILLING_ITEM.EDITOR_EXPORT,
+  quantity: 1,
+  unit: 'minute',
+  maxFrozenCost: 0.01,
+  action: BILLING_ITEM.EDITOR_EXPORT,
+  metadata: {
+    billingItem: BILLING_ITEM.EDITOR_EXPORT,
+    editorProjectId: 'editor-project-1',
+  },
+  status: 'frozen',
+  freezeId: 'freeze-render-1',
+  modeSnapshot: 'ENFORCE',
+}
+
+function buildRenderJob(): Job<TaskJobData> {
+  return {
+    queueName: 'video',
+    attemptsMade: 0,
+    opts: { attempts: 1 },
+    data: {
+      taskId: 'task-render-1',
+      type: TASK_TYPE.EDITOR_RENDER,
+      locale: 'zh',
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      targetType: 'NovelPromotionEditorProject',
+      targetId: 'editor-project-1',
+      payload: {
+        episodeId: 'episode-1',
+        editorProjectId: 'editor-project-1',
+      },
+      billingInfo: renderBillingInfo,
+      userId: 'user-1',
+      trace: null,
+    },
+  } as unknown as Job<TaskJobData>
+}
+
 describe('editor smart cut worker billing lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -163,5 +211,28 @@ describe('editor smart cut worker billing lifecycle', () => {
       'ERROR',
       'smart cut boom',
     )
+  })
+
+  it('rolls back DONE editor render output when billing settlement fails', async () => {
+    billingMock.settleTaskBilling.mockRejectedValueOnce(new Error('settle failed'))
+
+    await expect(withTaskLifecycle(buildRenderJob(), async () => ({
+      success: true,
+      mediaObjectId: 'media-render-1',
+      actualQuantity: 1,
+    }))).rejects.toThrow('settle failed')
+
+    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledWith({
+      where: {
+        renderTaskId: 'task-render-1',
+        renderStatus: 'DONE',
+      },
+      data: {
+        renderStatus: 'FAILED',
+        renderOutputMediaObjectId: null,
+      },
+    })
+    expect(taskServiceMock.tryMarkTaskCompleted).not.toHaveBeenCalled()
+    expect(taskServiceMock.tryMarkTaskFailed).toHaveBeenCalledWith('task-render-1', 'ERROR', 'settle failed')
   })
 })

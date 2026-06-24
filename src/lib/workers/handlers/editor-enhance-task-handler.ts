@@ -169,7 +169,7 @@ export async function handleEditorEnhanceTask(job: Job<TaskJobData>) {
   }
 
   const inputDurationSeconds = payload.durationSeconds || selectedVideo.durationSeconds || 1
-  const actualSeconds = 0
+  const actualSeconds = Math.max(1, Math.ceil(inputDurationSeconds))
   const frozenSeconds = Math.ceil(inputDurationSeconds)
   if (actualSeconds > frozenSeconds) {
     throw new Error('ENHANCE_BILLING_FREEZE_UNDERESTIMATED')

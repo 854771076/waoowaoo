@@ -22,6 +22,11 @@ function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+function readOptionalPositiveNumber(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null
+}
+
 function parseCaptionPayload(job: Job<TaskJobData>) {
   const payload = asJsonRecord(job.data.payload) || {}
   const episodeId = readString(payload.episodeId) || readString(job.data.episodeId) || null
@@ -31,7 +36,11 @@ function parseCaptionPayload(job: Job<TaskJobData>) {
   if (!episodeId) throw new Error('episodeId is required')
   if (!editorProjectId) throw new Error('editorProjectId is required')
 
-  return { episodeId, editorProjectId }
+  return {
+    episodeId,
+    editorProjectId,
+    frozenDurationMinutes: readOptionalPositiveNumber(payload.durationMinutes ?? payload.quantity),
+  }
 }
 
 async function loadEditorProject(editorProjectId: string, episodeId: string) {
@@ -94,6 +103,7 @@ async function persistCaptionedProjectWithVersionRetry(params: {
   initialVersion: number
   initialProjectData: unknown
   voiceLines: VoiceLineRecord[]
+  frozenDurationMinutes: number | null
 }) {
   let expectedVersion = params.initialVersion
   let currentProjectData = params.initialProjectData
@@ -108,6 +118,11 @@ async function persistCaptionedProjectWithVersionRetry(params: {
 
     if (buildResult.captionCount === 0) {
       throw new Error(CAPTION_NO_VOICE_LINES_ERROR)
+    }
+
+    const actualQuantity = Math.max(MIN_BILLING_MINUTES, buildResult.totalDurationSeconds / 60)
+    if (params.frozenDurationMinutes !== null && actualQuantity > params.frozenDurationMinutes + 0.000001) {
+      throw new Error('CAPTION_BILLING_FREEZE_UNDERESTIMATED')
     }
 
     await assertTaskActive(params.job, 'caption_persist_editor_project')
@@ -136,7 +151,7 @@ async function persistCaptionedProjectWithVersionRetry(params: {
 }
 
 export async function handleEditorCaptionTask(job: Job<TaskJobData>) {
-  const { episodeId, editorProjectId } = parseCaptionPayload(job)
+  const { episodeId, editorProjectId, frozenDurationMinutes } = parseCaptionPayload(job)
 
   await reportTaskProgress(job, 15, { stage: 'caption_load_voice_lines' })
 
@@ -157,6 +172,7 @@ export async function handleEditorCaptionTask(job: Job<TaskJobData>) {
     initialVersion: editorProject.version,
     initialProjectData: editorProject.projectData,
     voiceLines,
+    frozenDurationMinutes,
   })
 
   const actualQuantity = Math.max(MIN_BILLING_MINUTES, totalDurationSeconds / 60)

@@ -115,7 +115,7 @@ export async function resolveMediaUrlForServerRender(
   context?: ServerRenderMediaContext,
 ): Promise<string> {
   if (!isMediaObjRef(ref)) {
-    return ref
+    throw new Error(`Invalid editor render media source: ${ref}`)
   }
 
   const mediaObjectId = extractMediaObjectId(ref)

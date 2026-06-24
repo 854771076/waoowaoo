@@ -16,8 +16,14 @@ const prismaMock = vi.hoisted(() => ({
   task: { findFirst: vi.fn() },
   novelPromotionEditorProject: {
     findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
+    create: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
+  },
+  novelPromotionEpisode: {
+    findFirst: vi.fn(),
   },
 }))
 
@@ -72,15 +78,21 @@ describe('editor render route', () => {
     vi.clearAllMocks()
     authState.userId = 'user-1'
     prismaMock.project.findFirst.mockResolvedValue({ id: 'project-1', userId: 'user-1', name: 'Project' })
-    prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValue({
+    const editorProject = {
       id: 'editor-project-1',
       episodeId: 'episode-1',
       projectData: buildProjectData(),
+      version: 3,
       renderStatus: 'IDLE',
       renderTaskId: null,
       renderOutputMediaObjectId: null,
       renderSettings: null,
-    })
+    }
+    prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValue(editorProject)
+    prismaMock.novelPromotionEditorProject.findUnique.mockResolvedValue(editorProject)
+    prismaMock.novelPromotionEditorProject.findUniqueOrThrow.mockResolvedValue({ ...editorProject, version: 4 })
+    prismaMock.novelPromotionEditorProject.create.mockResolvedValue({ ...editorProject, version: 1 })
+    prismaMock.novelPromotionEpisode.findFirst.mockResolvedValue({ id: 'episode-1' })
     prismaMock.task.findFirst.mockResolvedValue(null)
     prismaMock.novelPromotionEditorProject.update.mockResolvedValue({})
     prismaMock.novelPromotionEditorProject.updateMany.mockResolvedValue({ count: 1 })
@@ -135,6 +147,30 @@ describe('editor render route', () => {
 
     expect(res.status).toBe(404)
     expect(submitTaskMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects saving raw URL media sources before they can reach server render', async () => {
+    const { PUT } = await import('@/app/api/novel-promotion/[projectId]/editor/route')
+
+    const res = await PUT(buildMockRequest({
+      path: '/api/novel-promotion/project-1/editor',
+      method: 'PUT',
+      body: {
+        episodeId: 'episode-1',
+        version: 3,
+        projectData: {
+          ...buildProjectData(),
+          tracks: [
+            { id: 'track-video', type: 'video', elements: [{ id: 'video-1', type: 'video', s: 0, e: 2, props: { src: 'http://127.0.0.1/internal', label: 'ordinary text may contain http://127.0.0.1' } }] },
+          ],
+        },
+      },
+    }), buildContext())
+
+    expect(res.status).toBe(400)
+    const json = await res.json() as Record<string, unknown>
+    expect(json.message).toBe('EDITOR_RENDER_INVALID_MEDIA_SOURCE')
+    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalled()
   })
 
   it('submits editor_render with per-minute editor_export billing payload', async () => {
