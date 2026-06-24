@@ -112,11 +112,11 @@ export function useVideoPanelActions({
 
   const handleRegenerateGridVideoPrompt = async () => {
     if (!panel.panelId) return
-    await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false })
     await regenerateGridVideoPromptMutation.mutateAsync({
       panelId: panel.panelId,
       episodeId,
     })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false })
     if (episodeId) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.episodeData(projectId, episodeId) })
     } else {
