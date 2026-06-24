@@ -37,6 +37,7 @@ import { handleAssetHubAIModifyTask } from './handlers/asset-hub-ai-modify'
 import { handleReferenceToCharacterTask } from './handlers/reference-to-character'
 import { handleShotAITask } from './handlers/shot-ai-tasks'
 import { handleCharacterProfileTask } from './handlers/character-profile'
+import { handleGridVideoPromptRewriteTask } from './handlers/grid-video-prompt-rewrite'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -699,6 +700,8 @@ async function processTextTask(job: Job<TaskJobData>) {
       return await handleReferenceToCharacterTask(job)
     case TASK_TYPE.REGENERATE_STORYBOARD_TEXT:
       return await handleRegenerateStoryboardTextTask(job)
+    case TASK_TYPE.AI_GRID_VIDEO_PROMPT:
+      return await handleGridVideoPromptRewriteTask(job)
     case TASK_TYPE.INSERT_PANEL:
       return await handleInsertPanelTask(job)
     default:
