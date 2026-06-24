@@ -148,6 +148,7 @@ export {
     useUpdateProjectPhotographyPlan,
     useUpdateProjectPanelActingNotes,
     useListProjectEpisodeVideoUrls,
+    useRegenerateGridVideoPrompt,
     useUpdateProjectPanelLink,
     useListProjectEpisodes,
     useSplitProjectEpisodes,

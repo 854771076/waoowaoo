@@ -40,6 +40,7 @@ import { handleCharacterProfileTask } from './handlers/character-profile'
 import { handleEditorSmartCutTask } from './handlers/editor-smart-cut-task-handler'
 import { handleEditorCaptionTask } from './handlers/editor-caption-task-handler'
 import { handleEditorEnhanceTask } from './handlers/editor-enhance-task-handler'
+import { handleGridVideoPromptRewriteTask } from './handlers/grid-video-prompt-rewrite'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -702,6 +703,8 @@ async function processTextTask(job: Job<TaskJobData>) {
       return await handleReferenceToCharacterTask(job)
     case TASK_TYPE.REGENERATE_STORYBOARD_TEXT:
       return await handleRegenerateStoryboardTextTask(job)
+    case TASK_TYPE.AI_GRID_VIDEO_PROMPT:
+      return await handleGridVideoPromptRewriteTask(job)
     case TASK_TYPE.INSERT_PANEL:
       return await handleInsertPanelTask(job)
     case TASK_TYPE.EDITOR_AI_SMART_CUT:

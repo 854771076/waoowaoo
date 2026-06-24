@@ -39,6 +39,7 @@
     "unknownShotType": "Unknown",
     "correspondingText": "Corresponding Text",
     "generateVideo": "Generate Video",
+    "regenerateGridVideoPrompt": "Regenerate grid video prompt",
     "selectModel": "Select Video Model",
     "selectVoice": "Select voice to use:",
     "willAutoPad": "(will auto-pad)",
