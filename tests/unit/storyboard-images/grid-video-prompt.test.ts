@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { executeAiTextStep, executeAiVisionStep } from '@/lib/ai-runtime'
 import { isGridLayout } from '@/lib/storyboard-images/grid-video-prompt'
 import { rewriteGridVideoPrompt, parseRewrittenPrompt } from '@/lib/storyboard-images/grid-video-prompt'
 
@@ -10,17 +11,24 @@ const promptMock = vi.hoisted(() => ({
 
 const aiMock = vi.hoisted(() => ({
   executeAiTextStep: vi.fn(),
+  executeAiVisionStep: vi.fn(),
 }))
 
 vi.mock('@/lib/prompt-i18n', () => ({
   buildPromptAsync: promptMock.buildPromptAsync,
   PROMPT_IDS: {
     NP_PANEL_GRID_VIDEO: 'np_panel_grid_video',
+    NP_PANEL_GRID_VIDEO_VISION: 'np_panel_grid_video_vision',
   },
 }))
 
 vi.mock('@/lib/ai-runtime', () => ({
   executeAiTextStep: aiMock.executeAiTextStep,
+  executeAiVisionStep: aiMock.executeAiVisionStep,
+}))
+
+vi.mock('@/lib/media/outbound-image', () => ({
+  normalizeToBase64ForGeneration: vi.fn().mockResolvedValue('data:image/jpeg;base64,abc123'),
 }))
 
 describe('isGridLayout', () => {
@@ -83,6 +91,7 @@ describe('parseRewrittenPrompt', () => {
 describe('rewriteGridVideoPrompt', () => {
   beforeEach(() => {
     aiMock.executeAiTextStep.mockReset()
+    aiMock.executeAiVisionStep.mockReset()
     promptMock.buildPromptAsync.mockReset()
   })
 
@@ -172,5 +181,96 @@ describe('rewriteGridVideoPrompt', () => {
       locale: 'zh', projectId: null, userId: 'u1', model: 'm',
     })
     expect(result).toBeNull()
+  })
+})
+
+describe('rewriteGridVideoPrompt: vision path', () => {
+  const baseParams = {
+    basePrompt: 'character walking',
+    gridSize: 4,
+    shotType: 'medium shot',
+    cameraMove: 'smooth pan',
+    locale: 'zh' as const,
+    projectId: 'proj-123',
+    userId: 'user-123',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should use vision path when both visionModel and imageUrl provided', async () => {
+    vi.mocked(executeAiVisionStep).mockResolvedValue({
+      text: 'vision rewritten prompt',
+      reasoning: '',
+      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      completion: {} as any,
+    })
+
+    const result = await rewriteGridVideoPrompt({
+      ...baseParams,
+      visionModel: 'openai:gpt-4o',
+      imageUrl: 'cos://panel-image.jpg',
+      gridGenerationContextJson: JSON.stringify({ panel: {}, context: {} }),
+    })
+
+    expect(executeAiVisionStep).toHaveBeenCalled()
+    expect(executeAiTextStep).not.toHaveBeenCalled()
+    expect(result?.prompt).toBe('vision rewritten prompt')
+  })
+
+  it('should fall back to text path when visionModel not provided', async () => {
+    vi.mocked(executeAiTextStep).mockResolvedValue({
+      text: 'text rewritten prompt',
+      reasoning: '',
+      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      completion: {} as any,
+    })
+
+    const result = await rewriteGridVideoPrompt({
+      ...baseParams,
+      model: 'openai:gpt-4',
+      gridGenerationContextJson: JSON.stringify({ panel: {}, context: {} }),
+    })
+
+    expect(executeAiTextStep).toHaveBeenCalled()
+    expect(executeAiVisionStep).not.toHaveBeenCalled()
+    expect(result?.prompt).toBe('text rewritten prompt')
+  })
+
+  it('should fall back to text path when vision call fails', async () => {
+    vi.mocked(executeAiVisionStep).mockRejectedValue(new Error('vision failed'))
+    vi.mocked(executeAiTextStep).mockResolvedValue({
+      text: 'fallback prompt',
+      reasoning: '',
+      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      completion: {} as any,
+    })
+
+    const result = await rewriteGridVideoPrompt({
+      ...baseParams,
+      visionModel: 'openai:gpt-4o',
+      imageUrl: 'cos://panel-image.jpg',
+      gridGenerationContextJson: JSON.stringify({ panel: {}, context: {} }),
+    })
+
+    expect(result?.prompt).toBe('fallback prompt')
+  })
+
+  it('should use old panelContext format when gridGenerationContextJson not provided (backward compat)', async () => {
+    vi.mocked(executeAiTextStep).mockResolvedValue({
+      text: 'compat prompt',
+      reasoning: '',
+      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      completion: {} as any,
+    })
+
+    const result = await rewriteGridVideoPrompt({
+      ...baseParams,
+      model: 'openai:gpt-4',
+      panelContext: { shot_type: 'medium', description: 'test' },
+    })
+
+    expect(result?.prompt).toBe('compat prompt')
   })
 })

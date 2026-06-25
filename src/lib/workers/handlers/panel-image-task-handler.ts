@@ -373,6 +373,9 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         candidateImages: candidateCount > 1 ? JSON.stringify(candidates) : null,
         imageLayout,
         ...buildGridInvalidationPatch(imageLayout),
+        ...(panelGridSize > 1
+          ? { gridGenerationContext: JSON.stringify(promptContext, null, 2) }
+          : {}),
       },
     })
   } else {
@@ -383,6 +386,9 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         candidateImages: JSON.stringify(candidates),
         imageLayout,
         ...buildGridInvalidationPatch(imageLayout),
+        ...(panelGridSize > 1
+          ? { gridGenerationContext: JSON.stringify(promptContext, null, 2) }
+          : {}),
       },
     })
   }
