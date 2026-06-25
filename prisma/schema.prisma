@@ -268,6 +268,7 @@ model NovelPromotionPanel {
   videoUrl          String?                   @db.Text
   videoGenerationMode String?                 @db.Text // 视频生成方式：normal | firstlastframe
   gridVideoPromptAt DateTime?                 // 宫格视频提示词 LLM 重写标记：非空=已重写过
+  gridGenerationContext String?               @db.Text // 宫格图生成时的 buildPanelPromptContext JSON
   videoMediaId      String?
   videoMedia        MediaObject?              @relation("NovelPromotionPanelVideoMedia", fields: [videoMediaId], references: [id], onDelete: SetNull)
   createdAt         DateTime                  @default(now())
@@ -321,6 +322,7 @@ model NovelPromotionProject {
   locationModel   String? // 用户配置的场景图片模型
   storyboardModel String? // 用户配置的分镜图片模型
   editModel       String? // 用户配置的修图/编辑模型
+  gridVideoPromptVisionModel String? // 宫格视频提示词 vision 模型（provider:modelId），可选
   videoResolution String                    @default("720p")
   capabilityOverrides String?              @db.Text
   workflowMode    String                    @default("srt")
