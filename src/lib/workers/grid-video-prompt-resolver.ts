@@ -9,8 +9,12 @@ export interface ResolveGridVideoPromptParams {
   locale: 'zh' | 'en'
   projectId: string | null
   userId: string
-  model: string
+  model?: string
   alreadyRewritten: boolean
+  // Vision path (preferred when available)
+  visionModel?: string
+  imageUrl?: string
+  gridGenerationContextJson?: string
 }
 
 export interface ResolveGridVideoPromptResult {
@@ -38,6 +42,9 @@ export async function resolveGridVideoPrompt(
     projectId: params.projectId,
     userId: params.userId,
     model: params.model,
+    visionModel: params.visionModel,
+    imageUrl: params.imageUrl,
+    gridGenerationContextJson: params.gridGenerationContextJson,
   })
   if (!result) {
     return { prompt: params.basePrompt, rewritten: false, usage: null }

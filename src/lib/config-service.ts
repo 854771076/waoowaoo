@@ -108,6 +108,7 @@ export interface ProjectModelConfig {
   audioModel: string | null
   videoRatio: string | null
   panelGridSize: number
+  gridVideoPromptVisionModel: string | null
   artStyle: string | null
   artStyleId: string | null
   artStylePrompt: string | null
@@ -177,6 +178,7 @@ export async function getProjectModelConfig(
     audioModel: extractModelKey(projectData?.audioModel) || extractModelKey(userPref?.audioModel) || null,
     videoRatio: projectData?.videoRatio || '16:9',
     panelGridSize: projectData?.panelGridSize ?? 4,
+    gridVideoPromptVisionModel: extractModelKey(projectData?.gridVideoPromptVisionModel) || null,
     artStyle: projectData?.artStyle || userPref?.artStyle || null,
     artStyleId: resolvedArtStyle.artStyleId,
     artStylePrompt: resolvedArtStyle.prompt || null,
