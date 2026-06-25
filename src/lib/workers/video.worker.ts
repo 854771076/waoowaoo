@@ -137,6 +137,9 @@ async function generateVideoForPanel(
       prompt = cached
       usedGridPrompt = panel.videoPrompt != null
     } else {
+      // Get vision model from project config
+      const projectModels = await getProjectModels(job.data.projectId, job.data.userId)
+      const visionModel = projectModels.gridVideoPromptVisionModel || undefined
       let analysisModel = ''
       try {
         analysisModel = await resolveAnalysisModel({
@@ -147,7 +150,7 @@ async function generateVideoForPanel(
         logger.warn({ message: 'grid video prompt rewrite skipped: analysis model unresolved', details: { panelId: panel.id, error: String(error) } })
       }
       const locale = (job.data.locale as 'zh' | 'en') || 'zh'
-      const panelContext = {
+      const legacyPanelContext = {
         shot_type: panel.shotType || '',
         camera_move: panel.cameraMove || '',
         description: panel.description || '',
@@ -157,7 +160,7 @@ async function generateVideoForPanel(
       }
       const runResolve = () => resolveGridVideoPrompt({
         basePrompt,
-        panelContext,
+        panelContext: legacyPanelContext,
         gridSize,
         shotType: panel.shotType || '',
         cameraMove: panel.cameraMove || '',
@@ -166,6 +169,9 @@ async function generateVideoForPanel(
         userId: job.data.userId,
         model: analysisModel,
         alreadyRewritten: false,
+        visionModel,
+        imageUrl: panel.imageUrl || undefined,
+        gridGenerationContextJson: panel.gridGenerationContext || undefined,
       })
       const resolved = analysisModel
         ? await withTextBilling(
