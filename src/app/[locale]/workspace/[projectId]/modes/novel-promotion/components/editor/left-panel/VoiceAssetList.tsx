@@ -3,11 +3,14 @@
 import { useTranslations } from 'next-intl'
 import { ElementDeserializer, useTimelineContext } from '@twick/timeline'
 import { useEditorStageRuntime } from '@/lib/novel-promotion/stages/editor-stage-runtime-core'
+import { resolveMediaUrls } from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorProjectSync'
 import { voiceLineToAudioElement } from '@/lib/twick/asset-adapter'
+import { useWorkspaceProvider } from '../../../WorkspaceProvider'
 
 export function VoiceAssetList() {
   const t = useTranslations('novelPromotion.editor.assets')
   const { voiceLineSources } = useEditorStageRuntime()
+  const { projectId } = useWorkspaceProvider()
   const { editor, present } = useTimelineContext()
 
   const handleAddVoice = async (voiceLineId: string) => {
@@ -22,7 +25,13 @@ export function VoiceAssetList() {
       .filter((element) => element.type === 'audio')
       .map((element) => (typeof element.e === 'number' && Number.isFinite(element.e) ? element.e : 0)) ?? []
     const currentEnd = audioEnds.length > 0 ? Math.max(0, ...audioEnds) : 0
-    const element = ElementDeserializer.fromJSON(voiceLineToAudioElement(voiceLine, currentEnd))
+    // ponytail: Twick's updateAudioMeta rejects any src not matching /^(https?:|blob:|data:audio\/)/i,
+    // so a bare `mediaobj://` src throws "Unsafe audio source URL" → surfaces as ELEMENT_NOT_ADDED.
+    // Resolve through the shared project cache so the resolved signed URL still maps back to
+    // `mediaobj://` at save time (else the DB gets an expiring URL).
+    const rawElement = voiceLineToAudioElement(voiceLine, currentEnd)
+    const resolvedElement = await resolveMediaUrls(rawElement, projectId)
+    const element = ElementDeserializer.fromJSON(resolvedElement)
     if (!element) return
 
     try {

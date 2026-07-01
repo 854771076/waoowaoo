@@ -240,6 +240,39 @@ describe('editor smart cut worker handler', () => {
     expect(videoElements[0].props.src).toBe('mediaobj://video-media-2')
   })
 
+  it('preserves user-added same-type tracks (e.g. BGM audio track) — dedupes by track id only', async () => {
+    // ponytail: regression for the "smart-cut nukes user tracks" bug. Previously the
+    // merge dropped every existing track of type video/audio; only track-video-main and
+    // track-audio-main should be replaced.
+    prismaMock.novelPromotionEditorProject.findFirst.mockResolvedValueOnce({
+      id: 'editor-project-1',
+      version: 3,
+      projectData: {
+        metadata: { custom: { width: 1080, height: 1920, fps: 24 } },
+        tracks: [
+          { id: 'track-video-main', name: '视频', type: 'video', elements: [] },
+          { id: 'track-audio-main', name: '语音', type: 'audio', elements: [] },
+          { id: 'user-bgm', name: '背景音乐', type: 'audio', elements: [{ id: 'bgm-1', type: 'audio', s: 0, e: 30, props: { src: 'mediaobj://bgm-media' } }] },
+          { id: 'user-overlay-video', name: '叠加视频', type: 'video', elements: [{ id: 'ov-1', type: 'video', s: 0, e: 3, props: { src: 'mediaobj://overlay-media' } }] },
+        ],
+      },
+    })
+
+    await handleEditorSmartCutTask(buildJob())
+
+    const updateMock = prismaMock.novelPromotionEditorProject.updateMany as unknown as {
+      mock: { calls: Array<[{ data: { projectData: { tracks: Array<{ id: string; elements: unknown[] }> } } }]> }
+    }
+    const tracks = updateMock.mock.calls[0]![0].data.projectData.tracks
+    const bgm = tracks.find((track) => track.id === 'user-bgm')
+    const overlay = tracks.find((track) => track.id === 'user-overlay-video')
+    expect(bgm?.elements).toHaveLength(1)
+    expect(overlay?.elements).toHaveLength(1)
+    // primary tracks are still rebuilt (they are the generated video/audio tracks)
+    expect(tracks.find((track) => track.id === 'track-video-main')?.elements).toBeDefined()
+    expect(tracks.find((track) => track.id === 'track-audio-main')?.elements).toBeDefined()
+  })
+
   it('throws when no usable video panels exist and does not overwrite projectData', async () => {
     prismaMock.novelPromotionStoryboard.findMany.mockResolvedValueOnce([
       {

@@ -103,10 +103,11 @@ export function TransitionPanel() {
   const t = useTranslations('novelPromotion.editor.rightPanel.ai')
   const { projectId, episodeId } = useWorkspaceProvider()
   const { present, selectedItem, editor } = useTimelineContext()
-  const { editorProjectId, isLoadingData, isLoadingProject, updateProjectData, flushProjectSave } = useEditorStageRuntime()
+  const { editorProjectId, isLoadingData, isLoadingProject, updateProjectData, flushProjectSave, reloadProject } = useEditorStageRuntime()
   const [recommendations, setRecommendations] = useState<SmartTransitionRecommendation[]>([])
   const [localError, setLocalError] = useState<string | null>(null)
   const [appliedKind, setAppliedKind] = useState<string | null>(null)
+  const [applyPendingKind, setApplyPendingKind] = useState<string | null>(null)
 
   const selectedElementId = getSelectedElementId(selectedItem)
   const pair = useMemo(() => findAdjacentTransitionPair({
@@ -161,7 +162,9 @@ export function TransitionPanel() {
 
   const applyRecommendation = async (recommendation: SmartTransitionRecommendation) => {
     if (!pair) return
+    if (applyPendingKind) return // ponytail: local in-flight guard — button lacks disabled prop otherwise.
     setLocalError(null)
+    setApplyPendingKind(recommendation.kind)
     const latestProject = setTimelineElementTransition(editor, {
       fromElementId: pair.fromElementId,
       toElementId: pair.toElementId,
@@ -170,6 +173,7 @@ export function TransitionPanel() {
     })
     if (!latestProject) {
       setLocalError(t('transition.applyFailed'))
+      setApplyPendingKind(null)
       return
     }
     try {
@@ -178,7 +182,17 @@ export function TransitionPanel() {
       setAppliedKind(recommendation.kind)
     } catch (error) {
       const message = error instanceof Error ? error.message : null
-      setLocalError(message === 'conflict' ? t('transition.saveConflict') : message || t('transition.applyFailed'))
+      if (message === 'conflict') {
+        // ponytail: conflict flips hasConflict, which then gates every further auto-save
+        // silently. Reload server state so the user isn't stuck — they lose this
+        // transition apply, but their timeline stays writable.
+        setLocalError(t('transition.saveConflict'))
+        await reloadProject({ discardLocal: true }).catch(() => undefined)
+      } else {
+        setLocalError(message || t('transition.applyFailed'))
+      }
+    } finally {
+      setApplyPendingKind(null)
     }
   }
 
@@ -221,18 +235,24 @@ export function TransitionPanel() {
         <div className="mt-2 space-y-2">
           {recommendations.map((recommendation) => {
             const isApplied = appliedKind === recommendation.kind
+            const isPending = applyPendingKind === recommendation.kind
             return (
               <button
                 key={recommendation.kind}
                 type="button"
                 onClick={() => { void applyRecommendation(recommendation) }}
-                className={`w-full rounded-xl border p-2 text-left transition ${isApplied ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/50'}`}
+                disabled={!!applyPendingKind}
+                className={`w-full rounded-xl border p-2 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${isApplied ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/50'}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium text-slate-900">{t(`transition.kinds.${recommendation.kind}`)}</span>
-                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                    {Math.round(recommendation.confidence * 100)}%
-                  </span>
+                  {isPending ? (
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-amber-600" aria-hidden />
+                  ) : (
+                    <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                      {Math.round(recommendation.confidence * 100)}%
+                    </span>
+                  )}
                 </div>
                 <div className="mt-1 text-[10px] leading-4 text-slate-500">
                   {t('transition.duration', { seconds: normalizeTwickTransitionDuration(recommendation.duration).toFixed(2) })}

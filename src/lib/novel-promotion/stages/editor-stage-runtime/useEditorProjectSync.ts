@@ -143,9 +143,13 @@ function isMediaObjRef(src: string): src is `mediaobj://${string}` {
 }
 
 /**
- * Recursively resolve all mediaobj:// URLs to HTTP URLs
+ * Recursively resolve all mediaobj:// URLs to HTTP URLs.
+ * Exported so consumers (e.g. left-panel asset lists) can resolve a single ref
+ * and share the same ref↔url cache used at save time — otherwise
+ * `restoreMediaObjUrls` couldn't map the resolved URL back to a mediaobj:// ref
+ * and the DB would end up with expiring signed URLs.
  */
-async function resolveMediaUrls<T>(obj: T, projectId: string): Promise<T> {
+export async function resolveMediaUrls<T>(obj: T, projectId: string): Promise<T> {
   const cache = getProjectCache(projectId)
   if (typeof obj === 'string' && isMediaObjRef(obj)) {
     // Check cache first

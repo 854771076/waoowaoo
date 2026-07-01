@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { useTimelineContext } from '@twick/timeline'
 import { ElementDeserializer } from '@twick/timeline'
 import { useEditorStageRuntime } from '@/lib/novel-promotion/stages/editor-stage-runtime-core'
+import { resolveMediaUrls } from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorProjectSync'
 import { panelToVideoElement } from '@/lib/twick/asset-adapter'
 import type { PanelVideoSource } from '@/lib/twick/types'
 import { AppIcon } from '@/components/ui/icons'
@@ -104,7 +105,13 @@ export function VideoAssetList() {
       .filter((element) => element.type === 'video')
       .map((element) => (typeof element.e === 'number' && Number.isFinite(element.e) ? element.e : 0)) ?? []
     const currentEnd = videoEnds.length > 0 ? Math.max(0, ...videoEnds) : 0
-    const element = ElementDeserializer.fromJSON(panelToVideoElement(panel, currentEnd))
+    // ponytail: Twick's updateVideoMeta rejects any src not matching /^(https?:|blob:|data:video\/)/i,
+    // so a bare `mediaobj://` src throws "Unsafe video source URL" → surfaces as ELEMENT_NOT_ADDED.
+    // Resolve via the shared project cache so the resolved signed URL still maps back to
+    // `mediaobj://` at save time (else the DB gets an expiring URL).
+    const rawElement = panelToVideoElement(panel, currentEnd)
+    const resolvedElement = await resolveMediaUrls(rawElement, projectId)
+    const element = ElementDeserializer.fromJSON(resolvedElement)
     if (!element) return
 
     try {

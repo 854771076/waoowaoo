@@ -77,7 +77,7 @@ export function EditorStageShell({ videoWidth, videoHeight }: EditorStageShellPr
   }, [editorProjectId, episodeId, exportT, isLoadingData, isLoadingProject])
 
   return (
-    <div className="relative flex h-[calc(100vh-220px)] min-h-[720px] w-full flex-col overflow-hidden rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] shadow-xl backdrop-blur-xl">
+    <div className="relative -mx-4 flex h-[calc(100vh-96px)] w-[calc(100%+2rem)] flex-col overflow-hidden border-y border-[var(--glass-border)] bg-[var(--glass-bg)] shadow-xl backdrop-blur-xl sm:-mx-6 sm:w-[calc(100%+3rem)] lg:-mx-8 lg:w-[calc(100%+4rem)]">
       <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-[var(--glass-border)] bg-gradient-to-r from-white/60 via-white/40 to-white/60 px-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--glass-accent-from)] to-[var(--glass-accent-to)] text-white shadow-md">

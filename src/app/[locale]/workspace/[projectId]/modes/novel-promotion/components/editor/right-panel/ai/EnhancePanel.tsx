@@ -123,7 +123,8 @@ export function EnhancePanel() {
     setLocalError(null)
     setSubmittedTaskId((current) => (current === taskId ? null : current))
     await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId) })
-    await reloadProject()
+    // ponytail: discardLocal — worker bumped server version; local edits during the run would 409 on flush.
+    await reloadProject({ discardLocal: true })
   }, [projectId, queryClient, reloadProject])
 
   const mutation = useMutation({
@@ -177,7 +178,7 @@ export function EnhancePanel() {
     || taskStatus.data.active[0]
     || null
   const progress = activeTask?.progress ?? latestTask?.progress ?? null
-  const isRunning = !!activeTask || mutation.isPending
+  const isRunning = !!submittedTaskId || !!activeTask || mutation.isPending
 
   const disabledReason = useMemo(() => {
     if (!episodeId || !editorProjectId) return t('enhance.missingContext')
