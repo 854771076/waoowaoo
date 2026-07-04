@@ -47,6 +47,15 @@ const eslintConfig = [
       ],
     },
   },
+  {
+    // ponytail: tests/ heavily use any for mocks/fixtures; relax no-explicit-any there
+    // instead of scattering eslint-disable comments.
+    files: ["tests/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "warn",
+    },
+  },
 ];
 
 export default eslintConfig;
