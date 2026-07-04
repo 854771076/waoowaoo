@@ -192,7 +192,7 @@ export function buildInitialProject(
 
   for (let index = 0; index < panels.length; index += 1) {
     const panel = panels[index]
-    videoTrack.elements.push(panelToVideoElement(panel, currentTime))
+    videoTrack.elements.push(panelToVideoElement(panel, currentTime, { width, height }))
 
     const voiceLine = voiceLines[index]
     if (voiceLine) {

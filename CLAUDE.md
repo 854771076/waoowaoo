@@ -2,9 +2,77 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Ponytail (always active)
+---
 
-Use the ponytail plugin on every task: lazy-senior-dev discipline — climb the ladder (YAGNI → reuse → stdlib → native → existing deps → one line → minimum code), shortest working diff, no unrequested abstractions. Default level: full.
+## Development Discipline — READ FIRST, BEFORE ANY TASK
+
+These two rules govern every task in this repo. Do not skip them.
+
+### 1. CodeGraph — use it BEFORE grep/find/Read for any code question
+
+This repo is indexed by CodeGraph (a `.codegraph/` directory exists at the root).
+CodeGraph is a pre-built knowledge graph of every symbol, edge, and file — use it
+instead of rolling your own grep+Read loops. It returns verbatim source **plus**
+callers/callees/blast-radius in one call, in far fewer tokens.
+
+**Reach for CodeGraph first** for any of these:
+- "How does X work?" / "Where is X defined?" / architecture questions
+- Tracing a flow or bug across files
+- Before editing a symbol — see who calls it and what you'll break
+- Surveying an area before adding code
+
+**Tool selection (MCP — fastest path):**
+- `codegraph_explore` — **PRIMARY, call first.** Accepts natural language
+  ("how does TTS generation flow from UI to worker") OR a bag of symbol/file
+  names. Returns verbatim source of relevant symbols grouped by file + call
+  paths. Most questions need ONLY this one call.
+- `codegraph_node` — Read a single file (with dependents listed) or one
+  symbol's body + caller/callee trail. Use when you already know exactly
+  which file/symbol.
+- `codegraph_search` — Quick symbol name → location lookup (no source).
+- `codegraph_callers` — List callers of one symbol.
+
+**Shell fallback** (always works):
+```bash
+codegraph explore "<query or symbol names>"
+codegraph node <symbol-or-file>
+```
+
+**When NOT to use CodeGraph:** raw `Read`/`Grep` is fine only to confirm a
+specific detail CodeGraph didn't cover (e.g. a config value, a non-code
+file). If there's no `.codegraph/` dir, skip entirely — indexing is opt-in.
+
+**Do not** delegate code lookup to a generic subagent or run a manual
+find+grep+Read sweep when CodeGraph can answer directly — that duplicates
+work the index already did and costs more for the same answer.
+
+### 2. Ponytail — lazy-senior-dev discipline (always active, level: full)
+
+Every task. No drift. Switch: `/ponytail lite|full|ultra`. Off only on
+"stop ponytail" / "normal mode".
+
+**The ladder — stop at the first rung that holds:**
+1. **YAGNI** — does this need to exist at all? Speculative = skip, say so.
+2. **Reuse** — already in this codebase? helper/util/type/pattern? Look first.
+3. **Stdlib** — language/platform does it?
+4. **Native** — native platform feature covers it? (`<input type="date">`, CSS, DB constraint)
+5. **Existing dep** — already-installed package solves it? Never add a new dep for what a few lines do.
+6. **One line** — can it be one line?
+7. **Minimum code** — only then, the smallest thing that works.
+
+**Hard rules:**
+- No unrequested abstractions (no 1-implementation interface, no factory for one product, no config for a constant).
+- No "for later" scaffolding. Later can scaffold itself.
+- Deletion over addition. Boring over clever.
+- **Bug fix = root cause, not symptom.** Trace every caller of the function you're touching. One guard in the shared function beats a guard in every caller; patching only the reported path leaves siblings broken.
+- Shortest working diff wins — but only after you understand the problem end-to-end. A tiny change in the wrong place is a second bug.
+- Mark deliberate ceilings with a `// ponytail:` comment naming the ceiling + upgrade path.
+- Non-trivial logic leaves ONE small runnable check (assert-based self-check or one small test). Trivial one-liners don't.
+- Never lazy about: reading the code first, input validation at trust boundaries, error handling that prevents data loss, security, a11y, things explicitly requested.
+
+**Output style:** code first, then at most three short lines — what was skipped, when to add it. No essays.
+
+---
 
 ## Project Overview
 

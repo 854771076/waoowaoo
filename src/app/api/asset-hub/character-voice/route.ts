@@ -39,7 +39,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
     const contentType = request.headers.get('content-type') || ''
 
-    // 处理 JSON 请求（AI 声音设计）
+    // 处理 JSON 请求（AI 声音设计 / 克隆保存）
     if (contentType.includes('application/json')) {
         const body = (await request.json()) as CharacterVoiceJsonBody
         const { characterId, voiceDesign } = body
@@ -49,7 +49,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
         }
 
         const { voiceId, audioBase64, provider } = voiceDesign
-        if (!voiceId || !audioBase64) {
+        if (!voiceId) {
             throw new ApiError('INVALID_PARAMS')
         }
 
@@ -61,23 +61,29 @@ export const POST = apiHandler(async (request: NextRequest) => {
             throw new ApiError('NOT_FOUND')
         }
 
-        const audioBuffer = Buffer.from(audioBase64, 'base64')
-        const key = generateUniqueKey(`global-voice/${session.user.id}/${characterId}`, 'wav')
-        const cosUrl = await uploadObject(audioBuffer, key)
-
         // 按 provider 决定 voiceType：OmniVoice 设计 → omnivoice-design，否则百炼设计
         const voiceType = provider === 'omnivoice' ? 'omnivoice-design' : 'qwen-designed'
 
+        const updateData: {
+            voiceType: string
+            voiceId: string
+            customVoiceUrl?: string | null
+        } = { voiceType, voiceId }
+
+        let cosUrl: string | null = null
+        if (audioBase64) {
+            const audioBuffer = Buffer.from(audioBase64, 'base64')
+            const key = generateUniqueKey(`global-voice/${session.user.id}/${characterId}`, 'wav')
+            cosUrl = await uploadObject(audioBuffer, key)
+            updateData.customVoiceUrl = cosUrl
+        }
+
         await db.globalCharacter.update({
             where: { id: characterId },
-            data: {
-                voiceType,
-                voiceId: voiceId,
-                customVoiceUrl: cosUrl
-            }
+            data: updateData,
         })
 
-        const signedAudioUrl = getSignedUrl(cosUrl, 7200)
+        const signedAudioUrl = cosUrl ? getSignedUrl(cosUrl, 7200) : null
 
         return NextResponse.json({
             success: true,

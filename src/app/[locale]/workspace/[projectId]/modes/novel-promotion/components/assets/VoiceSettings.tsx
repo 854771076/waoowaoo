@@ -2,14 +2,15 @@
 
 /**
  * 音色设置组件 - 从 CharacterCard 提取
- * 支持上传自定义音频和 AI 声音设计
+ * 支持上传自定义音频、AI 声音设计、从百炼云端音色选择
  */
 
 import { useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { shouldShowError } from '@/lib/error-utils'
-import { useUploadProjectCharacterVoice } from '@/lib/query/mutations'
+import { useUploadProjectCharacterVoice, useUpdateProjectCharacterVoiceSettings } from '@/lib/query/mutations'
 import { AppIcon } from '@/components/ui/icons'
+import ExistingBailianVoicePicker from '@/components/voice/ExistingBailianVoicePicker'
 
 interface VoiceSettingsProps {
     characterId: string
@@ -42,11 +43,14 @@ export default function VoiceSettings({
     compact = false
 }: VoiceSettingsProps) {
     const t = useTranslations('assets')
+    const tvc = useTranslations('voice.voiceCreate')
     // 🔥 使用 mutation
     const uploadVoice = useUploadProjectCharacterVoice(projectId)
+    const updateVoiceSettings = useUpdateProjectCharacterVoiceSettings(projectId)
     const voiceFileInputRef = useRef<HTMLInputElement>(null)
     const audioRef = useRef<HTMLAudioElement | null>(null)
     const [isPreviewingVoice, setIsPreviewingVoice] = useState(false)
+    const [existingPickerOpen, setExistingPickerOpen] = useState(false)
 
     const hasCustomVoice = !!customVoiceUrl
 
@@ -184,6 +188,18 @@ export default function VoiceSettings({
                             </button>
                         )}
 
+                        {/* 从百炼云端选择已有音色 */}
+                        <button
+                            onClick={() => setExistingPickerOpen(true)}
+                            className="flex-1 min-w-[80px] px-2 py-1.5 bg-[var(--glass-bg-surface)] border border-[var(--glass-stroke-base)] rounded-lg text-xs text-[var(--glass-text-secondary)] font-medium hover:border-[var(--glass-tone-info-fg)] hover:text-[var(--glass-tone-info-fg)] transition-all whitespace-nowrap"
+                            title={tvc('existingVoicesTitle')}
+                        >
+                            <div className="flex items-center justify-center gap-1">
+                                <AppIcon name="music" className="w-3.5 h-3.5 flex-shrink-0" />
+                                <span>{tvc('existingVoicesBtn')}</span>
+                            </div>
+                        </button>
+
                         {/* AI设计按钮 */}
                         {onVoiceDesign && (
                             <button
@@ -197,6 +213,19 @@ export default function VoiceSettings({
                             </button>
                         )}
                     </div>
+
+                    <ExistingBailianVoicePicker
+                        projectId={projectId}
+                        open={existingPickerOpen}
+                        onClose={() => setExistingPickerOpen(false)}
+                        onPick={async (voiceId) => {
+                            await updateVoiceSettings.mutateAsync({
+                                characterId,
+                                voiceType: 'qwen-designed',
+                                voiceId,
+                            })
+                        }}
+                    />
 
                     {/* 试听按钮 - 仅在有音频时显示 */}
                     {hasCustomVoice && (

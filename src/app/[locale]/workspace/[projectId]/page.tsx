@@ -110,6 +110,16 @@ export default function ProjectDetailPage() {
   // 如果 URL 没有 stage 参数，默认使用 'config'
   const effectiveStage = currentUrlStage || 'config'
 
+  // ponytail: editor 迁移到独立全屏路由 /workspace/[id]/editor —— 旧的 ?stage=editor
+  // 书签会命中这里，直接重定向。
+  useEffect(() => {
+    if (effectiveStage !== 'editor') return
+    router.replace({
+      pathname: `/workspace/${projectId}/editor`,
+      query: urlEpisodeId ? { episode: urlEpisodeId } : {},
+    })
+  }, [effectiveStage, projectId, router, urlEpisodeId])
+
   // 获取剧集列表
   const novelPromotionData = project?.novelPromotionData as NovelPromotionData | undefined
   const episodes = useMemo<Episode[]>(() => {

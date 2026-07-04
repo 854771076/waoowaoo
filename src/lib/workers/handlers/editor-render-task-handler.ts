@@ -94,6 +94,38 @@ function normalizeRenderSettings(projectData: unknown, rawSettings: JsonRecord):
   }
 }
 
+// ponytail: legacy DB timelines were saved without element.frame — Twick's deserializer
+// reads json.frame.size for parentSize and defaults to {0,0} when missing, which renders
+// a 0×0 (black) scene. The client already backfills at load time (useEditorProjectSync);
+// mirror it here so export doesn't produce a black video for pre-existing projects.
+function backfillVideoFrames(tracks: unknown, settings: RenderSettings): unknown {
+  if (!Array.isArray(tracks)) return tracks
+  return tracks.map((track) => {
+    const trackRecord = asRecord(track)
+    if (!trackRecord || trackRecord.type !== 'video' || !Array.isArray(trackRecord.elements)) return track
+    const elements = (trackRecord.elements as unknown[]).map((element) => {
+      const elementRecord = asRecord(element)
+      if (!elementRecord || elementRecord.type !== 'video') return element
+      const frame = asRecord(elementRecord.frame) || {}
+      const size = Array.isArray(frame.size) ? frame.size as unknown[] : null
+      const hasSize = size && size.length >= 2 && Number(size[0]) > 0 && Number(size[1]) > 0
+      if (hasSize) return element
+      return {
+        ...elementRecord,
+        objectFit: elementRecord.objectFit ?? 'cover',
+        frame: {
+          ...frame,
+          size: [settings.width, settings.height],
+          x: typeof frame.x === 'number' ? frame.x : 0,
+          y: typeof frame.y === 'number' ? frame.y : 0,
+          rotation: typeof frame.rotation === 'number' ? frame.rotation : 0,
+        },
+      }
+    })
+    return { ...trackRecord, elements }
+  })
+}
+
 function cloneWithProperties(projectData: TwickTimelineProject, settings: RenderSettings): JsonRecord {
   const record = projectData as unknown as JsonRecord
   const metadata = asRecord(record.metadata) || {}
@@ -102,6 +134,7 @@ function cloneWithProperties(projectData: TwickTimelineProject, settings: Render
   // consistent dimensions no matter which layer it reads from (custom > properties > root).
   return {
     ...record,
+    tracks: backfillVideoFrames(record.tracks, settings),
     properties: {
       ...asRecord(record.properties),
       width: settings.width,

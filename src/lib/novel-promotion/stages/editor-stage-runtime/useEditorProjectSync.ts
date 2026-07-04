@@ -142,6 +142,46 @@ function isMediaObjRef(src: string): src is `mediaobj://${string}` {
   return src.startsWith('mediaobj://')
 }
 
+// ponytail: pre-existing DB timelines were saved without element.frame — Twick's scene
+// container reads t.frame for size, so a frameless video collapses to 0×0 (black canvas,
+// misfit thumbnail). Fill it in at load time using the project canvas size.
+// Also back-fill element.trackId — Twick's Track.fromJSON doesn't set it on elements,
+// and editor.splitElement bails silently when getTrackById(undefined) is nothing.
+function backfillVideoFrames<T>(
+  project: T,
+  canvasSize: { width: number; height: number },
+): T {
+  if (!project || typeof project !== 'object') return project
+  const record = project as unknown as { tracks?: Array<Record<string, unknown>> }
+  if (!Array.isArray(record.tracks)) return project
+  const tracks = record.tracks.map((track) => {
+    if (!track || !Array.isArray(track.elements)) return track
+    const trackId = typeof track.id === 'string' ? track.id : null
+    const isVideoTrack = track.type === 'video'
+    const elements = (track.elements as Array<Record<string, unknown>>).map((element) => {
+      if (!element) return element
+      const withTrackId = trackId && !element.trackId ? { ...element, trackId } : element
+      if (!isVideoTrack || withTrackId.type !== 'video') return withTrackId
+      const frame = withTrackId.frame as { size?: [number, number] } | undefined
+      const size = frame?.size
+      if (size && size[0] > 0 && size[1] > 0) return withTrackId
+      return {
+        ...withTrackId,
+        objectFit: withTrackId.objectFit ?? 'cover',
+        frame: {
+          ...(frame ?? {}),
+          size: [canvasSize.width, canvasSize.height] as [number, number],
+          x: (frame as { x?: number } | undefined)?.x ?? 0,
+          y: (frame as { y?: number } | undefined)?.y ?? 0,
+          rotation: (frame as { rotation?: number } | undefined)?.rotation ?? 0,
+        },
+      }
+    })
+    return { ...track, elements }
+  })
+  return { ...(record as object), tracks } as T
+}
+
 /**
  * Recursively resolve all mediaobj:// URLs to HTTP URLs.
  * Exported so consumers (e.g. left-panel asset lists) can resolve a single ref
@@ -536,7 +576,7 @@ export function useEditorProjectSync({
     const record = editorProjectQuery.data
     if (record?.projectData) {
       setProjectIdState(record.id)
-      setProjectData(record.projectData)
+      setProjectData(backfillVideoFrames(record.projectData, { width: videoWidth, height: videoHeight }))
       setRenderState({
         renderStatus: record.renderStatus,
         renderTaskId: record.renderTaskId,
@@ -702,15 +742,16 @@ export function useEditorProjectSync({
 
       const record = result.data
       if (record?.projectData) {
+        const patched = backfillVideoFrames(record.projectData, { width: videoWidth, height: videoHeight })
         setProjectIdState(record.id)
-        setProjectData(record.projectData)
+        setProjectData(patched)
         setRenderState({
           renderStatus: record.renderStatus,
           renderTaskId: record.renderTaskId,
           renderOutputMediaObjectId: record.renderOutputMediaObjectId,
           renderSettings: record.renderSettings,
         })
-        projectDataRef.current = record.projectData
+        projectDataRef.current = patched
         localProjectRevisionRef.current = 0
         lastSavedProjectRevisionRef.current = 0
         setVersion(record.version)
@@ -737,7 +778,30 @@ export function useEditorProjectSync({
       setStatus('error')
       setSaveError(message)
     }
-  }, [editorProjectQuery, episodeId, flushPendingSave, projectId, queryClient, queryKey])
+  }, [editorProjectQuery, episodeId, flushPendingSave, projectId, queryClient, queryKey, videoHeight, videoWidth])
+
+  // ponytail: 一键复位 —— 删掉服务器上的编辑器存档(保留分镜/视频等源数据),
+  // 然后重新拉资源,init effect 会按当前素材自动重新构建初始时间轴。
+  const resetToInitial = useCallback(async () => {
+    if (!projectId || !episodeId) return
+    debounceRef.current?.cancel()
+    savePendingRef.current = false
+    setHasConflict(false)
+    setSaveError(null)
+    setStatus('loading')
+    try {
+      await apiFetch(`/api/novel-promotion/${projectId}/editor?episodeId=${episodeId}`, { method: 'DELETE' })
+      // 强制下次 refetch 不命中缓存
+      initializedKeyRef.current = null
+      await queryClient.invalidateQueries({ queryKey })
+      await editorProjectQuery.refetch()
+      setReloadRevision((r) => r + 1)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reset editor project'
+      setStatus('error')
+      setSaveError(message)
+    }
+  }, [editorProjectQuery, episodeId, projectId, queryClient, queryKey])
 
   return {
     id: projectIdState,
@@ -756,5 +820,6 @@ export function useEditorProjectSync({
     flushProjectSave,
     forceSave,
     reloadFromServer,
+    resetToInitial,
   }
 }

@@ -4,6 +4,8 @@ export { generateBailianImage } from './image'
 export { generateBailianVideo } from './video'
 export { generateBailianAudio } from './audio'
 export { BAILIAN_TTS_MODEL_ID, synthesizeWithBailianTTS } from './tts'
+export { synthesizeWithCosyVoiceTTS } from './cosyvoice-tts'
+export type { CosyVoiceTTSInput, CosyVoiceTTSResult } from './cosyvoice-tts'
 export {
   collectBailianManagedVoiceIds,
   collectProjectBailianManagedVoiceIds,
@@ -13,8 +15,10 @@ export {
 export { deleteBailianVoice } from './voice-manage'
 export {
   createVoiceDesign,
+  listBailianVoices,
   validatePreviewText,
   validateVoicePrompt,
+  validateVoicePrefix,
 } from './voice-design'
 export { probeBailian } from './probe'
 export type {
@@ -26,6 +30,12 @@ export type {
 export type {
   VoiceDesignInput,
   VoiceDesignResult,
+  BailianVoiceDesignFlavor,
+  CosyVoiceCloneInput,
+  CosyVoiceDesignInput,
+  QwenVoiceDesignInput,
+  BailianVoiceListItem,
+  ListBailianVoicesResult,
 } from './voice-design'
 export type {
   BailianVoiceBinding,

@@ -4,7 +4,12 @@ import VoiceDesignDialogBase, {
   type VoiceDesignMutationPayload,
   type VoiceDesignMutationResult,
 } from '@/components/voice/VoiceDesignDialogBase'
-import type { VoiceDesignProvider } from '@/components/voice/voice-design-shared'
+import type {
+  CloneEngine,
+  CosyVoiceLanguageHint,
+  CosyVoiceTargetModel,
+  VoiceDesignProvider,
+} from '@/components/voice/voice-design-shared'
 import { useDesignAssetHubVoice } from '@/lib/query/hooks'
 
 interface VoiceDesignDialogProps {
@@ -12,8 +17,17 @@ interface VoiceDesignDialogProps {
   speaker: string
   hasExistingVoice?: boolean
   onClose: () => void
-  onSave: (voiceId: string, audioBase64: string, provider: VoiceDesignProvider) => void
-  onClone?: (file: File) => Promise<void>
+  onSave: (voiceId: string, audioBase64: string | undefined, provider: VoiceDesignProvider) => void
+  cloneEngines?: CloneEngine[]
+  onOmniClone?: (file: File) => Promise<void>
+  onCosyClone?: (params: {
+    file: File
+    prefix: string
+    targetModel: CosyVoiceTargetModel
+    languageHint: CosyVoiceLanguageHint
+    maxPromptAudioLength: number
+    enablePreprocess: boolean
+  }) => Promise<{ voiceId: string; audioBase64?: string }>
 }
 
 export default function VoiceDesignDialog({
@@ -22,7 +36,9 @@ export default function VoiceDesignDialog({
   hasExistingVoice = false,
   onClose,
   onSave,
-  onClone,
+  cloneEngines,
+  onOmniClone,
+  onCosyClone,
 }: VoiceDesignDialogProps) {
   const designVoiceMutation = useDesignAssetHubVoice()
 
@@ -40,7 +56,9 @@ export default function VoiceDesignDialog({
       onClose={onClose}
       onSave={onSave}
       onDesignVoice={handleDesignVoice}
-      onClone={onClone}
+      cloneEngines={cloneEngines}
+      onOmniClone={onOmniClone}
+      onCosyClone={onCosyClone}
     />
   )
 }

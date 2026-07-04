@@ -28,14 +28,27 @@ export const PATCH = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
+  // ponytail: PATCH 按"传入才更新"语义——避免只改 voiceId 时误清空 customVoiceUrl。
+  // 显式传 null 表示清空,undefined/缺省表示保留。
+  const data: {
+    voiceType?: string | null
+    voiceId?: string | null
+    customVoiceUrl?: string | null
+  } = {}
+  if (Object.prototype.hasOwnProperty.call(body, 'voiceType')) {
+    data.voiceType = typeof voiceType === 'string' && voiceType ? voiceType : null
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'voiceId')) {
+    data.voiceId = typeof voiceId === 'string' && voiceId ? voiceId : null
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'customVoiceUrl')) {
+    data.customVoiceUrl = typeof customVoiceUrl === 'string' && customVoiceUrl ? customVoiceUrl : null
+  }
+
   // 更新角色音色设置
   const character = await prisma.novelPromotionCharacter.update({
     where: { id: characterId },
-    data: {
-      voiceType: voiceType || null,
-      voiceId: voiceId || null,
-      customVoiceUrl: customVoiceUrl || null
-    }
+    data,
   })
 
   return NextResponse.json({ success: true, character })
@@ -59,7 +72,7 @@ export const POST = apiHandler(async (
 
   const contentType = request.headers.get('content-type') || ''
 
-  // 处理 JSON 请求（AI 声音设计）
+  // 处理 JSON 请求（AI 声音设计 / 声音克隆后保存）
   if (contentType.includes('application/json')) {
     const body = await request.json()
     const { characterId, voiceDesign } = body
@@ -69,42 +82,46 @@ export const POST = apiHandler(async (
     }
 
     const { voiceId, audioBase64, provider } = voiceDesign
-    if (!voiceId || !audioBase64) {
+    if (!voiceId) {
       throw new ApiError('INVALID_PARAMS')
     }
-
-    // 解码 base64 音频
-    const audioBuffer = Buffer.from(audioBase64, 'base64')
-
-    // 上传到COS
-    const key = generateUniqueKey(`voice/custom/${projectId}/${characterId}`, 'wav')
-    const cosUrl = await uploadObject(audioBuffer, key)
 
     // 按 provider 决定 voiceType：OmniVoice 设计 → omnivoice-design，否则百炼设计
     const voiceType = provider === 'omnivoice' ? 'omnivoice-design' : 'qwen-designed'
 
+    const updateData: {
+      voiceType: string
+      voiceId: string
+      customVoiceUrl?: string | null
+    } = { voiceType, voiceId }
+
+    let cosUrl: string | null = null
+    if (audioBase64) {
+      // 解码 base64 音频并上传到 COS（设计/克隆返回了试听音频时才覆盖）
+      const audioBuffer = Buffer.from(audioBase64, 'base64')
+      const key = generateUniqueKey(`voice/custom/${projectId}/${characterId}`, 'wav')
+      cosUrl = await uploadObject(audioBuffer, key)
+      updateData.customVoiceUrl = cosUrl
+    }
+
     // 更新角色音色设置
     const character = await prisma.novelPromotionCharacter.update({
       where: { id: characterId },
-      data: {
-        voiceType,
-        voiceId: voiceId,  // 保存 AI 生成的 voice ID
-        customVoiceUrl: cosUrl
-      }
+      data: updateData,
     })
 
-    _ulogInfo(`Character ${characterId} AI-designed voice saved: ${cosUrl}, voiceId: ${voiceId}`)
+    _ulogInfo(`Character ${characterId} AI-designed voice saved: voiceId=${voiceId}, hasPreview=${!!cosUrl}`)
 
     // 返回签名URL
-    const signedAudioUrl = getSignedUrl(cosUrl, 7200)
+    const signedAudioUrl = cosUrl ? getSignedUrl(cosUrl, 7200) : null
 
     return NextResponse.json({
       success: true,
       audioUrl: signedAudioUrl,
       character: {
         ...character,
-        customVoiceUrl: signedAudioUrl
-      }
+        customVoiceUrl: signedAudioUrl,
+      },
     })
   }
 

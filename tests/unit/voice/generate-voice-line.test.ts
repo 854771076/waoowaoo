@@ -23,6 +23,7 @@ const getSignedUrlMock = vi.hoisted(() => vi.fn((storageKey: string) => `signed:
 const toFetchableUrlMock = vi.hoisted(() => vi.fn((url: string) => url))
 const uploadObjectMock = vi.hoisted(() => vi.fn(async () => 'voice/storage/line-1.wav'))
 const resolveStorageKeyFromMediaValueMock = vi.hoisted(() => vi.fn())
+const ensureMediaObjectFromStorageKeyMock = vi.hoisted(() => vi.fn(async () => ({ id: 'media-new-audio' })))
 const synthesizeWithBailianTTSMock = vi.hoisted(() => vi.fn())
 const falSubscribeMock = vi.hoisted(() => vi.fn())
 const getProviderConfigMock = vi.hoisted(() => vi.fn())
@@ -51,6 +52,7 @@ vi.mock('@/lib/storage', () => ({
 
 vi.mock('@/lib/media/service', () => ({
   resolveStorageKeyFromMediaValue: resolveStorageKeyFromMediaValueMock,
+  ensureMediaObjectFromStorageKey: ensureMediaObjectFromStorageKeyMock,
 }))
 
 vi.mock('@/lib/providers/bailian', () => ({
@@ -132,6 +134,7 @@ describe('generate voice line with bailian provider', () => {
       data: {
         audioUrl: 'voice/storage/line-1.wav',
         audioDuration: 1,
+        audioMediaId: 'media-new-audio',
       },
     })
     expect(result).toEqual({
@@ -161,7 +164,7 @@ describe('generate voice line with bailian provider', () => {
         userId: 'user-1',
         audioModel: 'bailian::qwen3-tts-vd-2026-01-26',
       }),
-    ).rejects.toThrow('无音色ID，QwenTTS 必须使用 AI 设计音色')
+    ).rejects.toThrow('无音色ID，百炼 TTS 必须使用 AI 设计或克隆音色')
 
     expect(synthesizeWithBailianTTSMock).not.toHaveBeenCalled()
     expect(uploadObjectMock).not.toHaveBeenCalled()

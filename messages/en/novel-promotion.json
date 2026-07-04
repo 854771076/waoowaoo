@@ -186,6 +186,13 @@
     "errorBoundaryTitle": "Editor failed to load",
     "errorBoundaryDescription": "Please refresh the page. If the issue persists, contact support.",
     "errorBoundaryReload": "Refresh page",
+    "reset": {
+      "button": "Reset",
+      "confirmTitle": "Reset timeline",
+      "confirmMessage": "This will clear all clips, transitions and audio adjustments on the timeline and rebuild it from the latest storyboards and voice lines. This cannot be undone.",
+      "confirmButton": "Reset",
+      "cancelButton": "Cancel"
+    },
     "saveStatus": {
       "idle": "Ready",
       "loading": "Loading...",
@@ -220,6 +227,7 @@
       "duration": "{duration}s",
       "clickToAdd": "Click to add to timeline",
       "voiceLine": "Line {index}",
+      "shotLabel": "Shot {index}",
       "imageHint": "The editor currently uses generated videos as primary assets; standalone image assets will be added with later AI editing tools."
     },
     "rightPanel": {
@@ -235,11 +243,9 @@
           "voiceOptimize": "Voice",
           "transition": "Transition"
         },
-        "roughCut": {
-          "title": "Smart rough cut",
-          "description": "Rebuild the rough-cut timeline by stitching generated panel videos and voice lines in storyboard order."
-        },
         "smartCut": {
+          "title": "Smart rough cut",
+          "description": "Rebuild the rough-cut timeline by stitching generated panel videos and voice lines in storyboard order.",
           "button": "Run smart rough cut",
           "runningButton": "Generating...",
           "running": "Smart cutting ({progress}%)",
@@ -251,11 +257,9 @@
           "loading": "Loading editor data...",
           "noVideos": "Generate at least one storyboard video first."
         },
-        "captions": {
-          "title": "Auto captions",
-          "description": "Use existing voice-line text to create a timed caption track."
-        },
         "caption": {
+          "title": "Auto captions",
+          "description": "Use existing voice-line text to create a timed caption track.",
           "button": "Generate captions",
           "runningButton": "Generating...",
           "running": "Generating captions ({progress}%)",
@@ -355,13 +359,13 @@
             "zoom": "Zoom"
           },
           "reasons": {
-            "sameScene.dissolve": "Same storyboard/scene: dissolve keeps continuity while softening the cut.",
-            "sameScene.fade": "Subtle fade works as a safe continuity transition for adjacent shots.",
-            "sceneChange.fade": "Different storyboard/scene: fade signals a clean scene change.",
-            "sceneChange.dissolve": "Dissolve provides a softer scene-change alternative.",
-            "panelChange.slide": "Slide emphasizes progression between adjacent generated panels.",
-            "dynamic.zoom": "Zoom adds momentum for a more dynamic short-video edit.",
-            "fallback.general": "General-purpose Twick transition fallback."
+            "sameScene_dissolve": "Same storyboard/scene: dissolve keeps continuity while softening the cut.",
+            "sameScene_fade": "Subtle fade works as a safe continuity transition for adjacent shots.",
+            "sceneChange_fade": "Different storyboard/scene: fade signals a clean scene change.",
+            "sceneChange_dissolve": "Dissolve provides a softer scene-change alternative.",
+            "panelChange_slide": "Slide emphasizes progression between adjacent generated panels.",
+            "dynamic_zoom": "Zoom adds momentum for a more dynamic short-video edit.",
+            "fallback_general": "General-purpose Twick transition fallback."
           }
         }
       },

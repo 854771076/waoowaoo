@@ -53,8 +53,15 @@ function guessMimeTypeFromStorageKey(storageKey: string): string | null {
   return MIME_BY_EXT[ext] || null
 }
 
-function mediaUrl(publicId: string): string {
-  return `/m/${encodeURIComponent(publicId)}`
+function mediaUrl(publicId: string, updatedAt?: string | Date | null): string {
+  const base = `/m/${encodeURIComponent(publicId)}`
+  // storageKey 稳定的资源(比如 voice line 覆盖写)配合路由的 immutable 缓存会
+  // 让浏览器永远拿不到新内容。用 updatedAt 做版本参数,让不同版本各自成为
+  // 独立 URL,浏览器天然当新资源处理。
+  if (!updatedAt) return base
+  const stamp = updatedAt instanceof Date ? updatedAt.getTime() : Date.parse(updatedAt)
+  if (!Number.isFinite(stamp)) return base
+  return `${base}?v=${stamp}`
 }
 
 function extractPublicIdFromMediaRoute(value: string): string | null {
@@ -70,17 +77,18 @@ function extractPublicIdFromMediaRoute(value: string): string | null {
 }
 
 function mapMediaObjectToRef(row: MediaObjectRow): MediaRef {
+  const updatedAt = row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt
   return {
     id: row.id,
     publicId: row.publicId,
-    url: mediaUrl(row.publicId),
+    url: mediaUrl(row.publicId, updatedAt),
     sha256: row.sha256,
     mimeType: row.mimeType,
     sizeBytes: row.sizeBytes == null ? null : Number(row.sizeBytes),
     width: row.width,
     height: row.height,
     durationMs: row.durationMs,
-    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt,
+    updatedAt,
     storageKey: row.storageKey,
   }
 }

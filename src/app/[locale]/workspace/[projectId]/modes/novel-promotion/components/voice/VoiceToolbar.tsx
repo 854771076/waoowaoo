@@ -112,8 +112,17 @@ export default function VoiceToolbar({
                             className="glass-input-base h-8 px-2.5 py-1 text-xs rounded-lg outline-none transition-all"
                         >
                             <option value="">{t("toolbar.auto")}</option>
-                            <option value="bailian::qwen3-tts-vd-2026-01-26">{t("toolbar.qwenTTS")}</option>
-                            <option value="omnivoice::omnivoice-tts-v1">{t("toolbar.omniVoice")}</option>
+                            <optgroup label="Bailian">
+                                <option value="bailian::qwen3-tts-vd-2026-01-26">{t("toolbar.qwenTTS")}</option>
+                                <option value="bailian::cosyvoice-v3.5-plus">CosyVoice v3.5 Plus</option>
+                                <option value="bailian::cosyvoice-v3.5-flash">CosyVoice v3.5 Flash</option>
+                                <option value="bailian::cosyvoice-v3-plus">CosyVoice v3 Plus</option>
+                                <option value="bailian::cosyvoice-v3-flash">CosyVoice v3 Flash</option>
+                                <option value="bailian::cosyvoice-v2">CosyVoice v2</option>
+                            </optgroup>
+                            <optgroup label="OmniVoice">
+                                <option value="omnivoice::omnivoice-tts-v1">{t("toolbar.omniVoice")}</option>
+                            </optgroup>
                         </select>
                     </div>
                     <span className="text-sm text-[var(--glass-text-tertiary)]">

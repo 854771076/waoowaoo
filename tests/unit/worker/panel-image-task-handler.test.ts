@@ -295,15 +295,18 @@ describe('worker panel-image-task-handler behavior', () => {
 
     const result = await handlePanelImageTask(buildJob({ candidateCount: 2, panelGridSize: 6 }))
     expect(result.candidateCount).toBe(2)
-    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
-      where: { id: 'panel-1' },
-      data: {
-        imageUrl: 'cos/grid-1.png',
-        candidateImages: JSON.stringify(['cos/grid-1.png', 'cos/grid-2.png']),
-        imageLayout: 'grid',
-        gridVideoPromptAt: null,
-      },
-    })
+    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'panel-1' },
+        data: expect.objectContaining({
+          imageUrl: 'cos/grid-1.png',
+          candidateImages: JSON.stringify(['cos/grid-1.png', 'cos/grid-2.png']),
+          imageLayout: 'grid',
+          gridVideoPromptAt: null,
+          gridGenerationContext: expect.stringContaining('"panelGridSize": 6'),
+        }),
+      }),
+    )
   })
 
   it('sets imageLayout to grid when panelGridSize > 1', async () => {

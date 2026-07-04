@@ -29,7 +29,12 @@ function toLowerCase(value: string | null | undefined): string {
 }
 
 function looksLikeBailianVoiceId(voiceId: string): boolean {
+  // ponytail: qwen3-tts-vd / qwen3-tts-vc 是千问音色; cosyvoice-v* 是百炼 CosyVoice
+  // 音色(clone/design 都会返回 `cosyvoice-v3.5-plus-<prefix>-xxx` 格式)。
   return voiceId.startsWith('qwen-tts-vd-')
+    || voiceId.startsWith('qwen-tts-vc-')
+    || voiceId.startsWith('qwen3-tts-')
+    || voiceId.startsWith('cosyvoice-v')
 }
 
 export function isBailianManagedVoiceBinding(binding: BailianVoiceBinding): boolean {
@@ -37,7 +42,7 @@ export function isBailianManagedVoiceBinding(binding: BailianVoiceBinding): bool
   if (!voiceId) return false
 
   const voiceType = toLowerCase(binding.voiceType)
-  if (voiceType === 'qwen-designed') return true
+  if (voiceType === 'qwen-designed' || voiceType === 'bailian-designed' || voiceType === 'bailian-clone') return true
   return looksLikeBailianVoiceId(voiceId)
 }
 

@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useTimelineContext } from '@twick/timeline'
-import { ElementDeserializer } from '@twick/timeline'
 import { useEditorStageRuntime } from '@/lib/novel-promotion/stages/editor-stage-runtime-core'
-import { resolveMediaUrls } from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorProjectSync'
-import { panelToVideoElement } from '@/lib/twick/asset-adapter'
 import type { PanelVideoSource } from '@/lib/twick/types'
 import { AppIcon } from '@/components/ui/icons'
 import { useWorkspaceProvider } from '../../../WorkspaceProvider'
+import {
+  addVideoPanelToTimeline,
+  setAssetDragPayload,
+} from './asset-timeline-actions'
 
 // Resolve mediaobj URLs to HTTP URLs for display
 async function resolveMediaObjUrl(projectId: string, mediaObjRef: string): Promise<string> {
@@ -94,34 +95,6 @@ export function VideoAssetList() {
   const { projectId } = useWorkspaceProvider()
   const { editor, present } = useTimelineContext()
 
-  const handleAddVideo = async (panelId: string) => {
-    const panel = panelVideos.find((item) => item.panelId === panelId)
-    if (!panel) return
-
-    const videoTrack = editor.getTracksByType('video')[0] ?? editor.addTrack(t('tracks.video'), 'video')
-    // ponytail: guard against missing/NaN `e` — Math.max(..., NaN) is NaN.
-    const videoEnds = present?.tracks
-      ?.flatMap((track) => track.elements ?? [])
-      .filter((element) => element.type === 'video')
-      .map((element) => (typeof element.e === 'number' && Number.isFinite(element.e) ? element.e : 0)) ?? []
-    const currentEnd = videoEnds.length > 0 ? Math.max(0, ...videoEnds) : 0
-    // ponytail: Twick's updateVideoMeta rejects any src not matching /^(https?:|blob:|data:video\/)/i,
-    // so a bare `mediaobj://` src throws "Unsafe video source URL" → surfaces as ELEMENT_NOT_ADDED.
-    // Resolve via the shared project cache so the resolved signed URL still maps back to
-    // `mediaobj://` at save time (else the DB gets an expiring URL).
-    const rawElement = panelToVideoElement(panel, currentEnd)
-    const resolvedElement = await resolveMediaUrls(rawElement, projectId)
-    const element = ElementDeserializer.fromJSON(resolvedElement)
-    if (!element) return
-
-    try {
-      await editor.addElementToTrack(videoTrack, element)
-    } catch (error) {
-      // ponytail: catch ELEMENT_NOT_ADDED and similar errors to prevent unhandled rejection
-      console.warn('[VideoAssetList] Failed to add element:', error)
-    }
-  }
-
   const sortedPanels = useMemo(() => {
     return [...panelVideos].sort((a, b) => {
       const ai = a.panelIndex ?? 0
@@ -130,40 +103,59 @@ export function VideoAssetList() {
     })
   }, [panelVideos])
 
+  const handleAddVideo = async (panelId: string) => {
+    const panel = panelVideos.find((item) => item.panelId === panelId)
+    if (!panel) return
+    await addVideoPanelToTimeline({
+      source: panel,
+      editor,
+      present,
+      projectId,
+      trackLabel: t('tracks.video'),
+    })
+  }
+
   if (sortedPanels.length === 0) {
     return <EmptyState text={t('empty.video')} />
   }
 
   return (
     <div className="grid grid-cols-2 gap-2">
-      {sortedPanels.map((panel, index) => (
-        <button
-          key={panel.panelId}
-          type="button"
-          draggable
-          onClick={() => { void handleAddVideo(panel.panelId) }}
-          className="group relative overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] text-left transition hover:border-[var(--glass-accent-from)] hover:shadow-md"
-          title={panel.description || panel.panelId}
-        >
-          <div className="relative aspect-video w-full overflow-hidden bg-slate-100">
-            <VideoThumbnail panel={panel} projectId={projectId} />
-            <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
-              {t('duration', { duration: panel.duration.toFixed(1) })}
-            </span>
-            <span className="absolute left-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
-              #{index + 1}
-            </span>
-            <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
-              <span className="rounded-full bg-white/90 px-2 py-1 text-[10px] font-medium text-slate-900">
-                {t('clickToAdd')}
+      {sortedPanels.map((panel, index) => {
+        const shotLabel = t('shotLabel', { index: index + 1 })
+        const displayText = panel.description?.trim() || shotLabel
+        return (
+          <button
+            key={panel.panelId}
+            type="button"
+            draggable
+            onDragStart={(event) => {
+              setAssetDragPayload(event.dataTransfer, { kind: 'video-panel', id: panel.panelId })
+            }}
+            onClick={() => { void handleAddVideo(panel.panelId) }}
+            className="group relative overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] text-left transition hover:border-[var(--glass-accent-from)] hover:shadow-md"
+            title={displayText}
+          >
+            <div className="relative aspect-video w-full overflow-hidden bg-slate-100">
+              <VideoThumbnail panel={panel} projectId={projectId} />
+              <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
+                {t('duration', { duration: panel.duration.toFixed(1) })}
               </span>
+              <span className="absolute left-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
+                {shotLabel}
+              </span>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
+                <span className="rounded-full bg-white/90 px-2 py-1 text-[10px] font-medium text-slate-900">
+                  {t('clickToAdd')}
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="line-clamp-2 px-2 py-1.5 text-[11px] text-[var(--glass-text-secondary)]">
-            {panel.description || panel.panelId}
-          </div>
-        </button>
-      ))}
+            <div className="line-clamp-2 px-2 py-1.5 text-[11px] text-[var(--glass-text-secondary)]">
+              {displayText}
+            </div>
+          </button>
+        )
+      })}
     </div>
   )
 }

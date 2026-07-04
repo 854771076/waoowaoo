@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useTimelineContext, type TrackElement } from '@twick/timeline'
+import { useTimelineControl } from '@twick/video-editor'
 
 interface ElementLike {
   getId: () => string
   getType?: () => string
-  getStartTime?: () => number
-  getEndTime?: () => number
+  getStart?: () => number
+  getEnd?: () => number
   getProps?: () => Record<string, unknown>
   getName?: () => string
 }
@@ -20,6 +21,7 @@ interface ElementLike {
 export function ClipPropertiesPanel({ selectedId }: { selectedId: string | null }) {
   const t = useTranslations('novelPromotion.editor.rightPanel.properties')
   const { editor, present, selectedItem } = useTimelineContext()
+  const { deleteItem } = useTimelineControl()
 
   const [start, setStart] = useState<number>(0)
   const [end, setEnd] = useState<number>(0)
@@ -54,7 +56,15 @@ export function ClipPropertiesPanel({ selectedId }: { selectedId: string | null 
     setEnd(el.e ?? 0)
     if (el.props) {
       setVolume(typeof el.props.volume === 'number' ? el.props.volume : 1)
-      setFontSize(typeof el.props.fontSize === 'number' ? el.props.fontSize : 32)
+      // ponytail: Twick's caption renderer reads `font.size` (nested), not `fontSize`.
+      // Keep the flat state var for the UI but read from the nested prop.
+      const nestedFont = (el.props.font && typeof el.props.font === 'object')
+        ? el.props.font as { size?: unknown }
+        : null
+      const size = typeof nestedFont?.size === 'number'
+        ? nestedFont.size
+        : (typeof el.props.fontSize === 'number' ? el.props.fontSize : 48)
+      setFontSize(size)
       setFill(typeof el.props.fill === 'string' ? el.props.fill : '#ffffff')
       setStroke(typeof el.props.stroke === 'string' ? el.props.stroke : '#000000')
     }
@@ -68,7 +78,13 @@ export function ClipPropertiesPanel({ selectedId }: { selectedId: string | null 
     try {
       const item = selectedItem as unknown as ElementLike & Record<string, unknown>
       const currentProps = item.getProps ? item.getProps() : {}
-      const merged = { ...currentProps, ...patch }
+      // ponytail: caption rendering reads fill/stroke/fontSize from track.props via
+      // useTrackDefaults=true. Writing them on the element alone is silently ignored.
+      // For caption elements, flip useTrackDefaults=false so element.props wins.
+      const isCaption = item.getType?.() === 'caption'
+      const merged = isCaption
+        ? { ...currentProps, useTrackDefaults: false, ...patch }
+        : { ...currentProps, ...patch }
       const setProps = (item as unknown as { setProps?: (p: Record<string, unknown>) => void }).setProps
       if (typeof setProps === 'function') {
         setProps.call(item, merged)
@@ -83,10 +99,12 @@ export function ClipPropertiesPanel({ selectedId }: { selectedId: string | null 
     if (!selectedItem || !editor) return
     try {
       const item = selectedItem as unknown as ElementLike & Record<string, unknown>
-      const setStartTime = (item as unknown as { setStartTime?: (v: number) => void }).setStartTime
-      const setEndTime = (item as unknown as { setEndTime?: (v: number) => void }).setEndTime
-      if (typeof setStartTime === 'function') setStartTime.call(item, nextStart)
-      if (typeof setEndTime === 'function') setEndTime.call(item, nextEnd)
+      // ponytail: Twick's TrackElement exposes setStart/setEnd (not setStartTime/setEndTime).
+      // The old names silently no-op'd because typeof … === 'function' was false.
+      const setStart = (item as unknown as { setStart?: (v: number) => void }).setStart
+      const setEnd = (item as unknown as { setEnd?: (v: number) => void }).setEnd
+      if (typeof setStart === 'function') setStart.call(item, nextStart)
+      if (typeof setEnd === 'function') setEnd.call(item, nextEnd)
       editor.updateElement(selectedItem as TrackElement)
     } catch (error) {
       console.warn('[ClipProperties] Failed to apply time changes:', error)
@@ -106,9 +124,10 @@ export function ClipPropertiesPanel({ selectedId }: { selectedId: string | null 
   }
 
   const handleDelete = () => {
-    if (!selectedItem || !editor) return
+    // ponytail: no argument → Twick's deleteItem() resolves selectedIds and removes all
+    // selected items in one shot (Track/TrackElement dispatched internally).
     try {
-      editor.removeElement(selectedItem as TrackElement)
+      deleteItem()
     } catch (error) {
       console.warn('[ClipProperties] Failed to remove element:', error)
     }
@@ -239,7 +258,10 @@ export function ClipPropertiesPanel({ selectedId }: { selectedId: string | null 
                     const v = Number(e.target.value)
                     if (Number.isFinite(v)) {
                       setFontSize(v)
-                      applyChanges({ fontSize: v })
+                      // ponytail: renderer reads `font.size`, not flat `fontSize`.
+                      const item = selectedItem as unknown as { getProps?: () => Record<string, unknown> } | null
+                      const prevFont = item?.getProps?.().font as Record<string, unknown> | undefined
+                      applyChanges({ font: { ...(prevFont ?? {}), size: v } })
                     }
                   }}
                   className="mt-1 w-full rounded-lg border border-[var(--glass-stroke-soft)] bg-white px-2 py-1 text-xs"

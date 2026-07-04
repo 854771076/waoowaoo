@@ -2,7 +2,36 @@ export const DEFAULT_VOICE_SCHEME_COUNT = 3
 export const MIN_VOICE_SCHEME_COUNT = 1
 export const MAX_VOICE_SCHEME_COUNT = 10
 
+export const COSYVOICE_TARGET_MODELS = [
+  'cosyvoice-v3.5-plus',
+  'cosyvoice-v3.5-flash',
+  'cosyvoice-v3-plus',
+  'cosyvoice-v3-flash',
+  'cosyvoice-v2',
+] as const
+export type CosyVoiceTargetModel = (typeof COSYVOICE_TARGET_MODELS)[number]
+
+export const COSYVOICE_LANGUAGE_HINTS = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'ru', 'pt', 'th', 'id', 'vi'] as const
+export type CosyVoiceLanguageHint = (typeof COSYVOICE_LANGUAGE_HINTS)[number]
+
 export type VoiceDesignProvider = 'bailian' | 'omnivoice'
+export type BailianDesignFlavor = 'qwen' | 'cosyvoice-design' | 'cosyvoice-clone'
+export type CloneEngine = 'omnivoice' | 'cosyvoice'
+
+export interface CosyVoiceDesignExtras {
+  prefix?: string
+  targetModel?: CosyVoiceTargetModel
+  languageHints?: [CosyVoiceLanguageHint]
+}
+
+export interface CosyVoiceCloneExtras {
+  prefix?: string
+  targetModel?: CosyVoiceTargetModel
+  languageHints?: [CosyVoiceLanguageHint]
+  audioStorageKey: string
+  maxPromptAudioLength?: number
+  enablePreprocess?: boolean
+}
 
 export type VoiceDesignMutationPayload = {
   voicePrompt: string
@@ -10,11 +39,15 @@ export type VoiceDesignMutationPayload = {
   preferredName: string
   language: 'zh'
   provider?: VoiceDesignProvider
-}
+  flavor?: BailianDesignFlavor
+} & Partial<CosyVoiceDesignExtras>
 
 export type VoiceDesignMutationResult = {
   voiceId?: string
+  // CosyVoice clone does not return a preview audio — audioBase64 may be absent.
   audioBase64?: string
+  targetModel?: string
+  flavor?: string
   detail?: string
 }
 
@@ -22,6 +55,7 @@ export type GeneratedVoice = {
   voiceId: string
   audioBase64: string
   audioUrl: string
+  hasPreview: boolean
 }
 
 export function normalizeVoiceSchemeCount(input: string | number | undefined): number {
@@ -41,6 +75,8 @@ interface GenerateVoiceDesignOptionsParams {
   defaultPreviewText: string
   language?: 'zh'
   provider?: VoiceDesignProvider
+  flavor?: BailianDesignFlavor
+  cosyvoiceExtras?: CosyVoiceDesignExtras
   onDesignVoice: (payload: VoiceDesignMutationPayload) => Promise<VoiceDesignMutationResult>
   createPreferredName?: (index: number) => string
 }
@@ -52,6 +88,8 @@ export async function generateVoiceDesignOptions({
   defaultPreviewText,
   language = 'zh',
   provider,
+  flavor,
+  cosyvoiceExtras,
   onDesignVoice,
   createPreferredName = (index) => createVoiceDesignPreferredName(index),
 }: GenerateVoiceDesignOptionsParams): Promise<GeneratedVoice[]> {
@@ -69,20 +107,25 @@ export async function generateVoiceDesignOptions({
       preferredName: createPreferredName(index),
       language,
     }
-    if (provider !== undefined) {
-      payload.provider = provider
+    if (provider !== undefined) payload.provider = provider
+    if (flavor !== undefined) payload.flavor = flavor
+    if (flavor === 'cosyvoice-design' && cosyvoiceExtras) {
+      Object.assign(payload, cosyvoiceExtras)
     }
     const result = await onDesignVoice(payload)
 
-    if (!result.audioBase64) continue
     if (typeof result.voiceId !== 'string' || result.voiceId.length === 0) {
       throw new Error('VOICE_DESIGN_INVALID_RESPONSE: missing voiceId')
     }
 
+    // CosyVoice 在部分情况下返回 voiceId 但无 preview_audio——仍视为成功,
+    // 只是 UI 上不能试听,hasPreview=false。
+    const hasPreview = !!result.audioBase64
     voices.push({
       voiceId: result.voiceId,
-      audioBase64: result.audioBase64,
-      audioUrl: `data:audio/wav;base64,${result.audioBase64}`,
+      audioBase64: result.audioBase64 || '',
+      audioUrl: hasPreview ? `data:audio/wav;base64,${result.audioBase64}` : '',
+      hasPreview,
     })
   }
 

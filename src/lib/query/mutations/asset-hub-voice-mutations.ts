@@ -31,6 +31,14 @@ export function useDesignAssetHubVoice() {
       preferredName: string
       language: 'zh'
       provider?: 'bailian' | 'omnivoice'
+      flavor?: 'qwen' | 'cosyvoice-design' | 'cosyvoice-clone'
+      prefix?: string
+      targetModel?: string
+      languageHints?: string[]
+      audioUrl?: string
+      audioStorageKey?: string
+      maxPromptAudioLength?: number
+      enablePreprocess?: boolean
     }) => {
       const response = await requestTaskResponseWithError(
         '/api/asset-hub/voice-design',
@@ -47,6 +55,7 @@ export function useDesignAssetHubVoice() {
         targetModel?: string
         audioBase64?: string
         requestId?: string
+        flavor?: string
       }>(response)
     },
   })

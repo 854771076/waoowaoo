@@ -302,23 +302,29 @@ export default function VoiceDesignGeneratorSection({
                   </div>
                 )}
                 <div className="text-sm font-medium text-[var(--glass-text-primary)] mb-2">{tv('schemeN', { n: index + 1 })}</div>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onPlayVoice(index)
-                  }}
-                  className={`w-10 h-10 mx-auto rounded-full glass-btn-base flex items-center justify-center transition-all ${
-                    playingIndex === index
-                      ? 'glass-btn-tone-info animate-pulse'
-                      : 'glass-btn-secondary text-[var(--glass-text-secondary)]'
-                  }`}
-                >
-                  {playingIndex === index ? (
-                    <AppIcon name="pause" className="w-4 h-4" />
-                  ) : (
-                    <AppIcon name="play" className="w-5 h-5" />
-                  )}
-                </button>
+                {voice.hasPreview ? (
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onPlayVoice(index)
+                    }}
+                    className={`w-10 h-10 mx-auto rounded-full glass-btn-base flex items-center justify-center transition-all ${
+                      playingIndex === index
+                        ? 'glass-btn-tone-info animate-pulse'
+                        : 'glass-btn-secondary text-[var(--glass-text-secondary)]'
+                    }`}
+                  >
+                    {playingIndex === index ? (
+                      <AppIcon name="pause" className="w-4 h-4" />
+                    ) : (
+                      <AppIcon name="play" className="w-5 h-5" />
+                    )}
+                  </button>
+                ) : (
+                  <div className="w-10 h-10 mx-auto rounded-full glass-btn-base glass-btn-soft flex items-center justify-center text-[var(--glass-text-tertiary)]" title={tv('noPreview')}>
+                    <AppIcon name="checkSolid" className="w-4 h-4" />
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -32,6 +32,7 @@ interface EditorStageRuntimeContextValue {
   forceSave: () => void
   reloadProject: (options?: { discardLocal?: boolean }) => Promise<void>
   reloadAssets: () => Promise<void>
+  resetToInitial: () => Promise<void>
 }
 
 const EditorStageRuntimeContext = createContext<EditorStageRuntimeContextValue | null>(null)
@@ -87,6 +88,7 @@ export function EditorStageRuntimeProvider({
     flushProjectSave,
     forceSave,
     reloadFromServer: reloadProject,
+    resetToInitial,
   } = useEditorProjectSync({
     projectId,
     episodeId,
@@ -121,6 +123,7 @@ export function EditorStageRuntimeProvider({
     forceSave,
     reloadProject,
     reloadAssets,
+    resetToInitial,
   }), [
     dataError,
     editorProjectId,
@@ -141,6 +144,7 @@ export function EditorStageRuntimeProvider({
     projectVersion,
     reloadAssets,
     reloadProject,
+    resetToInitial,
     saveError,
     saveProject,
     updateProjectData,

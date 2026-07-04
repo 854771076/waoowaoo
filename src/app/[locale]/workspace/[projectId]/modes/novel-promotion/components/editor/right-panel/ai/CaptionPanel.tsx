@@ -167,8 +167,8 @@ export function CaptionPanel() {
     <AiCard
       tone="violet"
       icon="captions"
-      title={t('captions.title')}
-      description={t('captions.description')}
+      title={t('caption.title')}
+      description={t('caption.description')}
       status={statusText || null}
       isError={!!localError}
       actionLabel={isRunning ? t('caption.runningButton') : t('caption.button')}

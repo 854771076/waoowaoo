@@ -26,7 +26,10 @@ export function RightPanel() {
   const trackCount = present?.tracks?.length ?? 0
 
   return (
-    <aside className="flex h-full w-72 flex-col border-l border-[var(--glass-border)] bg-[var(--glass-bg)] text-[var(--glass-text-primary)]">
+    // ponytail: 用实底白色而不是 --glass-bg —— glass 是半透明的，叠在 Twick
+    // 深色画布背景上，暗色文字直接读不清。min-h-0 + overflow-hidden 让内部
+    // overflow-y-auto 生效（否则子元素顶破 aside，滚动失效）。
+    <aside className="flex h-full min-h-0 w-72 flex-col overflow-hidden border-l border-[var(--glass-border)] bg-white text-[var(--glass-text-primary)]">
       <div className="flex gap-1 border-b border-[var(--glass-border)] bg-[var(--glass-bg-muted)]/40 p-1.5">
         {(['ai', 'properties'] as RightPanelTab[]).map((tab) => {
           const isActive = activeTab === tab

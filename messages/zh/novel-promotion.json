@@ -186,6 +186,13 @@
     "errorBoundaryTitle": "编辑器加载异常",
     "errorBoundaryDescription": "请刷新页面重试。如问题持续存在，请联系技术支持。",
     "errorBoundaryReload": "刷新页面",
+    "reset": {
+      "button": "复位",
+      "confirmTitle": "复位时间轴",
+      "confirmMessage": "将删除当前时间轴上的所有剪辑、转场和配音调整，恢复到由最新分镜/语音素材自动生成的初始状态。此操作不可撤销。",
+      "confirmButton": "确认复位",
+      "cancelButton": "取消"
+    },
     "saveStatus": {
       "idle": "等待编辑",
       "loading": "加载中...",
@@ -220,6 +227,7 @@
       "duration": "{duration}s",
       "clickToAdd": "点击添加到时间轴",
       "voiceLine": "台词 {index}",
+      "shotLabel": "分镜 {index}",
       "imageHint": "当前编辑器已使用生成视频作为主素材；独立图片素材会在后续 AI 编辑能力中补齐。"
     },
     "rightPanel": {
@@ -235,11 +243,9 @@
           "voiceOptimize": "语音",
           "transition": "转场"
         },
-        "roughCut": {
-          "title": "智能粗剪",
-          "description": "按分镜顺序拼接已生成的视频和配音，重建初剪时间轴。"
-        },
         "smartCut": {
+          "title": "智能粗剪",
+          "description": "按分镜顺序拼接已生成的视频和配音，重建初剪时间轴。",
           "button": "执行智能粗剪",
           "runningButton": "生成中...",
           "running": "正在粗剪（{progress}%）",
@@ -251,11 +257,9 @@
           "loading": "正在加载编辑器数据...",
           "noVideos": "请先生成至少一个分镜视频。"
         },
-        "captions": {
-          "title": "自动字幕",
-          "description": "使用已有配音文本生成带时间轴的字幕轨道。"
-        },
         "caption": {
+          "title": "自动字幕",
+          "description": "使用已有配音文本生成带时间轴的字幕轨道。",
           "button": "生成字幕",
           "runningButton": "生成中...",
           "running": "正在生成字幕（{progress}%）",
@@ -355,13 +359,13 @@
             "zoom": "缩放"
           },
           "reasons": {
-            "sameScene.dissolve": "同一分镜/场景：叠化保持连贯又能柔化剪切点。",
-            "sameScene.fade": "轻柔淡入淡出适合相邻镜头的安全过渡。",
-            "sceneChange.fade": "不同分镜/场景:淡入淡出可以清晰示意场景切换。",
-            "sceneChange.dissolve": "叠化提供更柔和的场景切换效果。",
-            "panelChange.slide": "在相邻生成分镜之间使用滑动可强调推进感。",
-            "dynamic.zoom": "缩放为短视频剪辑增添动感。",
-            "fallback.general": "通用 Twick 转场备选。"
+            "sameScene_dissolve": "同一分镜/场景：叠化保持连贯又能柔化剪切点。",
+            "sameScene_fade": "轻柔淡入淡出适合相邻镜头的安全过渡。",
+            "sceneChange_fade": "不同分镜/场景:淡入淡出可以清晰示意场景切换。",
+            "sceneChange_dissolve": "叠化提供更柔和的场景切换效果。",
+            "panelChange_slide": "在相邻生成分镜之间使用滑动可强调推进感。",
+            "dynamic_zoom": "缩放为短视频剪辑增添动感。",
+            "fallback_general": "通用 Twick 转场备选。"
           }
         }
       },

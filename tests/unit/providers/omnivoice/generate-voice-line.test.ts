@@ -3,6 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/lib/providers/omnivoice/tts', () => ({
   synthesizeWithOmnivoiceTTS: vi.fn(),
 }))
+vi.mock('@/lib/media/service', () => ({
+  ensureMediaObjectFromStorageKey: vi.fn(async () => ({ id: 'media-omnivoice-audio' })),
+  resolveStorageKeyFromMediaValue: vi.fn(),
+}))
+vi.mock('@/lib/media/outbound-image', () => ({
+  normalizeToBase64ForGeneration: vi.fn(),
+}))
 vi.mock('@/lib/storage', () => ({
   uploadObject: vi.fn(async (_buf: Buffer, key: string) => key),
   getSignedUrl: vi.fn((key: string) => `https://signed/${key}`),

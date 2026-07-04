@@ -144,6 +144,7 @@
     "@types/express": "^5.0.6",
     "@vercel/og": "^0.8.6",
     "ai": "^6.0.116",
+    "ali-oss": "^6.23.0",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.67.3",

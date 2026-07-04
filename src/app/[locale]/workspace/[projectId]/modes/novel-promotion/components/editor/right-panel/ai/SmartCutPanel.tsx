@@ -152,12 +152,12 @@ export function SmartCutPanel() {
     <AiCard
       tone="blue"
       icon="scissors"
-      title={t('roughCut.title')}
-      description={t('roughCut.description')}
+      title={t('smartCut.title')}
+      description={t('smartCut.description')}
       status={statusText || null}
       isError={!!localError}
       actionLabel={isRunning ? t('smartCut.runningButton') : t('smartCut.button')}
-      onAction={() => { void mutation.mutateAsync() }}
+      onAction={() => { mutation.mutate() }}
       disabled={!canRun}
       running={isRunning}
     />

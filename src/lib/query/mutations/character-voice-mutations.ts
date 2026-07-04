@@ -76,10 +76,10 @@ export function useSaveProjectDesignedVoice(projectId: string) {
         }: {
             characterId: string
             voiceId: string
-            audioBase64: string
+            audioBase64?: string
             provider?: 'bailian' | 'omnivoice'
         }) => {
-            return await requestJsonWithError<{ audioUrl?: string }>(`/api/novel-promotion/${projectId}/character-voice`, {
+            return await requestJsonWithError<{ audioUrl?: string | null }>(`/api/novel-promotion/${projectId}/character-voice`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

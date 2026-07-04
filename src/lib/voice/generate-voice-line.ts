@@ -4,8 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { getAudioApiKey, getProviderConfig, getProviderKey, resolveModelSelectionOrSingle } from '@/lib/api-config'
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { extractStorageKey, getSignedUrl, toFetchableUrl, uploadObject } from '@/lib/storage'
-import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
-import { synthesizeWithBailianTTS } from '@/lib/providers/bailian'
+import { ensureMediaObjectFromStorageKey, resolveStorageKeyFromMediaValue } from '@/lib/media/service'
+import { synthesizeWithBailianTTS, synthesizeWithCosyVoiceTTS } from '@/lib/providers/bailian'
 import { synthesizeWithOmnivoiceTTS } from '@/lib/providers/omnivoice'
 import {
   parseSpeakerVoiceMap,
@@ -17,19 +17,29 @@ import {
 type CheckCancelled = () => Promise<void>
 type CharacterVoiceProfile = CharacterVoiceFields & { name: string }
 
-function normalizeBailianVoiceGenerationError(errorMessage: string | null | undefined) {
+function normalizeBailianVoiceGenerationError(errorMessage: string | null | undefined, modelId?: string) {
   const message = typeof errorMessage === 'string' ? errorMessage.trim() : ''
   if (!message) return 'BAILIAN_AUDIO_GENERATION_FAILED'
 
   const normalized = message.toLowerCase()
-  if (
-    normalized.includes('bailian_tts_failed(400): invalidparameter') ||
-    normalized.includes('invalidparameter')
-  ) {
+  if (normalized.includes('invalidparameter')) {
+    if (modelId?.startsWith('cosyvoice-')) {
+      return '无效音色ID或参数，CosyVoice 请检查所选音色是否可用'
+    }
     return '无效音色ID，QwenTTS 必须使用 AI 设计音色'
   }
 
   return message
+}
+
+function isCosyVoiceModel(modelId: string): boolean {
+  return modelId.startsWith('cosyvoice-')
+}
+
+// ponytail: 简单语种探测 —— 文本含 CJK 统一汉字则报 zh,否则 en;CosyVoice 支持多语种,
+// 这里只覆盖最常见的中英场景,后续可扩展。
+function detectLanguageHints(text: string): string {
+  return /\p{Script=Han}/u.test(text) ? 'zh' : 'en'
 }
 
 function getWavDurationFromBuffer(buffer: Buffer): number {
@@ -223,26 +233,58 @@ export async function synthesizeVoiceLineAudio(params: {
         !!character?.customVoiceUrl ||
         (speakerVoice?.provider === 'fal' && !!speakerVoice.audioUrl)
       if (hasUploadedReference) {
-        throw new Error('无音色ID，QwenTTS 必须使用 AI 设计音色')
+        throw new Error('无音色ID，百炼 TTS 必须使用 AI 设计或克隆音色')
       }
       throw new Error('请先为该发言人绑定百炼音色')
     }
     const { apiKey } = await getProviderConfig(params.userId, audioSelection.provider)
-    const result = await synthesizeWithBailianTTS({
-      text,
-      voiceId: voiceBinding.voiceId,
-      modelId: audioSelection.modelId,
-      languageType: 'Chinese',
-    }, apiKey)
-    if (!result.success || !result.audioData) {
-      throw new Error(normalizeBailianVoiceGenerationError(result.error))
+    let modelId = audioSelection.modelId
+
+    // ponytail: voiceId 前缀比 audioModel 选择更可信——如果绑定的是 cosyvoice-v* 音色,
+    // 但当前选的是 qwen 模型(或反之),自动切换到匹配的模型,避免 API 返回不透明的 InvalidParameter。
+    const voiceIsCosy = voiceBinding.voiceId.startsWith('cosyvoice-v') || voiceBinding.voiceId.startsWith('cosyvoice-')
+    const modelIsCosy = isCosyVoiceModel(modelId)
+    if (voiceIsCosy && !modelIsCosy) {
+      modelId = 'cosyvoice-v3.5-plus'
+    } else if (!voiceIsCosy && modelIsCosy) {
+      // Qwen voiceId 必须走 qwen 模型;默认回退
+      modelId = 'qwen3-tts-vd-2026-01-26'
     }
 
-    const audioData = result.audioData
-    generated = {
-      audioData,
-      audioDuration: result.audioDuration ?? getWavDurationFromBuffer(audioData),
+    let audioData: Buffer = Buffer.alloc(0)
+    let audioDuration = 0
+    if (isCosyVoiceModel(modelId)) {
+      const result = await synthesizeWithCosyVoiceTTS({
+        text,
+        voiceId: voiceBinding.voiceId,
+        modelId,
+        languageHints: detectLanguageHints(text),
+        format: 'wav',
+        sampleRate: 24000,
+        // ponytail: CosyVoice 的 instruction 字段承载风格/情感指令,
+        // 与 IndexTTS2 的 emotionPrompt 语义最接近——当用户在前端写了情感提示,透传下去。
+        instruction: params.emotionPrompt?.trim() || undefined,
+      }, apiKey)
+      if (!result.success || !result.audioData) {
+        throw new Error(normalizeBailianVoiceGenerationError(result.error, modelId))
+      }
+      audioData = result.audioData
+      audioDuration = result.audioDuration ?? (result.format === 'wav' ? getWavDurationFromBuffer(audioData) : 0)
+    } else {
+      const result = await synthesizeWithBailianTTS({
+        text,
+        voiceId: voiceBinding.voiceId,
+        modelId,
+        languageType: 'Chinese',
+      }, apiKey)
+      if (!result.success || !result.audioData) {
+        throw new Error(normalizeBailianVoiceGenerationError(result.error, modelId))
+      }
+      audioData = result.audioData
+      audioDuration = result.audioDuration ?? getWavDurationFromBuffer(audioData)
     }
+
+    generated = { audioData, audioDuration }
   } else if (providerKey === 'omnivoice') {
     if (!voiceBinding || voiceBinding.provider !== 'omnivoice') {
       throw new Error('请先为该发言人绑定 OmniVoice 音色')
@@ -320,11 +362,21 @@ export async function generateVoiceLine(params: {
 
   await checkCancelled?.()
 
+  // storageKey 固定为 voice/{project}/{episode}/{line}.wav —— 重新生成时对象被覆盖,
+  // publicId 也稳定不变。必须 upsert MediaObject 刷新 durationMs/sizeBytes,
+  // 并把 audioMediaId 写回,否则 resolveMediaRef 会命中旧 MediaObject。
+  const media = await ensureMediaObjectFromStorageKey(generated.storageKey, {
+    mimeType: 'audio/wav',
+    sizeBytes: generated.sizeBytes,
+    durationMs: generated.audioDuration ?? null,
+  })
+
   await prisma.novelPromotionVoiceLine.update({
     where: { id: line.id },
     data: {
       audioUrl: generated.storageKey,
       audioDuration: generated.audioDuration || null,
+      audioMediaId: media.id,
     },
   })
 

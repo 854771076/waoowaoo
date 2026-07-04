@@ -5,14 +5,23 @@ import VideoEditor, {
   DEFAULT_ELEMENT_COLORS,
   DEFAULT_TIMELINE_TICK_CONFIGS,
   DEFAULT_TIMELINE_ZOOM_CONFIG,
+  useTimelineControl,
 } from '@twick/video-editor'
 import '@twick/video-editor/dist/video-editor.css'
+import './twick-overrides.css'
 import { LivePlayerProvider, PLAYER_STATE, useLivePlayerContext } from '@twick/live-player'
 import { TimelineProvider, useTimelineContext } from '@twick/timeline'
 import { useTranslations } from 'next-intl'
 import { useEditorStageRuntime } from '@/lib/novel-promotion/stages/editor-stage-runtime-core'
 import type { TwickTimelineProject } from '@/lib/twick/types'
 import { AssetPanel } from './left-panel/AssetPanel'
+import {
+  ASSET_DND_MIME,
+  addVideoPanelToTimeline,
+  addVoiceLineToTimeline,
+  readAssetDragPayload,
+} from './left-panel/asset-timeline-actions'
+import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { RightPanel } from './right-panel/RightPanel'
 
 /**
@@ -89,6 +98,141 @@ function TimelineRuntimeSync({ onProjectChange }: TimelineRuntimeSyncProps) {
     lastSyncedRef.current = JSON.stringify(pending)
     onProjectChange(pending)
   }, [onProjectChange, playerState])
+
+  return null
+}
+
+/**
+ * 素材拖拽落入时间轴：在 `.twick-editor-timeline-section` 上挂原生 drag 事件，
+ * 收到 asset 载荷后走跟点击一致的 add-to-timeline 流程。
+ *
+ * ponytail: Twick 自己的 canvas drop 只处理内部拖拽（fabric），不接受来自外部
+ * 面板的 dataTransfer。用 native listeners 而不是包一层 <div> 是因为
+ * VideoEditor 已经把 timeline section 渲染到自己的 DOM 里,套一层会破坏它的
+ * flex 度量。
+ */
+function TimelineDropZone({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | null> }) {
+  const { editor, present } = useTimelineContext()
+  const { panelVideos, voiceLineSources } = useEditorStageRuntime()
+  const { projectId } = useWorkspaceProvider()
+  const t = useTranslations('novelPromotion.editor.assets')
+
+  // 用 refs 保证 listener 拿到最新的数据/上下文而不用重挂事件。
+  const stateRef = useRef({ editor, present, panelVideos, voiceLineSources, projectId, t })
+  stateRef.current = { editor, present, panelVideos, voiceLineSources, projectId, t }
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+
+    const findTimelineSection = () =>
+      host.querySelector<HTMLElement>('.twick-editor-timeline-section')
+
+    const isAssetDrag = (event: DragEvent): boolean => {
+      const types = event.dataTransfer?.types
+      if (!types) return false
+      for (let i = 0; i < types.length; i++) {
+        if (types[i] === ASSET_DND_MIME) return true
+      }
+      return false
+    }
+
+    const handleDragOver = (event: DragEvent) => {
+      if (!isAssetDrag(event)) return
+      event.preventDefault()
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+    }
+
+    const handleDrop = async (event: DragEvent) => {
+      const payload = readAssetDragPayload(event.dataTransfer)
+      if (!payload) return
+      event.preventDefault()
+      const state = stateRef.current
+      if (payload.kind === 'video-panel') {
+        const panel = state.panelVideos.find((item) => item.panelId === payload.id)
+        if (!panel) return
+        await addVideoPanelToTimeline({
+          source: panel,
+          editor: state.editor,
+          present: state.present,
+          projectId: state.projectId,
+          trackLabel: state.t('tracks.video'),
+        })
+      } else if (payload.kind === 'voice-line') {
+        const voiceLine = state.voiceLineSources.find((item) => item.voiceLineId === payload.id)
+        if (!voiceLine) return
+        await addVoiceLineToTimeline({
+          source: voiceLine,
+          editor: state.editor,
+          present: state.present,
+          projectId: state.projectId,
+          trackLabel: state.t('tracks.audio'),
+        })
+      }
+    }
+
+    // Twick 的 timeline section 是 VideoEditor mount 后才出现,轮询一次挂载即可。
+    let cleanup: (() => void) | null = null
+    const attach = () => {
+      const section = findTimelineSection()
+      if (!section) return false
+      section.addEventListener('dragover', handleDragOver)
+      section.addEventListener('drop', handleDrop)
+      cleanup = () => {
+        section.removeEventListener('dragover', handleDragOver)
+        section.removeEventListener('drop', handleDrop)
+      }
+      return true
+    }
+
+    if (!attach()) {
+      const observer = new MutationObserver(() => {
+        if (attach()) observer.disconnect()
+      })
+      observer.observe(host, { childList: true, subtree: true })
+      return () => {
+        observer.disconnect()
+        cleanup?.()
+      }
+    }
+    return () => { cleanup?.() }
+  }, [hostRef])
+
+  return null
+}
+
+/**
+ * 键盘快捷键：Delete / Backspace 删除当前选中的一个或多个片段。
+ *
+ * ponytail: Twick 自身没绑 Delete 键。它的 useTimelineControl().deleteItem() 无参调用
+ * 时已经会解析 selectedIds 走多选删除（resolveIds → Track/TrackElement），我们只加键盘转发。
+ */
+function KeyboardShortcuts() {
+  const { deleteItem } = useTimelineControl()
+  const { selectedIds } = useTimelineContext()
+  const selectedIdsRef = useRef(selectedIds)
+  useEffect(() => { selectedIdsRef.current = selectedIds }, [selectedIds])
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false
+      if (target.isContentEditable) return true
+      const tag = target.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    }
+
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (isEditableTarget(event.target)) return
+      if (selectedIdsRef.current.size === 0) return
+      event.preventDefault()
+      deleteItem()
+    }
+
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [deleteItem])
 
   return null
 }
@@ -233,6 +377,8 @@ export function TwickEditor({ videoWidth, videoHeight }: TwickEditorProps) {
           analytics={{ enabled: false }}
         >
           <TimelineRuntimeSync onProjectChange={updateProjectData} />
+          <KeyboardShortcuts />
+          <TimelineDropZone hostRef={editorHostRef} />
           <VideoEditor
             leftPanel={leftPanel}
             rightPanel={rightPanel}

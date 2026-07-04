@@ -2,6 +2,7 @@
 
 import { logError as _ulogError } from '@/lib/logging/core'
 import { useCallback } from 'react'
+import { useRouter } from '@/i18n/navigation'
 import {
   useGetProjectStoryboardStats,
   useUpdateProjectConfig,
@@ -19,13 +20,22 @@ export function useWorkspaceConfigActions({
   episodeId,
   onStageChange,
 }: UseWorkspaceConfigActionsParams) {
+  const router = useRouter()
   const updateProjectConfigMutation = useUpdateProjectConfig(projectId)
   const updateProjectEpisodeMutation = useUpdateProjectEpisodeField(projectId)
   const getProjectStoryboardStatsMutation = useGetProjectStoryboardStats(projectId)
 
   const handleStageChange = useCallback((stage: string) => {
+    if (stage === 'editor') {
+      // ponytail: editor is its own fullscreen route (see /workspace/[projectId]/editor)
+      router.push({
+        pathname: `/workspace/${projectId}/editor`,
+        query: episodeId ? { episode: episodeId } : {},
+      })
+      return
+    }
     onStageChange?.(stage)
-  }, [onStageChange])
+  }, [episodeId, onStageChange, projectId, router])
 
   const handleUpdateConfig = useCallback(async (key: string, value: unknown) => {
     try {

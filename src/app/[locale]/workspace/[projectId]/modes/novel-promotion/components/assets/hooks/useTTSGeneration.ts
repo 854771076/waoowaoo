@@ -74,12 +74,14 @@ export function useTTSGeneration({
         setVoiceDesignCharacter({
             id: characterId,
             name: characterName,
-            hasExistingVoice: !!character?.customVoiceUrl
+            // ponytail: CosyVoice clone 没有试听音频(customVoiceUrl=null),
+            // 但 voiceId 已存在,同样视为"已有音色",弹出替换确认框。
+            hasExistingVoice: !!(character?.customVoiceUrl || character?.voiceId),
         })
     }
 
-    // 保存 AI 设计的声音
-    const handleVoiceDesignSave = async (voiceId: string, audioBase64: string, provider: 'bailian' | 'omnivoice') => {
+    // 保存 AI 设计的声音 / 克隆音色（CosyVoice clone 可无试听音频）
+    const handleVoiceDesignSave = async (voiceId: string, audioBase64: string | undefined, provider: 'bailian' | 'omnivoice') => {
         if (!voiceDesignCharacter) return
 
         try {

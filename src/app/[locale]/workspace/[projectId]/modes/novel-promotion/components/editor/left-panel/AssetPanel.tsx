@@ -21,7 +21,7 @@ export function AssetPanel() {
   ]
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-slate-200 bg-white text-slate-950">
+    <aside className="flex h-full min-h-0 w-64 flex-col overflow-hidden border-r border-slate-200 bg-white text-slate-950">
       <div className="border-b border-slate-200 px-3 py-3">
         <div className="text-sm font-semibold text-slate-900">{t('title')}</div>
         <div className="mt-1 text-[11px] leading-4 text-slate-500">{t('description')}</div>

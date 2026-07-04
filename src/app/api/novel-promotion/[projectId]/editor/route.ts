@@ -244,3 +244,28 @@ export const PUT = apiHandler(async (
 
   return NextResponse.json({ data: editorProject })
 })
+
+/**
+ * DELETE /api/novel-promotion/[projectId]/editor?episodeId=...
+ * 删除当前剧集的编辑器存档(一键复位):下次打开会根据最新的分镜/配音自动重建初始时间轴。
+ */
+export const DELETE = apiHandler(async (
+  request: NextRequest,
+  { params }: { params: Promise<{ projectId: string }> }
+) => {
+  const { projectId } = await params
+
+  const authResult = await requireOwnedProject(projectId)
+  if (isErrorResponse(authResult)) return authResult
+
+  const episodeId = request.nextUrl.searchParams.get('episodeId')
+  if (!episodeId) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
+  await requireEpisode(projectId, episodeId)
+
+  await prisma.novelPromotionEditorProject.deleteMany({ where: { episodeId } })
+
+  return NextResponse.json({ data: { ok: true } })
+})

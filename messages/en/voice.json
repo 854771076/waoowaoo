@@ -216,9 +216,25 @@
         "uploadSuccess": "Upload successful",
         "cloneMode": "Voice Clone",
         "cloneHint": "Upload a clear voice recording; OmniVoice will clone its timbre for dubbing",
+        "cosyCloneHint": "Upload a clear 3-30s voice recording; CosyVoice will clone its timbre. Cloned voices have no preview audio and are bound directly after confirmation.",
         "cloneAndSave": "Clone & Save",
         "cloning": "Cloning...",
-        "cloneFailed": "Voice clone failed"
+        "cloneFailed": "Voice clone failed",
+        "cloneNotAvailable": "Selected clone engine is not available",
+        "cloneEngineOmni": "OmniVoice",
+        "cloneEngineCosy": "CosyVoice",
+        "bailianFlavorQwen": "QwenTTS Design",
+        "bailianFlavorCosy": "CosyVoice Design",
+        "prefixLabel": "Voice prefix",
+        "targetModelLabel": "Target model",
+        "languageLabel": "Language",
+        "maxPromptLenLabel": "Prompt length (s)",
+        "enablePreprocess": "Enable denoising preprocessing",
+        "existingVoicesTitle": "Choose existing Bailian voice",
+        "existingVoicesBtn": "My Voices",
+        "loadingVoices": "Loading voices",
+        "noExistingVoices": "No custom voices found on this Bailian account yet. Try AI Design or Clone first.",
+        "binding": "Binding"
     },
     "voicePicker": {
         "badge": {
@@ -275,7 +291,7 @@
         },
         "defaultPreviewText": "Hello, nice to meet you.",
         "provider": "Provider",
-        "providerOptionBailian": "Bailian (QwenTTS)",
+        "providerOptionBailian": "Bailian (Qwen/CosyVoice)",
         "providerOptionOmnivoice": "OmniVoice (self-hosted)",
         "pleaseSelectStyle": "Please enter or select a voice style",
         "designVoiceFor": "Design AI Voice for \"{speaker}\"",
@@ -303,6 +319,7 @@
         "generationError": "Voice generation failed",
         "generateFailed": "Failed to generate voice {n}",
         "preview": "Preview",
-        "playing": "Playing"
+        "playing": "Playing",
+        "noPreview": "No preview"
     }
 }

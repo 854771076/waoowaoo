@@ -89,6 +89,7 @@ describe('worker voice-design behavior', () => {
 
     expect(apiConfigMock.getProviderConfig).toHaveBeenCalledWith('user-1', 'bailian')
     expect(bailianMock.createVoiceDesign).toHaveBeenCalledWith({
+      flavor: 'qwen',
       voicePrompt: 'calm female narrator',
       previewText: 'hello world',
       preferredName: 'custom_name',

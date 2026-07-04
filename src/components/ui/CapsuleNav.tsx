@@ -11,7 +11,7 @@ interface NavItemData {
     icon: string
     label: string
     status: StepStatus
-    href?: string  // 可选的链接地址
+    href?: string  // 可选的链接地址,覆盖 CapsuleNav 默认构建的 URL
     disabled?: boolean  // 是否禁用（开发中）
     disabledLabel?: string  // 禁用时显示的提示文字
 }
@@ -151,7 +151,7 @@ export function CapsuleNav({ items, activeId, onItemClick, projectId, episodeId 
                         onClick={() => onItemClick(item.id)}
                         label={item.label}
                         status={item.status}
-                        href={buildHref(item.id)}
+                        href={item.href ?? buildHref(item.id)}
                         disabled={item.disabled}
                         disabledLabel={item.disabledLabel}
                     />

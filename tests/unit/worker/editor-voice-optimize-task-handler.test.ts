@@ -12,6 +12,7 @@ const prismaMock = vi.hoisted(() => ({
   },
   novelPromotionEditorAsset: {
     create: vi.fn(async () => ({ id: 'asset-1' })),
+    delete: vi.fn(async () => undefined),
   },
 }))
 

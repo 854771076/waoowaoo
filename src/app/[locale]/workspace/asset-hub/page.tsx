@@ -209,12 +209,12 @@ export default function AssetHubPage() {
         setVoiceDesignCharacter({
             id: characterId,
             name: characterName,
-            hasExistingVoice: character?.kind === 'character' ? !!character.voice.customVoiceUrl : false,
+            hasExistingVoice: character?.kind === 'character' ? !!(character.voice.customVoiceUrl || character.voice.voiceId) : false,
         })
     }
 
-    // 保存 AI 设计的声音
-    const handleVoiceDesignSave = async (voiceId: string, audioBase64: string, provider: 'bailian' | 'omnivoice') => {
+    // 保存 AI 设计的声音 / clone 结果（CosyVoice clone 允许 audioBase64 为空）
+    const handleVoiceDesignSave = async (voiceId: string, audioBase64: string | undefined, provider: 'bailian' | 'omnivoice') => {
         if (!voiceDesignCharacter) return
 
         try {
@@ -223,9 +223,11 @@ export default function AssetHubPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     characterId: voiceDesignCharacter.id,
-                    voiceId,
-                    audioBase64,
-                    provider
+                    voiceDesign: {
+                        voiceId,
+                        audioBase64: audioBase64 ?? undefined,
+                        provider,
+                    },
                 })
             })
 
@@ -590,7 +592,8 @@ export default function AssetHubPage() {
                     hasExistingVoice={voiceDesignCharacter.hasExistingVoice}
                     onClose={() => setVoiceDesignCharacter(null)}
                     onSave={handleVoiceDesignSave}
-                    onClone={async (file: File) => {
+                    cloneEngines={['omnivoice']}
+                    onOmniClone={async (file: File) => {
                         const formData = new FormData()
                         formData.append('file', file)
                         formData.append('characterId', voiceDesignCharacter.id)

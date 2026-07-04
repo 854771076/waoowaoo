@@ -216,9 +216,25 @@
         "uploadSuccess": "上传成功",
         "cloneMode": "声音克隆",
         "cloneHint": "上传一段清晰的人声音频，OmniVoice 将克隆其音色用于配音",
+        "cosyCloneHint": "上传一段清晰的人声音频（3-30 秒），CosyVoice 将克隆其音色。克隆音色无试听音频，确认后直接绑定。",
         "cloneAndSave": "克隆并保存",
         "cloning": "克隆中...",
-        "cloneFailed": "声音克隆失败"
+        "cloneFailed": "声音克隆失败",
+        "cloneNotAvailable": "当前未提供该克隆引擎",
+        "cloneEngineOmni": "OmniVoice",
+        "cloneEngineCosy": "CosyVoice",
+        "bailianFlavorQwen": "QwenTTS 设计",
+        "bailianFlavorCosy": "CosyVoice 设计",
+        "prefixLabel": "音色前缀",
+        "targetModelLabel": "目标模型",
+        "languageLabel": "语言",
+        "maxPromptLenLabel": "参考音频时长(秒)",
+        "enablePreprocess": "启用参考音频降噪预处理",
+        "existingVoicesTitle": "选择百炼已有音色",
+        "existingVoicesBtn": "已有音色",
+        "loadingVoices": "加载音色列表",
+        "noExistingVoices": "百炼账号下暂无已创建音色,先去 AI 设计或声音克隆一个吧",
+        "binding": "绑定中"
     },
     "voicePicker": {
         "badge": {
@@ -275,7 +291,7 @@
         },
         "defaultPreviewText": "你好，很高兴认识你。",
         "provider": "服务提供商",
-        "providerOptionBailian": "百炼 (QwenTTS)",
+        "providerOptionBailian": "百炼 (Qwen/CosyVoice)",
         "providerOptionOmnivoice": "OmniVoice (自托管)",
         "pleaseSelectStyle": "请输入或选择声音风格",
         "designVoiceFor": "为「{speaker}」设计AI声音",
@@ -303,6 +319,7 @@
         "generationError": "生成声音失败",
         "generateFailed": "生成第 {n} 个声音失败",
         "preview": "试听",
-        "playing": "播放中"
+        "playing": "播放中",
+        "noPreview": "无试听"
     }
 }

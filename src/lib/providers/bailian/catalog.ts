@@ -18,6 +18,12 @@ const BAILIAN_CATALOG: Readonly<Record<OfficialModelModality, readonly string[]>
   ],
   audio: [
     'qwen3-tts-vd-2026-01-26',
+    // ponytail: CosyVoice 系列 —— 支持声音设计、声音克隆、预置音色,可调语速/音调/音量
+    'cosyvoice-v3.5-plus',
+    'cosyvoice-v3.5-flash',
+    'cosyvoice-v3-plus',
+    'cosyvoice-v3-flash',
+    'cosyvoice-v2',
   ],
 }
 

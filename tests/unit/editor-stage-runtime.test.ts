@@ -273,15 +273,15 @@ describe('editor-stage-runtime data mapping', () => {
       ],
     })
 
-    expect(result).toEqual([
-      {
-        panelId: 'panel-1',
-        storyboardId: 'storyboard-1',
-        videoMediaObjectId: 'media-video-1',
-        duration: 4.5,
-        description: 'camera move',
-      },
-    ])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      panelId: 'panel-1',
+      storyboardId: 'storyboard-1',
+      videoMediaObjectId: 'media-video-1',
+      panelIndex: 0,
+      duration: 4.5,
+      description: 'camera move',
+    })
   })
 
   it('maps matched voice lines to Twick audio sources using audio media object ids', () => {

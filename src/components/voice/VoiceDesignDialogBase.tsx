@@ -8,8 +8,14 @@ import { AppIcon } from '@/components/ui/icons'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import VoiceDesignGeneratorSection from './VoiceDesignGeneratorSection'
 import {
+  COSYVOICE_LANGUAGE_HINTS,
+  COSYVOICE_TARGET_MODELS,
   DEFAULT_VOICE_SCHEME_COUNT,
   generateVoiceDesignOptions,
+  type BailianDesignFlavor,
+  type CloneEngine,
+  type CosyVoiceLanguageHint,
+  type CosyVoiceTargetModel,
   type GeneratedVoice,
   type VoiceDesignMutationPayload,
   type VoiceDesignMutationResult,
@@ -18,16 +24,46 @@ import {
 
 export type { VoiceDesignMutationPayload, VoiceDesignMutationResult } from './voice-design-shared'
 
+type CloneResult = {
+  voiceId: string
+  audioBase64?: string
+}
+
 interface VoiceDesignDialogBaseProps {
   isOpen: boolean
   speaker: string
   hasExistingVoice?: boolean
   onClose: () => void
-  onSave: (voiceId: string, audioBase64: string, provider: VoiceDesignProvider) => void
+  onSave: (voiceId: string, audioBase64: string | undefined, provider: VoiceDesignProvider) => void | Promise<void>
   onDesignVoice: (payload: VoiceDesignMutationPayload) => Promise<VoiceDesignMutationResult>
   onRecommendInstruct?: () => Promise<{ instruct: string }>
-  /** 提供则启用「声音克隆」Tab：上传参考音频 → OmniVoice 克隆 */
-  onClone?: (file: File) => Promise<void>
+  /**
+   * Clone flow(s).
+   * - omnivoice: legacy — file upload straight to the backend (already handled by parent)
+   * - cosyvoice: parent receives { file, prefix, targetModel, languageHint, maxPromptAudioLength, enablePreprocess }
+   *   and is responsible for upload-temp → /voice-design flavour:cosyvoice-clone → persisting the voiceId.
+   *   The dialog just collects inputs and reports the resulting voiceId back.
+   */
+  cloneEngines?: CloneEngine[]
+  onOmniClone?: (file: File) => Promise<void>
+  onCosyClone?: (params: {
+    file: File
+    prefix: string
+    targetModel: CosyVoiceTargetModel
+    languageHint: CosyVoiceLanguageHint
+    maxPromptAudioLength: number
+    enablePreprocess: boolean
+  }) => Promise<CloneResult>
+}
+
+const DEFAULT_COSY_TARGET: CosyVoiceTargetModel = 'cosyvoice-v3.5-plus'
+const DEFAULT_COSY_LANG: CosyVoiceLanguageHint = 'zh'
+const DEFAULT_COSY_PREFIX = 'clone'
+const DEFAULT_MAX_PROMPT_LEN = 10
+
+function randomPrefix(): string {
+  // ponytail: 4 位随机字母数字,避免多人同 prefix 冲突。
+  return Math.random().toString(36).slice(2, 6)
 }
 
 export default function VoiceDesignDialogBase({
@@ -38,7 +74,9 @@ export default function VoiceDesignDialogBase({
   onSave,
   onDesignVoice,
   onRecommendInstruct,
-  onClone,
+  cloneEngines,
+  onOmniClone,
+  onCosyClone,
 }: VoiceDesignDialogBaseProps) {
   const t = useTranslations('common')
   const tv = useTranslations('voice.voiceDesign')
@@ -49,18 +87,35 @@ export default function VoiceDesignDialogBase({
   const [previewText, setPreviewText] = useState(tv('defaultPreviewText'))
   const [schemeCount, setSchemeCount] = useState(String(DEFAULT_VOICE_SCHEME_COUNT))
   const [provider, setProvider] = useState<VoiceDesignProvider>('bailian')
+  const [bailianFlavor, setBailianFlavor] = useState<BailianDesignFlavor>('qwen')
+  // CosyVoice design extras
+  const [cosyPrefix, setCosyPrefix] = useState(randomPrefix())
+  const [cosyTargetModel, setCosyTargetModel] = useState<CosyVoiceTargetModel>(DEFAULT_COSY_TARGET)
+  const [cosyLang, setCosyLang] = useState<CosyVoiceLanguageHint>(DEFAULT_COSY_LANG)
+  // Clone state
+  const availableCloneEngines: CloneEngine[] = cloneEngines ?? [
+    ...(onOmniClone ? ['omnivoice' as const] : []),
+    ...(onCosyClone ? ['cosyvoice' as const] : []),
+  ]
+  const [cloneEngine, setCloneEngine] = useState<CloneEngine>(availableCloneEngines[0] ?? 'omnivoice')
+  const [cloneFile, setCloneFile] = useState<File | null>(null)
+  const [clonePrefix, setClonePrefix] = useState(DEFAULT_COSY_PREFIX)
+  const [cloneTargetModel, setCloneTargetModel] = useState<CosyVoiceTargetModel>(DEFAULT_COSY_TARGET)
+  const [cloneLang, setCloneLang] = useState<CosyVoiceLanguageHint>(DEFAULT_COSY_LANG)
+  const [cloneMaxLen, setCloneMaxLen] = useState<number>(DEFAULT_MAX_PROMPT_LEN)
+  const [clonePreprocess, setClonePreprocess] = useState<boolean>(true)
+
   const [isDesignSubmitting, setIsDesignSubmitting] = useState(false)
   const [isRecommending, setIsRecommending] = useState(false)
+  const [isCloning, setIsCloning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedVoices, setGeneratedVoices] = useState<GeneratedVoice[]>([])
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [playingIndex, setPlayingIndex] = useState<number | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  // 声音克隆状态
-  const [cloneFile, setCloneFile] = useState<File | null>(null)
-  const [isCloning, setIsCloning] = useState(false)
   const cloneInputRef = useRef<HTMLInputElement | null>(null)
+
   const designSubmittingState = isDesignSubmitting
     ? resolveTaskPresentationState({
         phase: 'processing',
@@ -70,10 +125,19 @@ export default function VoiceDesignDialogBase({
       })
     : null
 
+  const showCloneTab = availableCloneEngines.length > 0
+
   const handleGenerate = async () => {
     if (!voicePrompt.trim()) {
       setError(tv('pleaseSelectStyle'))
       return
+    }
+    // CosyVoice design prefix validation
+    if (provider === 'bailian' && bailianFlavor === 'cosyvoice-design') {
+      if (!/^[A-Za-z0-9]{1,10}$/.test(cosyPrefix)) {
+        setError(tvCreate('prefixInvalid'))
+        return
+      }
     }
 
     setIsDesignSubmitting(true)
@@ -88,6 +152,14 @@ export default function VoiceDesignDialogBase({
         previewText,
         defaultPreviewText: tv('defaultPreviewText'),
         provider,
+        flavor: provider === 'bailian' ? bailianFlavor : undefined,
+        cosyvoiceExtras: provider === 'bailian' && bailianFlavor === 'cosyvoice-design'
+          ? {
+              prefix: cosyPrefix,
+              targetModel: cosyTargetModel,
+              languageHints: [cosyLang],
+            }
+          : undefined,
         onDesignVoice,
       })
       setGeneratedVoices(voices)
@@ -154,21 +226,30 @@ export default function VoiceDesignDialogBase({
     void audio.play()
   }
 
+  const [isSaving, setIsSaving] = useState(false)
+
   const handleConfirmSelection = () => {
     if (selectedIndex !== null && generatedVoices[selectedIndex]) {
       if (hasExistingVoice) {
         setShowConfirmDialog(true)
       } else {
-        doSave()
+        void doSave()
       }
     }
   }
 
-  const doSave = () => {
-    if (selectedIndex !== null && generatedVoices[selectedIndex]) {
-      const voice = generatedVoices[selectedIndex]
-      onSave(voice.voiceId, voice.audioBase64, provider)
+  const doSave = async () => {
+    if (selectedIndex === null || !generatedVoices[selectedIndex] || isSaving) return
+    const voice = generatedVoices[selectedIndex]
+    setIsSaving(true)
+    setError(null)
+    try {
+      await onSave(voice.voiceId, voice.audioBase64 || undefined, provider)
       handleClose()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'save failed')
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -178,12 +259,22 @@ export default function VoiceDesignDialogBase({
     setPreviewText(tv('defaultPreviewText'))
     setSchemeCount(String(DEFAULT_VOICE_SCHEME_COUNT))
     setProvider('bailian')
+    setBailianFlavor('qwen')
+    setCosyPrefix(randomPrefix())
+    setCosyTargetModel(DEFAULT_COSY_TARGET)
+    setCosyLang(DEFAULT_COSY_LANG)
     setError(null)
     setGeneratedVoices([])
     setSelectedIndex(null)
     setShowConfirmDialog(false)
     setPlayingIndex(null)
     setCloneFile(null)
+    setCloneEngine(availableCloneEngines[0] ?? 'omnivoice')
+    setClonePrefix(DEFAULT_COSY_PREFIX)
+    setCloneTargetModel(DEFAULT_COSY_TARGET)
+    setCloneLang(DEFAULT_COSY_LANG)
+    setCloneMaxLen(DEFAULT_MAX_PROMPT_LEN)
+    setClonePreprocess(true)
     setIsCloning(false)
     if (audioRef.current) {
       audioRef.current.pause()
@@ -192,11 +283,33 @@ export default function VoiceDesignDialogBase({
   }
 
   const handleCloneSubmit = async () => {
-    if (!onClone || !cloneFile) return
+    if (!cloneFile) return
     setIsCloning(true)
     setError(null)
     try {
-      await onClone(cloneFile)
+      if (cloneEngine === 'omnivoice') {
+        if (!onOmniClone) throw new Error(tvCreate('cloneNotAvailable'))
+        await onOmniClone(cloneFile)
+        handleClose()
+        return
+      }
+      // cosyvoice clone
+      if (!onCosyClone) throw new Error(tvCreate('cloneNotAvailable'))
+      if (!/^[A-Za-z0-9]{1,10}$/.test(clonePrefix)) {
+        setError(tvCreate('prefixInvalid'))
+        setIsCloning(false)
+        return
+      }
+      const result = await onCosyClone({
+        file: cloneFile,
+        prefix: clonePrefix,
+        targetModel: cloneTargetModel,
+        languageHint: cloneLang,
+        maxPromptAudioLength: cloneMaxLen,
+        enablePreprocess: clonePreprocess,
+      })
+      // CosyVoice clone has no preview — save immediately with empty audioBase64.
+      await onSave(result.voiceId, result.audioBase64, 'bailian')
       handleClose()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : tvCreate('cloneFailed'))
@@ -229,7 +342,7 @@ export default function VoiceDesignDialogBase({
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
-          {onClone && (
+          {showCloneTab && (
             <SegmentedControl
               options={[
                 { value: 'design' as const, label: tvCreate('aiDesignMode') },
@@ -244,61 +357,189 @@ export default function VoiceDesignDialogBase({
           )}
 
           {tab === 'design' && (
-          <VoiceDesignGeneratorSection
-            voicePrompt={voicePrompt}
-            onVoicePromptChange={setVoicePrompt}
-            previewText={previewText}
-            onPreviewTextChange={setPreviewText}
-            schemeCount={schemeCount}
-            onSchemeCountChange={setSchemeCount}
-            provider={provider}
-            onProviderChange={(next) => {
-              setProvider(next)
-              // 切换 provider 时清空描述:两边 instruct 语义不同
-              // (百炼自由文本 vs OmniVoice 受控词表),残留会触发校验失败。
-              setVoicePrompt('')
-            }}
-            isSubmitting={isDesignSubmitting}
-            submittingState={designSubmittingState}
-            error={error}
-            generatedVoices={generatedVoices}
-            selectedIndex={selectedIndex}
-            onSelectIndex={setSelectedIndex}
-            playingIndex={playingIndex}
-            onPlayVoice={handlePlayVoice}
-            onGenerate={() => {
-              void handleGenerate()
-            }}
-            onRecommendInstruct={handleRecommend}
-            isRecommending={isRecommending}
-            footer={(
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => {
-                    void handleGenerate()
+            <>
+              {provider === 'bailian' && (
+                <SegmentedControl
+                  options={[
+                    { value: 'qwen' as const, label: tvCreate('bailianFlavorQwen') },
+                    { value: 'cosyvoice-design' as const, label: tvCreate('bailianFlavorCosy') },
+                  ]}
+                  value={bailianFlavor}
+                  onChange={(val) => {
+                    setBailianFlavor(val as BailianDesignFlavor)
+                    setVoicePrompt('')
+                    setError(null)
                   }}
-                  disabled={isDesignSubmitting}
-                  className="glass-btn-base glass-btn-secondary flex-1 py-2 rounded-lg text-sm"
-                >
-                  {tv('regenerate')}
-                </button>
-                <button
-                  onClick={handleConfirmSelection}
-                  disabled={selectedIndex === null}
-                  className="glass-btn-base glass-btn-tone-success flex-1 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                >
-                  {tv('confirmUse')}
-                </button>
-              </div>
-            )}
-          />
+                />
+              )}
+
+              {provider === 'bailian' && bailianFlavor === 'cosyvoice-design' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-[var(--glass-text-tertiary)] block mb-1">{tvCreate('prefixLabel')}</label>
+                    <input
+                      type="text"
+                      value={cosyPrefix}
+                      maxLength={10}
+                      onChange={(e) => setCosyPrefix(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 10))}
+                      className="glass-input-base w-full px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--glass-text-tertiary)] block mb-1">{tvCreate('targetModelLabel')}</label>
+                    <select
+                      value={cosyTargetModel}
+                      onChange={(e) => setCosyTargetModel(e.target.value as CosyVoiceTargetModel)}
+                      className="glass-input-base w-full px-2 py-1.5 text-sm"
+                    >
+                      {COSYVOICE_TARGET_MODELS.map((m) => (
+                        <option key={m} value={m} className="text-black">{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-[var(--glass-text-tertiary)] block mb-1">{tvCreate('languageLabel')}</label>
+                    <select
+                      value={cosyLang}
+                      onChange={(e) => setCosyLang(e.target.value as CosyVoiceLanguageHint)}
+                      className="glass-input-base w-full px-2 py-1.5 text-sm"
+                    >
+                      {COSYVOICE_LANGUAGE_HINTS.map((l) => (
+                        <option key={l} value={l} className="text-black">{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <VoiceDesignGeneratorSection
+                voicePrompt={voicePrompt}
+                onVoicePromptChange={setVoicePrompt}
+                previewText={previewText}
+                onPreviewTextChange={setPreviewText}
+                schemeCount={schemeCount}
+                onSchemeCountChange={setSchemeCount}
+                provider={provider}
+                onProviderChange={(next) => {
+                  setProvider(next)
+                  setVoicePrompt('')
+                  setError(null)
+                }}
+                isSubmitting={isDesignSubmitting}
+                submittingState={designSubmittingState}
+                error={error}
+                generatedVoices={generatedVoices}
+                selectedIndex={selectedIndex}
+                onSelectIndex={setSelectedIndex}
+                playingIndex={playingIndex}
+                onPlayVoice={handlePlayVoice}
+                onGenerate={() => {
+                  void handleGenerate()
+                }}
+                onRecommendInstruct={handleRecommend}
+                isRecommending={isRecommending}
+                footer={(
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={() => {
+                        void handleGenerate()
+                      }}
+                      disabled={isDesignSubmitting}
+                      className="glass-btn-base glass-btn-secondary flex-1 py-2 rounded-lg text-sm"
+                    >
+                      {tv('regenerate')}
+                    </button>
+                    <button
+                      onClick={handleConfirmSelection}
+                      disabled={selectedIndex === null}
+                      className="glass-btn-base glass-btn-tone-success flex-1 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                    >
+                      {tv('confirmUse')}
+                    </button>
+                  </div>
+                )}
+              />
+            </>
           )}
 
-          {tab === 'clone' && onClone && (
+          {tab === 'clone' && showCloneTab && (
             <div className="space-y-3">
+              {availableCloneEngines.length > 1 && (
+                <SegmentedControl
+                  options={[
+                    ...(onOmniClone ? [{ value: 'omnivoice' as const, label: tvCreate('cloneEngineOmni') }] : []),
+                    ...(onCosyClone ? [{ value: 'cosyvoice' as const, label: tvCreate('cloneEngineCosy') }] : []),
+                  ]}
+                  value={cloneEngine}
+                  onChange={(val) => {
+                    setCloneEngine(val as CloneEngine)
+                    setError(null)
+                  }}
+                />
+              )}
+
               <div className="text-xs text-[var(--glass-text-tertiary)] bg-[var(--glass-tone-info-bg)] px-3 py-2 rounded-lg">
-                {tvCreate('cloneHint')}
+                {cloneEngine === 'cosyvoice' ? tvCreate('cosyCloneHint') : tvCreate('cloneHint')}
               </div>
+
+              {cloneEngine === 'cosyvoice' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-[var(--glass-text-tertiary)] block mb-1">{tvCreate('prefixLabel')}</label>
+                    <input
+                      type="text"
+                      value={clonePrefix}
+                      maxLength={10}
+                      onChange={(e) => setClonePrefix(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 10))}
+                      className="glass-input-base w-full px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--glass-text-tertiary)] block mb-1">{tvCreate('targetModelLabel')}</label>
+                    <select
+                      value={cloneTargetModel}
+                      onChange={(e) => setCloneTargetModel(e.target.value as CosyVoiceTargetModel)}
+                      className="glass-input-base w-full px-2 py-1.5 text-sm"
+                    >
+                      {COSYVOICE_TARGET_MODELS.map((m) => (
+                        <option key={m} value={m} className="text-black">{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--glass-text-tertiary)] block mb-1">{tvCreate('languageLabel')}</label>
+                    <select
+                      value={cloneLang}
+                      onChange={(e) => setCloneLang(e.target.value as CosyVoiceLanguageHint)}
+                      className="glass-input-base w-full px-2 py-1.5 text-sm"
+                    >
+                      {COSYVOICE_LANGUAGE_HINTS.map((l) => (
+                        <option key={l} value={l} className="text-black">{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--glass-text-tertiary)] block mb-1">{tvCreate('maxPromptLenLabel')}</label>
+                    <input
+                      type="number"
+                      min={3}
+                      max={30}
+                      value={cloneMaxLen}
+                      onChange={(e) => setCloneMaxLen(Math.min(30, Math.max(3, Number(e.target.value) || DEFAULT_MAX_PROMPT_LEN)))}
+                      className="glass-input-base w-full px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <label className="col-span-2 flex items-center gap-2 text-xs text-[var(--glass-text-secondary)]">
+                    <input
+                      type="checkbox"
+                      checked={clonePreprocess}
+                      onChange={(e) => setClonePreprocess(e.target.checked)}
+                    />
+                    {tvCreate('enablePreprocess')}
+                  </label>
+                </div>
+              )}
+
               {!cloneFile ? (
                 <div
                   onClick={() => cloneInputRef.current?.click()}
@@ -364,10 +605,11 @@ export default function VoiceDesignDialogBase({
                 {t('cancel')}
               </button>
               <button
-                onClick={doSave}
-                className="glass-btn-base glass-btn-danger flex-1 py-2 rounded-lg text-sm"
+                onClick={() => { void doSave() }}
+                disabled={isSaving}
+                className="glass-btn-base glass-btn-danger flex-1 py-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {tv('confirmReplaceBtn')}
+                {isSaving ? '…' : tv('confirmReplaceBtn')}
               </button>
             </div>
           </div>

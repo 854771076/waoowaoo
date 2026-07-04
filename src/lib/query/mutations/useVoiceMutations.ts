@@ -41,6 +41,14 @@ export function useDesignProjectVoice(projectId: string) {
             preferredName: string
             language: 'zh'
             provider?: 'bailian' | 'omnivoice'
+            flavor?: 'qwen' | 'cosyvoice-design' | 'cosyvoice-clone'
+            prefix?: string
+            targetModel?: string
+            languageHints?: string[]
+            audioUrl?: string
+            audioStorageKey?: string
+            maxPromptAudioLength?: number
+            enablePreprocess?: boolean
         }) => {
             const response = await requestTaskResponseWithError(
                 `/api/novel-promotion/${projectId}/voice-design`,
@@ -57,6 +65,7 @@ export function useDesignProjectVoice(projectId: string) {
                 targetModel?: string
                 audioBase64?: string
                 requestId?: string
+                flavor?: string
             }>(response)
         },
     })

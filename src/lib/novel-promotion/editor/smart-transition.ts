@@ -12,13 +12,13 @@ export type SmartTransitionClip = {
 }
 
 export type SmartTransitionReasonKey =
-  | 'sameScene.dissolve'
-  | 'sameScene.fade'
-  | 'sceneChange.fade'
-  | 'sceneChange.dissolve'
-  | 'panelChange.slide'
-  | 'dynamic.zoom'
-  | 'fallback.general'
+  | 'sameScene_dissolve'
+  | 'sameScene_fade'
+  | 'sceneChange_fade'
+  | 'sceneChange_dissolve'
+  | 'panelChange_slide'
+  | 'dynamic_zoom'
+  | 'fallback_general'
 
 export type SmartTransitionRecommendation = {
   kind: TwickTransitionKind
@@ -80,26 +80,26 @@ export function recommendSmartTransitions(input: SmartTransitionInput): SmartTra
       kind: 'dissolve',
       duration: 0.55,
       confidence: 0.88,
-      reasonKey: 'sameScene.dissolve',
+      reasonKey: 'sameScene_dissolve',
     })
     pushUniqueRecommendation(recommendations, {
       kind: 'fade',
       duration: 0.45,
       confidence: 0.72,
-      reasonKey: 'sameScene.fade',
+      reasonKey: 'sameScene_fade',
     })
   } else {
     pushUniqueRecommendation(recommendations, {
       kind: 'fade',
       duration: 0.7,
       confidence: 0.86,
-      reasonKey: 'sceneChange.fade',
+      reasonKey: 'sceneChange_fade',
     })
     pushUniqueRecommendation(recommendations, {
       kind: 'dissolve',
       duration: 0.6,
       confidence: 0.74,
-      reasonKey: 'sceneChange.dissolve',
+      reasonKey: 'sceneChange_dissolve',
     })
   }
 
@@ -108,7 +108,7 @@ export function recommendSmartTransitions(input: SmartTransitionInput): SmartTra
       kind: 'slide',
       duration: 0.5,
       confidence: sameStoryboard ? 0.68 : 0.6,
-      reasonKey: 'panelChange.slide',
+      reasonKey: 'panelChange_slide',
     })
   }
 
@@ -116,7 +116,7 @@ export function recommendSmartTransitions(input: SmartTransitionInput): SmartTra
     kind: 'zoom',
     duration: 0.45,
     confidence: sameStoryboard ? 0.58 : 0.52,
-    reasonKey: 'dynamic.zoom',
+    reasonKey: 'dynamic_zoom',
   })
 
   for (const kind of TWICK_TRANSITION_KINDS) {
@@ -125,7 +125,7 @@ export function recommendSmartTransitions(input: SmartTransitionInput): SmartTra
       kind,
       duration: 0.5,
       confidence: 0.5,
-      reasonKey: 'fallback.general',
+      reasonKey: 'fallback_general',
     })
   }
 

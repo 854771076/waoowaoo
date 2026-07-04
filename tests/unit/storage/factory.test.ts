@@ -24,6 +24,16 @@ describe('storage factory', () => {
     expect(() => createStorageProvider({ storageType: 'cos' })).toThrow(StorageProviderNotImplementedError)
   })
 
+  it('creates oss provider when STORAGE_TYPE=oss', () => {
+    process.env.OSS_REGION = 'oss-cn-hangzhou'
+    process.env.OSS_ACCESS_KEY_ID = 'test-key'
+    process.env.OSS_ACCESS_KEY_SECRET = 'test-secret'
+    process.env.OSS_BUCKET = 'vvicat'
+
+    const provider = createStorageProvider({ storageType: 'oss' })
+    expect(provider.kind).toBe('oss')
+  })
+
   it('throws config error on unknown storage type', () => {
     expect(() => createStorageProvider({ storageType: 'unknown' })).toThrow(StorageConfigError)
   })

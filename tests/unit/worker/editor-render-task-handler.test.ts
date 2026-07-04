@@ -12,6 +12,7 @@ const prismaMock = vi.hoisted(() => ({
 const fsMock = vi.hoisted(() => ({
   mkdir: vi.fn(async () => undefined),
   readFile: vi.fn(async () => Buffer.from('rendered-video')),
+  stat: vi.fn(async () => ({ size: 14 })),
   unlink: vi.fn(async () => undefined),
   readdir: vi.fn(async () => [] as string[]),
 }))
@@ -34,12 +35,20 @@ const mediaMock = vi.hoisted(() => ({
     updatedAt: '2026-01-01T00:00:00.000Z',
   })),
 }))
-const resolverMock = vi.hoisted(() => ({
-  isMediaObjRef: vi.fn((src: string) => src.startsWith('mediaobj://') && src.length > 'mediaobj://'.length),
-  resolveMediaUrlForServerRender: vi.fn(async (src: string) => src.startsWith('mediaobj://')
+const resolverMock = vi.hoisted(() => {
+  const resolveOne = async (src: string) => src.startsWith('mediaobj://')
     ? `https://media.example/${src.slice('mediaobj://'.length)}`
-    : src),
-}))
+    : src
+  return {
+    isMediaObjRef: vi.fn((src: string) => src.startsWith('mediaobj://') && src.length > 'mediaobj://'.length),
+    resolveMediaUrlForServerRender: vi.fn(resolveOne),
+    resolveMediaUrlsForServerRender: vi.fn(async (refs: string[]) => {
+      const resolved = new Map<string, string>()
+      await Promise.all(refs.map(async (ref) => { resolved.set(ref, await resolveOne(ref)) }))
+      return resolved
+    }),
+  }
+})
 const workerMock = vi.hoisted(() => ({
   reportTaskProgress: vi.fn(async () => undefined),
   assertTaskActive: vi.fn(async () => undefined),
@@ -131,6 +140,20 @@ describe('editor render worker handler', () => {
     renderServerMock.renderTwickVideo.mockResolvedValue('/tmp/rendered-video.mp4')
   })
 
+  it('backfills frame on legacy frameless video elements so the render server sees the canvas size', async () => {
+    const legacyProject = buildProjectData()
+    // 老数据里 video 元素没有 frame，Twick 反序列化会得到 parentSize:{0,0} -> 全黑画面
+    delete (legacyProject.tracks[0].elements[0] as Record<string, unknown>).frame
+    delete (legacyProject.tracks[0].elements[0] as Record<string, unknown>).objectFit
+
+    const result = await buildTwickRenderInput(legacyProject, { width: 720, height: 1280, fps: 30, format: 'mp4' })
+
+    const videoEl = (result.variables.input as { tracks: Array<{ elements: Array<Record<string, unknown>> }> })
+      .tracks[0].elements[0]
+    expect(videoEl.objectFit).toBe('cover')
+    expect(videoEl.frame).toEqual({ size: [720, 1280], x: 0, y: 0, rotation: 0 })
+  })
+
   it('buildTwickRenderInput resolves mediaobj:// refs to server-fetchable URLs', async () => {
     const result = await buildTwickRenderInput(buildProjectData(), { width: 720, height: 1280, fps: 30, format: 'mp4' })
 
@@ -140,8 +163,12 @@ describe('editor render worker handler', () => {
     expect(tracks[0].elements[0].props.src).toBe('https://media.example/video-media-1')
     expect(tracks[0].elements[0].props.label).toBe('/subtitle/not-media')
     expect(tracks[1].elements[0].props.src).toBe('https://media.example/audio-media-1')
-    expect(resolverMock.resolveMediaUrlForServerRender).toHaveBeenCalledWith('mediaobj://video-media-1', undefined)
-    expect(resolverMock.resolveMediaUrlForServerRender).not.toHaveBeenCalledWith('/subtitle/not-media', expect.anything())
+    expect(resolverMock.resolveMediaUrlsForServerRender).toHaveBeenCalledWith(
+      expect.arrayContaining(['mediaobj://video-media-1']),
+      undefined,
+    )
+    const passedRefs = resolverMock.resolveMediaUrlsForServerRender.mock.calls.flatMap((call) => call[0] as string[])
+    expect(passedRefs).not.toContain('/subtitle/not-media')
   })
 
 
@@ -162,6 +189,8 @@ describe('editor render worker handler', () => {
     await expect(buildTwickRenderInput(maliciousProject, { width: 720, height: 1280, fps: 30, format: 'mp4' }))
       .rejects.toThrow('EDITOR_RENDER_INVALID_MEDIA_SOURCE')
     expect(resolverMock.resolveMediaUrlForServerRender).not.toHaveBeenCalledWith(src, expect.anything())
+    const passedRefs = resolverMock.resolveMediaUrlsForServerRender.mock.calls.flatMap((call) => call[0] as string[])
+    expect(passedRefs).not.toContain(src)
   })
 
   it('fails before rendering when actual render duration exceeds frozen billing minutes', async () => {
@@ -182,13 +211,14 @@ describe('editor render worker handler', () => {
     })
   })
 
-  it('leaves PROCESSING lock intact for retryable render failures', async () => {
+  it('marks editor render FAILED on any render error, retryable or not', async () => {
+    // ponytail: shared.ts throws UnrecoverableError from worker failures, so BullMQ never
+    // retries. The handler must FAIL immediately or the PROCESSING lock strands forever.
     renderServerMock.renderTwickVideo.mockRejectedValueOnce(new Error('temporary render failure'))
 
     await expect(handleEditorRenderTask(buildJob({}, { attemptsMade: 0, opts: { attempts: 2 } }))).rejects.toThrow('temporary render failure')
 
-    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledTimes(1)
-    expect(prismaMock.novelPromotionEditorProject.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(prismaMock.novelPromotionEditorProject.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ renderStatus: 'FAILED' }),
     }))
   })
@@ -239,12 +269,15 @@ describe('editor render worker handler', () => {
         renderTaskId: 'task-render-1',
       }),
     })
-    expect(resolverMock.resolveMediaUrlForServerRender).toHaveBeenCalledWith('mediaobj://video-media-1', {
-      userId: 'user-1',
-      projectId: 'project-1',
-      editorProjectId: 'editor-project-1',
-      episodeId: 'episode-1',
-    })
+    expect(resolverMock.resolveMediaUrlsForServerRender).toHaveBeenCalledWith(
+      expect.arrayContaining(['mediaobj://video-media-1']),
+      {
+        userId: 'user-1',
+        projectId: 'project-1',
+        editorProjectId: 'editor-project-1',
+        episodeId: 'episode-1',
+      },
+    )
     expect(result).toEqual(expect.objectContaining({
       success: true,
       mediaObjectId: 'media-render-1',

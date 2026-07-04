@@ -23,6 +23,7 @@ function createElementInstanceId(prefix: string, sourceId: string): string {
 export function panelToVideoElement(
   panel: PanelVideoSource,
   startSec: number,
+  canvasSize?: { width: number; height: number },
 ): TwickMediaElement {
   const metadata: TwickSourceMetadata = {
     panelId: panel.panelId,
@@ -33,6 +34,11 @@ export function panelToVideoElement(
 
   return {
     id: createElementInstanceId('video', panel.panelId),
+    // ponytail: Twick's Track.fromJSON never back-fills trackId onto its elements, and
+    // editor.splitElement bails to { success:false } the moment getTrackById(undefined)
+    // returns nothing → clicking the scissors icon looked like a dead button. Set trackId
+    // explicitly, same as voiceLineToCaptionElement below.
+    trackId: 'track-video-main',
     type: 'video',
     s: startSec,
     e: endSec(startSec, panel.duration),
@@ -40,6 +46,18 @@ export function panelToVideoElement(
       src: toMediaObjRef(panel.videoMediaObjectId),
       time: 0,
     },
+    // ponytail: without a frame Twick's scene container is 0×0 → black canvas + broken
+    // objectFit. Give every generated video the full canvas as its frame; `cover` scales
+    // the source to fill. Twick will refit if updateVideoMeta ever succeeds.
+    objectFit: 'cover',
+    ...(canvasSize ? {
+      frame: {
+        size: [canvasSize.width, canvasSize.height],
+        x: 0,
+        y: 0,
+        rotation: 0,
+      },
+    } : {}),
     metadata,
   }
 }
@@ -56,6 +74,7 @@ export function voiceLineToAudioElement(
 
   return {
     id: createElementInstanceId('audio', voiceLine.voiceLineId),
+    trackId: 'track-audio-main',
     type: 'audio',
     s: startSec,
     e: endSec(startSec, voiceLine.duration),
@@ -80,6 +99,10 @@ export function voiceLineToCaptionElement(
 
   return {
     id: `caption-${voiceLine.voiceLineId}`,
+    // ponytail: Twick reads x/y from the track's props (useTrackDefaults=true by default),
+    // and looks the track up via element.getTrackId(). Without trackId, getTrackById returns
+    // undefined → captionProps is always {} → after drag the caption snaps back to (0, 0).
+    trackId: 'track-captions',
     type: 'caption',
     t: voiceLine.text,
     s: startSec,

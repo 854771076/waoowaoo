@@ -1,11 +1,13 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { ElementDeserializer, useTimelineContext } from '@twick/timeline'
+import { useTimelineContext } from '@twick/timeline'
 import { useEditorStageRuntime } from '@/lib/novel-promotion/stages/editor-stage-runtime-core'
-import { resolveMediaUrls } from '@/lib/novel-promotion/stages/editor-stage-runtime/useEditorProjectSync'
-import { voiceLineToAudioElement } from '@/lib/twick/asset-adapter'
 import { useWorkspaceProvider } from '../../../WorkspaceProvider'
+import {
+  addVoiceLineToTimeline,
+  setAssetDragPayload,
+} from './asset-timeline-actions'
 
 export function VoiceAssetList() {
   const t = useTranslations('novelPromotion.editor.assets')
@@ -16,31 +18,13 @@ export function VoiceAssetList() {
   const handleAddVoice = async (voiceLineId: string) => {
     const voiceLine = voiceLineSources.find((item) => item.voiceLineId === voiceLineId)
     if (!voiceLine) return
-
-    const audioTrack = editor.getTracksByType('audio')[0] ?? editor.addTrack(t('tracks.audio'), 'audio')
-    // ponytail: guard against missing/NaN `e` — Math.max(..., NaN) is NaN and would
-    // produce an audio element with s/e of NaN.
-    const audioEnds = present?.tracks
-      ?.flatMap((track) => track.elements ?? [])
-      .filter((element) => element.type === 'audio')
-      .map((element) => (typeof element.e === 'number' && Number.isFinite(element.e) ? element.e : 0)) ?? []
-    const currentEnd = audioEnds.length > 0 ? Math.max(0, ...audioEnds) : 0
-    // ponytail: Twick's updateAudioMeta rejects any src not matching /^(https?:|blob:|data:audio\/)/i,
-    // so a bare `mediaobj://` src throws "Unsafe audio source URL" → surfaces as ELEMENT_NOT_ADDED.
-    // Resolve through the shared project cache so the resolved signed URL still maps back to
-    // `mediaobj://` at save time (else the DB gets an expiring URL).
-    const rawElement = voiceLineToAudioElement(voiceLine, currentEnd)
-    const resolvedElement = await resolveMediaUrls(rawElement, projectId)
-    const element = ElementDeserializer.fromJSON(resolvedElement)
-    if (!element) return
-
-    try {
-      await editor.addElementToTrack(audioTrack, element)
-    } catch (error) {
-      // ponytail: Twick throws ELEMENT_NOT_ADDED for element-mount/geometry races.
-      // Log & drop — matches VideoAssetList's error handling.
-      console.warn('[VoiceAssetList] addElementToTrack failed', error)
-    }
+    await addVoiceLineToTimeline({
+      source: voiceLine,
+      editor,
+      present,
+      projectId,
+      trackLabel: t('tracks.audio'),
+    })
   }
 
   if (voiceLineSources.length === 0) {
@@ -54,6 +38,9 @@ export function VoiceAssetList() {
           key={voiceLine.voiceLineId}
           type="button"
           draggable
+          onDragStart={(event) => {
+            setAssetDragPayload(event.dataTransfer, { kind: 'voice-line', id: voiceLine.voiceLineId })
+          }}
           onClick={() => { void handleAddVoice(voiceLine.voiceLineId) }}
           className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-slate-50 p-2 text-left transition hover:border-slate-400 hover:bg-white"
           title={voiceLine.text || voiceLine.voiceLineId}
