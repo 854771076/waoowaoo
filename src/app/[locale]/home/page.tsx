@@ -20,6 +20,8 @@ import { createHomeProjectLaunch } from '@/lib/home/create-project-launch'
 import { formatDefaultProjectTimestamp } from '@/lib/projects/default-name'
 import { HOME_QUICK_START_MIN_ROWS } from '@/lib/ui/textarea-height'
 import AiWriteModal from '@/components/home/AiWriteModal'
+import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
+import type { MediaRef } from '@/lib/media/types'
 
 interface ProjectStats {
   episodes: number
@@ -36,6 +38,7 @@ interface Project {
   createdAt: string
   updatedAt: string
   stats?: ProjectStats
+  coverMedia?: MediaRef | null
 }
 
 const RECENT_COUNT = 5
@@ -108,6 +111,20 @@ export default function HomePage() {
         artStyle,
         episodeName: `${tc('episode')} 1`,
       })
+
+      // fire-and-forget: 自动基于故事文本生成封面
+      ;(async () => {
+        try {
+          await apiFetch(`/api/projects/${result.projectId}/cover/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ratio: '1:1' }),
+          })
+        } catch (err) {
+          // 静默失败：封面可后补
+          console.warn('Auto cover generation failed:', err)
+        }
+      })()
 
       router.push(result.target)
     } catch (error) {
@@ -354,6 +371,17 @@ export default function HomePage() {
               >
                 <div className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
                 <div className="p-5 relative z-10">
+                  {project.coverMedia?.url && (
+                    <div className="relative w-full aspect-video overflow-hidden rounded-xl mb-3 bg-[var(--glass-bg-muted)]">
+                      <MediaImageWithLoading
+                        src={project.coverMedia.url}
+                        alt={project.name}
+                        fill
+                        sizes="(max-width: 768px) 100vw, 20vw"
+                        className="object-cover"
+                      />
+                    </div>
+                  )}
                   <h3 className="text-sm font-bold text-[var(--glass-text-primary)] mb-2 group-hover:text-[var(--glass-tone-info-fg)] transition-colors line-clamp-1">
                     {project.name}
                   </h3>
