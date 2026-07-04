@@ -13,6 +13,13 @@ import { Link, useRouter } from '@/i18n/navigation'
 import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import { validateProjectDraft } from '@/lib/projects/validation'
+import ProjectCoverPicker from '@/components/projects/ProjectCoverPicker'
+import { useAssetTaskPresentation } from '@/lib/query/hooks/useTaskPresentation'
+import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
+import type { MediaRef } from '@/lib/media/types'
+import type { TaskPresentationResource } from '@/lib/task/presentation'
+
+type CoverRatio = '1:1' | '16:9' | '9:16'
 
 interface ProjectStats {
   episodes: number
@@ -30,6 +37,8 @@ interface Project {
   updatedAt: string
   totalCost?: number  // 项目总费用（CNY）
   stats?: ProjectStats
+  coverMedia?: MediaRef | null
+  coverImageRatio?: CoverRatio | null
 }
 
 interface Pagination {
@@ -94,8 +103,38 @@ export default function WorkspacePage() {
   const [searchInput, setSearchInput] = useState('')
   const [modelNotConfigured, setModelNotConfigured] = useState(false)
 
+  // 封面相关 state
+  const [createCoverFile, setCreateCoverFile] = useState<File | null>(null)
+  const [createCoverPreviewUrl, setCreateCoverPreviewUrl] = useState<string | null>(null)
+  const [createCoverRatio, setCreateCoverRatio] = useState<CoverRatio>('1:1')
+  const [createPendingGenerate, setCreatePendingGenerate] = useState(false)
+  const [editCoverMedia, setEditCoverMedia] = useState<MediaRef | null>(null)
+  const [editCoverRatio, setEditCoverRatio] = useState<CoverRatio>('1:1')
+
   const t = useTranslations('workspace')
   const tc = useTranslations('common')
+
+  const editCoverTaskPresentation = useAssetTaskPresentation(
+    editingProject?.id ?? null,
+    editingProject
+      ? [{
+        key: 'project-cover',
+        targetType: 'project',
+        targetId: editingProject.id,
+        types: ['image_project_cover'],
+        resource: 'image' as TaskPresentationResource,
+        hasOutput: !!editingProject.coverMedia || !!editCoverMedia,
+      }]
+      : [],
+    !!editingProject,
+  )
+
+  // 释放本地封面预览 URL
+  useEffect(() => {
+    return () => {
+      if (createCoverPreviewUrl) URL.revokeObjectURL(createCoverPreviewUrl)
+    }
+  }, [createCoverPreviewUrl])
 
   // 检查用户是否已登录
   useEffect(() => {
@@ -147,6 +186,13 @@ export default function WorkspacePage() {
   // 打开新建项目弹窗并检测模型配置
   const openCreateModal = useCallback(() => {
     setCreateError(null)
+    setCreateCoverFile(null)
+    setCreateCoverPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    setCreatePendingGenerate(false)
+    setCreateCoverRatio('1:1')
     setShowCreateModal(true)
     // 异步检测模型配置状态
     void (async () => {
@@ -187,6 +233,9 @@ export default function WorkspacePage() {
       })
 
       if (response.ok) {
+        const created = await response.json()
+        const newProjectId: string | undefined = created?.project?.id
+
         let shouldOpenModelSetup = true
         const preferenceResponse = await apiFetch('/api/user-preference')
         if (preferenceResponse.ok) {
@@ -196,6 +245,41 @@ export default function WorkspacePage() {
           _ulogError('获取用户偏好失败:', { status: preferenceResponse.status })
         }
 
+        // fire-and-forget 封面操作，避免阻塞创建流程
+        const capturedCoverFile = createCoverFile
+        const capturedPendingGenerate = createPendingGenerate
+        const capturedCoverRatio = createCoverRatio
+        const capturedDescription = formData.description
+        if (newProjectId) {
+          void (async () => {
+            try {
+              await apiFetch(`/api/projects/${newProjectId}/cover`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ coverImageRatio: capturedCoverRatio }),
+              })
+              if (capturedCoverFile) {
+                const fd = new FormData()
+                fd.append('file', capturedCoverFile)
+                await apiFetch(`/api/projects/${newProjectId}/cover/upload`, {
+                  method: 'POST',
+                  body: fd,
+                })
+                setTimeout(() => { void fetchProjects(1, '') }, 500)
+              } else if (capturedPendingGenerate && capturedDescription.trim()) {
+                await apiFetch(`/api/projects/${newProjectId}/cover/generate`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ratio: capturedCoverRatio }),
+                })
+                setTimeout(() => { void fetchProjects(1, '') }, 15000)
+              }
+            } catch (err) {
+              _ulogError('Cover setup failed (non-blocking):', err)
+            }
+          })()
+        }
+
         // 创建成功后刷新第一页
         setSearchQuery('')
         setSearchInput('')
@@ -203,6 +287,13 @@ export default function WorkspacePage() {
         void fetchProjects(1, '')
         setShowCreateModal(false)
         setFormData({ name: '', description: '' })
+        setCreateCoverFile(null)
+        setCreateCoverPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev)
+          return null
+        })
+        setCreatePendingGenerate(false)
+        setCreateCoverRatio('1:1')
 
         if (shouldOpenModelSetup) {
           alert(t('analysisModelRequiredAfterCreate'))
@@ -260,6 +351,8 @@ export default function WorkspacePage() {
         setShowEditModal(false)
         setEditingProject(null)
         setEditFormData({ name: '', description: '' })
+        setEditCoverMedia(null)
+        setEditCoverRatio('1:1')
       } else {
         setEditError(await readApiErrorMessage(response, t('updateFailed')))
       }
@@ -316,6 +409,8 @@ export default function WorkspacePage() {
       name: project.name,
       description: project.description || ''
     })
+    setEditCoverMedia(project.coverMedia || null)
+    setEditCoverRatio(project.coverImageRatio || '1:1')
     setShowEditModal(true)
   }
 
@@ -407,6 +502,19 @@ export default function WorkspacePage() {
                 <div className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
                 <div className="p-5 relative z-10">
+                  {/* 封面缩略图 */}
+                  {project.coverMedia?.url && (
+                    <div className="relative w-full aspect-video overflow-hidden rounded-xl mb-3 bg-[var(--glass-bg-muted)]">
+                      <MediaImageWithLoading
+                        src={project.coverMedia.url}
+                        alt={project.name}
+                        fill
+                        sizes="(max-width: 768px) 100vw, 25vw"
+                        className="object-cover"
+                      />
+                    </div>
+                  )}
+
                   {/* 操作按钮 */}
                   <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
                     <button
@@ -642,6 +750,48 @@ export default function WorkspacePage() {
                   maxLength={500}
                 />
               </div>
+              <div className="mb-6">
+                <ProjectCoverPicker
+                  ratio={createCoverRatio}
+                  canEdit
+                  canGenerate={!!formData.description.trim()}
+                  coverMedia={createCoverPreviewUrl && createCoverFile ? {
+                    id: 'local',
+                    publicId: '',
+                    url: createCoverPreviewUrl,
+                    mimeType: createCoverFile.type || null,
+                    sizeBytes: createCoverFile.size,
+                    width: null,
+                    height: null,
+                    durationMs: null,
+                  } : null}
+                  onRatioChange={setCreateCoverRatio}
+                  onPickUpload={(file) => {
+                    setCreateCoverPreviewUrl((prev) => {
+                      if (prev) URL.revokeObjectURL(prev)
+                      return URL.createObjectURL(file)
+                    })
+                    setCreateCoverFile(file)
+                    setCreatePendingGenerate(false)
+                  }}
+                  onTriggerGenerate={() => {
+                    setCreatePendingGenerate(true)
+                    setCreateCoverFile(null)
+                    setCreateCoverPreviewUrl((prev) => {
+                      if (prev) URL.revokeObjectURL(prev)
+                      return null
+                    })
+                  }}
+                  onRemove={() => {
+                    setCreateCoverFile(null)
+                    setCreateCoverPreviewUrl((prev) => {
+                      if (prev) URL.revokeObjectURL(prev)
+                      return null
+                    })
+                    setCreatePendingGenerate(false)
+                  }}
+                />
+              </div>
               {createError && (
                 <p className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600">
                   {createError}
@@ -654,6 +804,13 @@ export default function WorkspacePage() {
                     setShowCreateModal(false)
                     setCreateError(null)
                     setFormData({ name: '', description: '' })
+                    setCreateCoverFile(null)
+                    setCreateCoverPreviewUrl((prev) => {
+                      if (prev) URL.revokeObjectURL(prev)
+                      return null
+                    })
+                    setCreatePendingGenerate(false)
+                    setCreateCoverRatio('1:1')
                   }}
                   className="glass-btn-base glass-btn-secondary px-4 py-2"
                   disabled={createLoading}
@@ -718,6 +875,77 @@ export default function WorkspacePage() {
                   maxLength={500}
                 />
               </div>
+              <div className="mb-6">
+                <ProjectCoverPicker
+                  projectId={editingProject.id}
+                  ratio={editCoverRatio}
+                  coverMedia={editCoverMedia}
+                  canEdit
+                  canGenerate={!!editFormData.description.trim()}
+                  taskPresentation={editCoverTaskPresentation.getState('project-cover')}
+                  onRatioChange={async (r) => {
+                    setEditCoverRatio(r)
+                    try {
+                      await apiFetch(`/api/projects/${editingProject.id}/cover`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ coverImageRatio: r }),
+                      })
+                    } catch (err) {
+                      _ulogError('ratio save failed', err)
+                    }
+                  }}
+                  onPickUpload={async (file) => {
+                    try {
+                      const fd = new FormData()
+                      fd.append('file', file)
+                      const res = await apiFetch(`/api/projects/${editingProject.id}/cover/upload`, {
+                        method: 'POST',
+                        body: fd,
+                      })
+                      const json = await res.json().catch(() => ({}))
+                      const media: MediaRef | null = json?.media || null
+                      if (media) {
+                        setEditCoverMedia(media)
+                        setProjects(prev => prev.map(p =>
+                          p.id === editingProject.id ? { ...p, coverMedia: media } : p
+                        ))
+                      }
+                      void fetchProjects(pagination.page, searchQuery)
+                    } catch (err) {
+                      _ulogError('cover upload failed', err)
+                    }
+                  }}
+                  onTriggerGenerate={async () => {
+                    try {
+                      await apiFetch(`/api/projects/${editingProject.id}/cover/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ratio: editCoverRatio }),
+                      })
+                      setTimeout(() => { void fetchProjects(pagination.page, searchQuery) }, 15000)
+                    } catch (err) {
+                      _ulogError('cover generate failed', err)
+                    }
+                  }}
+                  onRemove={async () => {
+                    try {
+                      await apiFetch(`/api/projects/${editingProject.id}/cover`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ coverMediaId: null }),
+                      })
+                      setEditCoverMedia(null)
+                      setProjects(prev => prev.map(p =>
+                        p.id === editingProject.id ? { ...p, coverMedia: null } : p
+                      ))
+                      void fetchProjects(pagination.page, searchQuery)
+                    } catch (err) {
+                      _ulogError('cover remove failed', err)
+                    }
+                  }}
+                />
+              </div>
               {editError && (
                 <p className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600">
                   {editError}
@@ -731,6 +959,8 @@ export default function WorkspacePage() {
                     setEditingProject(null)
                     setEditError(null)
                     setEditFormData({ name: '', description: '' })
+                    setEditCoverMedia(null)
+                    setEditCoverRatio('1:1')
                   }}
                   className="glass-btn-base glass-btn-secondary px-4 py-2"
                   disabled={createLoading}
