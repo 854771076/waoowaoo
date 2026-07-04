@@ -30,6 +30,7 @@ const BILLABLE_TASK_TYPES = new Set<TaskType>([
   TASK_TYPE.REGENERATE_GROUP,
   TASK_TYPE.ASSET_HUB_IMAGE,
   TASK_TYPE.ASSET_HUB_MODIFY,
+  TASK_TYPE.IMAGE_PROJECT_COVER,
   TASK_TYPE.ANALYZE_NOVEL,
   TASK_TYPE.STORY_TO_SCRIPT_RUN,
   TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN,
@@ -302,6 +303,7 @@ export function buildDefaultTaskBillingInfo(taskType: TaskType, payload: AnyPayl
     case TASK_TYPE.REGENERATE_GROUP:
     case TASK_TYPE.ASSET_HUB_IMAGE:
     case TASK_TYPE.ASSET_HUB_MODIFY:
+    case TASK_TYPE.IMAGE_PROJECT_COVER:
       return buildImageTaskInfo(taskType, payload)
     case TASK_TYPE.VIDEO_PANEL:
       return buildVideoTaskInfo(taskType, payload)

@@ -56,6 +56,7 @@ const TASK_TYPE_OWNER_MAP = {
   [TASK_TYPE.EDITOR_AI_ENHANCE]: 'tests/integration/api/editor-ai-routes.test.ts',
   [TASK_TYPE.EDITOR_AI_VOICE_OPTIMIZE]: 'tests/integration/api/editor-ai-routes.test.ts',
   [TASK_TYPE.EDITOR_RENDER]: 'tests/unit/billing/service.test.ts',
+  [TASK_TYPE.IMAGE_PROJECT_COVER]: 'tests/unit/worker/project-cover-task-handler.test.ts',
 } as const satisfies Record<TaskType, string>
 
 export const TASK_TYPE_CATALOG: ReadonlyArray<TaskTypeCoverageEntry> = (Object.values(TASK_TYPE) as TaskType[])

@@ -42,6 +42,8 @@ async function processImageTask(job: Job<TaskJobData>) {
       return await handlePanelImageTask(job)
     case TASK_TYPE.PANEL_VARIANT:
       return await handlePanelVariantTask(job)
+    case TASK_TYPE.IMAGE_PROJECT_COVER:
+      throw new Error('project cover handler not implemented yet')
     default:
       throw new Error(`Unsupported image task type: ${job.data.type}`)
   }

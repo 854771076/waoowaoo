@@ -85,6 +85,7 @@ export const TASK_TYPE = {
   EDITOR_AI_ENHANCE: 'editor_ai_enhance',
   EDITOR_AI_VOICE_OPTIMIZE: 'editor_ai_voice_optimize',
   EDITOR_RENDER: 'editor_render',
+  IMAGE_PROJECT_COVER: 'image_project_cover',
 } as const
 
 export type TaskType = (typeof TASK_TYPE)[keyof typeof TASK_TYPE]

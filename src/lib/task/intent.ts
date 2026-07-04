@@ -69,6 +69,7 @@ const TASK_INTENT_BY_TYPE: Record<TaskType, TaskIntent> = {
   [TASK_TYPE.EDITOR_AI_ENHANCE]: 'modify',
   [TASK_TYPE.EDITOR_AI_VOICE_OPTIMIZE]: 'modify',
   [TASK_TYPE.EDITOR_RENDER]: 'process',
+  [TASK_TYPE.IMAGE_PROJECT_COVER]: 'generate',
 }
 
 export function resolveTaskIntent(taskType: string | null | undefined): TaskIntent {
