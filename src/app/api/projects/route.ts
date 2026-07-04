@@ -5,6 +5,8 @@ import { apiHandler, ApiError } from '@/lib/api-errors'
 import { toMoneyNumber } from '@/lib/billing/money'
 import { validateArtStyleValue } from '@/lib/art-styles'
 import { resolveTaskLocale } from '@/lib/task/resolve-locale'
+import { getMediaObjectById } from '@/lib/media/service'
+import type { MediaRef } from '@/lib/media/types'
 import {
   formatProjectValidationIssue,
   normalizeProjectDraft,
@@ -55,6 +57,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
     prisma.project.count({ where }),
     prisma.project.findMany({
       where,
+      include: { coverMedia: true },
       orderBy: { updatedAt: 'desc' },  // 先按更新时间排序获取所有匹配项目
       skip: (page - 1) * pageSize,
       take: pageSize
@@ -163,9 +166,20 @@ export const GET = apiHandler(async (request: NextRequest) => {
     })
   )
 
+  // Batch-resolve coverMedia MediaRefs for the page
+  const coverMediaIds = [...new Set(projects.map(p => p.coverMediaId).filter((id): id is string => !!id))]
+  const coverMediaMap = new Map<string, MediaRef>()
+  if (coverMediaIds.length > 0) {
+    const coverRefs = await Promise.all(coverMediaIds.map(id => getMediaObjectById(id)))
+    coverRefs.forEach((ref, i) => {
+      if (ref) coverMediaMap.set(coverMediaIds[i], ref)
+    })
+  }
+
   // 合并项目、费用与统计
-  const projectsWithStats = projects.map(project => ({
+  const projectsWithStats = projects.map(({ coverMedia: _unused, ...project }) => ({
     ...project,
+    coverMedia: project.coverMediaId ? coverMediaMap.get(project.coverMediaId) || null : null,
     totalCost: costMap.get(project.id) ?? 0,
     stats: statsMap.get(project.id) ?? { episodes: 0, images: 0, videos: 0, panels: 0, firstEpisodePreview: null }
   }))

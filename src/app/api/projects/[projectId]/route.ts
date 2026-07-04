@@ -2,7 +2,7 @@ import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { addSignedUrlsToProject, deleteObjects } from '@/lib/storage'
-import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
+import { resolveStorageKeyFromMediaValue, getMediaObjectById } from '@/lib/media/service'
 import { logProjectAction } from '@/lib/logging/semantic'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
@@ -30,7 +30,8 @@ export const GET = apiHandler(async (
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
-      user: true
+      user: true,
+      coverMedia: true,
     }
   })
 
@@ -48,11 +49,23 @@ export const GET = apiHandler(async (
     data: { lastAccessedAt: new Date() }
   }).catch(err => _ulogError('更新访问时间失败:', err))
 
+  // Resolve coverMedia to a serializable MediaRef (BigInt-safe)
+  const coverMediaRef = project.coverMediaId
+    ? await getMediaObjectById(project.coverMediaId)
+    : null
+
   // 这个 API 只返回基础项目信息
   // 项目附属业务数据通过各自的 API 获取（如 /api/novel-promotion/[projectId]）
   const projectWithSignedUrls = addSignedUrlsToProject(project)
+  // Strip the raw Prisma coverMedia relation (contains BigInt sizeBytes) and inject sanitized ref
+  const { coverMedia: _rawCoverMedia, ...projectRest } = projectWithSignedUrls as typeof projectWithSignedUrls & { coverMedia?: unknown }
 
-  return NextResponse.json({ project: projectWithSignedUrls })
+  return NextResponse.json({
+    project: {
+      ...projectRest,
+      coverMedia: coverMediaRef,
+    },
+  })
 })
 
 // PATCH - 更新项目配置
