@@ -329,6 +329,7 @@ model NovelPromotionProject {
   lastEpisodeId   String?
   imageResolution String                    @default("2K")
   importStatus    String?
+  coverImageRatio   String?                   // '1:1' | '16:9' | '9:16'
   characters      NovelPromotionCharacter[]
   episodes        NovelPromotionEpisode[]
   locations       NovelPromotionLocation[]
@@ -424,6 +425,8 @@ model Project {
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @default(now()) @updatedAt
   lastAccessedAt     DateTime?
+  coverMediaId   String?       @unique
+  coverMedia     MediaObject?  @relation("ProjectCover", fields: [coverMediaId], references: [id], onDelete: SetNull)
   novelPromotionData NovelPromotionProject?
   user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   promptOverrides    ProjectPromptOverride[]
@@ -1199,6 +1202,7 @@ model MediaObject {
   storyboardImageVersionMedia           StoryboardImageVersion[]     @relation("StoryboardImageVersionMedia")
   novelPromotionEditorRenderOutputs     NovelPromotionEditorProject[] @relation("NovelPromotionEditorRenderOutputMedia")
   novelPromotionEditorAssets            NovelPromotionEditorAsset[]  @relation("NovelPromotionEditorAssetMedia")
+  projectCover   Project?      @relation("ProjectCover")
 
   @@index([createdAt])
   @@map("media_objects")
