@@ -14,6 +14,7 @@ import {
   handlePanelImageTask,
   handlePanelVariantTask,
 } from './handlers/image-task-handlers'
+import { handleProjectCoverImageTask } from './handlers/project-cover-image-task-handler'
 
 type AnyObj = Record<string, unknown>
 
@@ -43,7 +44,7 @@ async function processImageTask(job: Job<TaskJobData>) {
     case TASK_TYPE.PANEL_VARIANT:
       return await handlePanelVariantTask(job)
     case TASK_TYPE.IMAGE_PROJECT_COVER:
-      throw new Error('project cover handler not implemented yet')
+      return await handleProjectCoverImageTask(job)
     default:
       throw new Error(`Unsupported image task type: ${job.data.type}`)
   }
