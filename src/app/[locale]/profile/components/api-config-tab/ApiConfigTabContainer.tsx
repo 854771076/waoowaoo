@@ -292,29 +292,30 @@ export function ApiConfigTabContainer() {
             onDeleteProvider={deleteProvider}
             onAddModel={addModel}
             onSyncModels={(providerId) => {
-              // ponytail: 将 PRESET_MODELS (目录内置的官方模型) 中属于该 provider 但用户列表里还没有的,逐个 addModel。
-              // addModel 本地 setState 后 performSave 持久化,无需新建 API。
-              const existing = new Set(models.map((m) => m.modelKey))
-              const toAdd = PRESET_MODELS.filter((m) => {
-                if (m.provider !== providerId) return false
-                const key = encodeModelKey(m.provider, m.modelId)
-                return !existing.has(key)
-              })
-              let added = 0
-              for (const m of toAdd) {
-                // ponytail: PRESET_MODELS 是 Omit<CustomModel,'enabled'|'modelKey'|'price'> 形状;
-                // addModel 接受 Omit<CustomModel,'enabled'>,其内部会补 modelKey/price/enabled,这里显式构造缺省字段。
-                addModel({
-                  ...m,
-                  modelKey: encodeModelKey(m.provider, m.modelId),
-                  price: 0,
-                  priceLabel: '--',
-                })
-                added += 1
+              // ponytail: PRESET_MODELS 已经在 hooks.ts fetchConfig() 里被合并进 models 数组(enabled=false),
+              // 所以 sync 的真正语义是"把所有属于该 provider 且 disabled 的 preset 模型 toggle 到 enabled"。
+              // 非 preset 的自定义模型不动,也不新增行(重复 add 会被 setModels 合并但 enabled 不一定是 true)。
+              let enabled = 0
+              for (const preset of PRESET_MODELS) {
+                if (preset.provider !== providerId) continue
+                const key = encodeModelKey(preset.provider, preset.modelId)
+                const existing = models.find((m) => m.modelKey === key)
+                if (existing && !existing.enabled) {
+                  toggleModel(key)
+                  enabled += 1
+                } else if (!existing) {
+                  // 兜底:如果模型因为某种原因不在列表里(老数据、preset 更新),走 addModel 补行
+                  addModel({
+                    ...preset,
+                    modelKey: key,
+                    price: 0,
+                    priceLabel: '--',
+                  })
+                  enabled += 1
+                }
               }
-              if (added > 0) {
-                // best-effort notification, no i18n key yet
-                console.info(`[api-config] synced ${added} preset models for ${providerId}`)
+              if (enabled > 0) {
+                console.info(`[api-config] enabled ${enabled} preset models for ${providerId}`)
               }
             }}
             onFlushConfig={flushConfig}
