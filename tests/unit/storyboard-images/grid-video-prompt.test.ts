@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { executeAiTextStep, executeAiVisionStep } from '@/lib/ai-runtime'
+import type { AiStepExecutionResult } from '@/lib/ai-runtime/types'
 import { isGridLayout, rewriteGridVideoPrompt, parseGridVideoResponse } from '@/lib/storyboard-images/grid-video-prompt'
 
 const promptMock = vi.hoisted(() => ({
@@ -330,7 +331,7 @@ describe('rewriteGridVideoPrompt: srtSegment handling', () => {
     vi.mocked(executeAiTextStep).mockResolvedValue({
       text: JSON.stringify({ prompt: 'rewritten prompt text', duration: 8 }),
       usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-    })
+    } as AiStepExecutionResult)
 
     const result = await rewriteGridVideoPrompt({
       ...baseParams,
@@ -393,7 +394,7 @@ describe('rewriteGridVideoPrompt: srtSegment handling', () => {
     vi.mocked(executeAiTextStep).mockResolvedValue({
       text: JSON.stringify({ prompt: correctlyRewritten, duration: 10 }),
       usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-    })
+    } as AiStepExecutionResult)
 
     const result = await rewriteGridVideoPrompt({
       ...baseParams,
