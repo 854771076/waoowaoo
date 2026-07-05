@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream'
+
 export type StorageType = 'minio' | 'local' | 'cos' | 'oss'
 
 export interface UploadObjectParams {
@@ -20,6 +22,19 @@ export interface SignedUrlParams {
   expiresInSeconds: number
 }
 
+export interface GetObjectStreamOptions {
+  range?: { start: number; end?: number } | null
+}
+
+export interface GetObjectStreamResult {
+  body: Readable
+  contentType?: string
+  contentLength?: number
+  contentRange?: string
+  acceptsRanges?: string
+  statusCode?: number
+}
+
 export interface StorageProvider {
   readonly kind: StorageType
   uploadObject(params: UploadObjectParams): Promise<UploadObjectResult>
@@ -27,6 +42,7 @@ export interface StorageProvider {
   deleteObjects(keys: string[]): Promise<DeleteObjectsResult>
   getSignedObjectUrl(params: SignedUrlParams): Promise<string>
   getObjectBuffer(key: string): Promise<Buffer>
+  getObjectStream?(key: string, options?: GetObjectStreamOptions): Promise<GetObjectStreamResult>
   extractStorageKey(input: string | null | undefined): string | null
   toFetchableUrl(inputUrl: string): string
   generateUniqueKey(params: { prefix: string; ext: string }): string

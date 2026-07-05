@@ -182,7 +182,11 @@ export async function rewriteGridVideoPrompt(
     camera_move: cameraMove || (locale === 'zh' ? '平滑连贯运镜' : 'smooth continuous camera move'),
   }
 
-  // Vision path (preferred)
+  // Vision path (preferred). Wrap in a tight timeout + no retries: a vision call
+  // that takes longer than VISION_TIMEOUT_MS is almost certainly going to 524/timeout,
+  // and retrying it multiplies the wait 3x before falling back to text path.
+  const VISION_TIMEOUT_MS = 500_000
+  const visionTimeoutSignal = AbortSignal.timeout(VISION_TIMEOUT_MS)
   const effectiveVisionModel = visionModel || model
   if (effectiveVisionModel && imageUrl) {
     try {
@@ -193,6 +197,7 @@ export async function rewriteGridVideoPrompt(
           imageUrlPreview: imageUrl.substring(0, 100) + '...',
           imageUrlLength: imageUrl.length,
           gridSize,
+          timeoutMs: VISION_TIMEOUT_MS,
         })
       }
       const base64Image = await normalizeToBase64ForGeneration(imageUrl)
@@ -211,21 +216,33 @@ export async function rewriteGridVideoPrompt(
         })
       }
 
-      const completion = await executeAiVisionStep({
-        userId,
-        model: effectiveVisionModel,
-        prompt: filledPrompt,
-        imageUrls: [base64Image],
-        temperature: 0.7,
-        projectId: projectId || undefined,
-        action: 'grid_video_prompt_rewrite',
-        meta: {
-          stepId: 'grid_video_prompt_rewrite',
-          stepTitle: locale === 'zh' ? '宫格视频提示词重写（视觉）' : 'Grid video prompt rewrite (vision)',
-          stepIndex: 1,
-          stepTotal: 1,
-        },
-      })
+      // Race against a 45s timeout so a stuck vision call fails fast instead of
+      // waiting for Cloudflare's 100s 524 (which with retries compounds to
+      // 5+ minutes before falling back to the text path). The timeout does not
+      // abort the underlying HTTP request (so the provider may still bill us),
+      // but the user-visible wait is bounded.
+      const completion = await Promise.race([
+        executeAiVisionStep({
+          userId,
+          model: effectiveVisionModel,
+          prompt: filledPrompt,
+          imageUrls: [base64Image],
+          temperature: 0.7,
+          projectId: projectId || undefined,
+          action: 'grid_video_prompt_rewrite',
+          meta: {
+            stepId: 'grid_video_prompt_rewrite',
+            stepTitle: locale === 'zh' ? '宫格视频提示词重写（视觉）' : 'Grid video prompt rewrite (vision)',
+            stepIndex: 1,
+            stepTotal: 1,
+          },
+        }),
+        new Promise<never>((_, reject) => {
+          visionTimeoutSignal.addEventListener('abort', () => {
+            reject(new Error(`vision path timed out after ${VISION_TIMEOUT_MS}ms`))
+          }, { once: true })
+        }),
+      ])
 
       const completionText = completion.text || ''
       if (typeof console !== 'undefined') {

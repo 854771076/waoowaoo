@@ -1,17 +1,30 @@
-import type { DeleteObjectsResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
+import type {
+  DeleteObjectsResult,
+  GetObjectStreamOptions,
+  GetObjectStreamResult,
+  SignedUrlParams,
+  StorageProvider,
+  UploadObjectParams,
+  UploadObjectResult,
+} from '@/lib/storage/types'
 import { normalizeKey, requireEnv, toFetchableUrl } from '@/lib/storage/utils'
 import { StorageConfigError } from '@/lib/storage/errors'
+import type { Readable } from 'node:stream'
 
 // ali-oss SDK types (package ships no .d.ts; keep surface minimal)
-type OssGetResult = { content: Buffer }
+type OssGetResult = { content: Buffer; res?: { status: number; headers: Record<string, string | string[] | undefined> } }
+type OssGetStreamResult = {
+  stream: Readable
+  res?: { status: number; headers: Record<string, string | string[] | undefined> }
+}
 type OssDeleteMultiResult = { deleted?: string[] }
 type OssClient = {
   put(key: string, body: Buffer, options?: { mime?: string; headers?: Record<string, string> }): Promise<unknown>
-  get(key: string): Promise<OssGetResult>
-  getStream(key: string): Promise<{ stream: NodeJS.ReadableStream }>
+  get(key: string, options?: { headers?: Record<string, string> }): Promise<OssGetResult>
+  getStream(key: string, options?: { headers?: Record<string, string> }): Promise<OssGetStreamResult>
   delete(key: string): Promise<unknown>
   deleteMulti(keys: string[], options?: { quiet?: boolean }): Promise<OssDeleteMultiResult>
-  signatureUrl(key: string, options?: { expires?: number; method?: string }): string
+  signatureUrl(key: string, options?: { expires?: number; method?: string; headers?: Record<string, string> }): string
   options: {
     bucket: string
     endpoint: string
@@ -142,6 +155,30 @@ export class OssStorageProvider implements StorageProvider {
     const client = await this.getClient()
     const result = await client.get(normalizeKey(key))
     return result.content
+  }
+
+  async getObjectStream(key: string, options?: GetObjectStreamOptions): Promise<GetObjectStreamResult> {
+    const client = await this.getClient()
+    const normalizedKey = normalizeKey(key)
+    const headers: Record<string, string> = {}
+    if (options?.range) {
+      const { start, end } = options.range
+      headers.Range = end != null ? `bytes=${start}-${end}` : `bytes=${start}-`
+    }
+    const result = await client.getStream(normalizedKey, Object.keys(headers).length ? { headers } : undefined)
+    const resHeaders = result.res?.headers ?? {}
+    const pickHeader = (name: string): string | undefined => {
+      const val = resHeaders[name]
+      return Array.isArray(val) ? val[0] : (val as string | undefined)
+    }
+    return {
+      body: result.stream,
+      contentType: pickHeader('content-type'),
+      contentLength: pickHeader('content-length') ? Number(pickHeader('content-length')) : undefined,
+      contentRange: pickHeader('content-range'),
+      acceptsRanges: pickHeader('accept-ranges') ?? 'bytes',
+      statusCode: result.res?.status,
+    }
   }
 
   extractStorageKey(input: string | null | undefined): string | null {
