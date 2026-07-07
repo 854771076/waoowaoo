@@ -32,7 +32,7 @@ Add an in-browser 3D "director's desk" (previsualization / blocking tool) for ev
 | 集成形态 | **同域独立页面路由** (`/[locale]/workspace/[projectId]/director-desk?panelId=xxx`)，`window.open` 新窗口。同域共享 cookie，直接 REST API，不用 postMessage 协议。性能隔离（独立 React 树），可拖副屏。 |
 | 角色呈现 | **混合模式**：默认 billboard 立牌（贴角色形象图，一眼可辨），可切换 mannequin（程序化胶囊人，调姿势体型）。 |
 | 场景 | **网格地面 + 场景图弧形背板**（180° 圆柱内贴图），背板可切显隐/透明度/yaw。道具用 billboard 立牌（贴道具图）。 |
-| 持久化 | **数据库**：`NovelPromotionPanel` 新增 `directorLayout` (TEXT, JSON 工程) + `directorShotMediaId` (FK → MediaObject, 激活机位截图)。跨设备可复用，机位图进入媒体库。 |
+| 持久化 | **数据库**：`NovelPromotionPanel` 新增 `directorLayout` (TEXT, JSON 工程)；新增 `NovelPromotionDirectorShot` 表 (1:N)，一张镜头可绑定多机位图（含各自 camera 参数 + MediaObject 截图 + 备注）。跨设备复用，所有机位图进媒体库，其中一张 isActive 用于 photographyRules 反写。 |
 | 生图接入 | **图 + 文字双约束**：机位图作为参考图第一张（构图优先）；机位/角色坐标注入 `director_shot` prompt context；保存时反向同步 `photographyRules.characters[].screen_position/posture/facing` 中文 prose。 |
 | 3D 栈 | `three` + `@react-three/fiber` + `@react-three/drei` + `zustand`。从参考项目移植核心 mannequin 代码，按本项目风格改写。 |
 
@@ -78,33 +78,56 @@ DirectorDeskPage (Next.js App Router page, 'use client')
 └──────┴────────────────────────────────┴───────────────┘
    │
    │  保存: POST /api/.../director-desk/save
-   │    body: { panelId, project, activeCameraSnapshot }
+   │    body: { panelId, project, shots: Array<{cameraId,name,isActive,fov,position,target,note,snapshotDataUrl}> }
    ▼
 NovelPromotionPanel.directorLayout (TEXT JSON)
-NovelPromotionPanel.directorShotMediaId (FK → MediaObject)
+NovelPromotionDirectorShot[]  (1:N: cameraId/name/isActive/fov/pos/target/imageMediaId/note)
    │
    │  下次生成分镜图
    ▼
 handlePanelImageTask:
-  1. 机位图 → referenceImages[0] (weight 0.9)
-  2. director_shot 元数据 → 注入 buildPanelPromptContext
-  3. 反向同步 photographyRules 的站位/朝向文字
+  1. 所有绑定的机位图 → referenceImages 最前 (按 isActive DESC, createdAt ASC)
+  2. director_shot 元数据 → 注入 buildPanelPromptContext (含 active_camera + bound_shots)
+  3. 反向同步 photographyRules 的站位/朝向文字 (由激活机位算)
 ```
 
 ---
 
 ## 4. Data Model
 
-### 4.1 Prisma additions — `NovelPromotionPanel`
+### 4.1 Prisma additions — `NovelPromotionPanel` + new `NovelPromotionDirectorShot`
 
 ```prisma
 // append to NovelPromotionPanel model:
 directorLayout          String?  @db.Text
-directorShotMediaId     String?
-directorShotMedia       MediaObject? @relation("NovelPromotionPanelDirectorShotMedia", fields: [directorShotMediaId], references: [id], onDelete: SetNull)
+directorShots           NovelPromotionDirectorShot[]
+
+// new model:
+model NovelPromotionDirectorShot {
+  id            String   @id @default(uuid())
+  panelId       String
+  panel         NovelPromotionPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  cameraId      String
+  name          String   @default("机位")
+  isActive      Boolean  @default(false)
+  fov           Float    @default(50)
+  posX          Float    @default(0)
+  posY          Float    @default(1.55)
+  posZ          Float    @default(5.4)
+  targetX       Float    @default(0)
+  targetY       Float    @default(1.05)
+  targetZ       Float    @default(0)
+  imageMediaId  String
+  imageMedia    MediaObject @relation(fields: [imageMediaId], references: [id], onDelete: Cascade)
+  note          String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([panelId])
+}
 ```
 
-Pattern matches existing `sketchImageMedia` / `previousImageMedia` relations. Both fields nullable; migration additive, no backfill needed.
+Why a new table (not one FK): user may bind multiple camera shots to a panel (e.g. opening close-up + two-shot + wide); each has its own screenshot + camera params. All bound shots feed as reference images to panel generation. At most one shot has `isActive = true` (used for photographyRules reverse-sync; UI marks it with ★). Migration additive — new table + one optional column, no backfill needed.
 
 ### 4.2 `directorLayout` JSON schema (TypeScript)
 
@@ -176,7 +199,13 @@ interface DirectorCamera {
 
 ### 4.3 Director shot media on MediaObject
 
-The screenshot is uploaded via `uploadObject` (JPEG) → `ensureMediaObjectFromStorageKey` → FK attached to panel exactly like `sketchImageMedia`. Screenshot is rendered at project `videoRatio`, short edge 1024px, JPEG q=0.88.
+Each shot's screenshot is uploaded via `uploadObject` (JPEG) → `ensureMediaObjectFromStorageKey` → referenced by `NovelPromotionDirectorShot.imageMediaId`. Screenshot rendered at project `videoRatio`, short edge 1024px, JPEG q=0.88.
+
+### 4.4 DirectorProject JSON vs bound shots
+
+Cameras in `directorLayout` describe the camera **definitions** (geometry) in the scene. The bound shots (DirectorShot rows) are the **committed screenshots** — user may capture multiple times per camera, or once per camera. On save, the UI sends an explicit `shots[]` array; the server replaces all existing DirectorShot rows for that panel (delete-many then create-many inside a transaction). Save = fresh snapshot of all bound shots; unbinding a shot removes it on next save.
+
+In-session captures that user hasn't yet "bound to panel" live only in zustand memory as dataURLs; they are NOT persisted until included in the `shots[]` payload.
 
 ---
 
@@ -186,7 +215,7 @@ All under `/api/novel-promotion/[projectId]/director-desk/`, using existing `api
 
 ### 5.1 `GET /load?panelId=xxx`
 
-Returns panel data + resolved asset URLs + existing `directorLayout` if present:
+Returns panel data + resolved asset URLs + existing `directorLayout` + committed shots:
 
 ```ts
 {
@@ -197,7 +226,8 @@ Returns panel data + resolved asset URLs + existing `directorLayout` if present:
     location: null | { name, imageUrl, imageMediaId, availableSlots: string[] },
     photographyRules: PhotographyRules | null,
     actingNotes: ActingNotes | null,
-    directorLayout: DirectorProject | null
+    directorLayout: DirectorProject | null,
+    directorShots: Array<{ id, cameraId, name, isActive, fov, pos:[x,y,z], target:[x,y,z], imageUrl, note?, createdAt }>,
   },
   project: {
     videoRatio: string,            // '9:16' | '16:9' | '1:1'
@@ -205,26 +235,42 @@ Returns panel data + resolved asset URLs + existing `directorLayout` if present:
 }
 ```
 
-All `imageUrl` fields are signed COS URLs (1h TTL) resolved server-side. Prop resolution: match `panel.props[]` names against project `NovelPromotionLocation where assetKind='prop'` (case-insensitive, slash-alias).
+All `imageUrl` fields are signed COS URLs (1h TTL) resolved server-side. Prop resolution: match `panel.props[]` names against project `NovelPromotionLocation where assetKind='prop'` (case-insensitive, slash-alias). `directorShots` ordered by `isActive DESC, createdAt ASC` (active first).
 
 ### 5.2 `POST /save`
 
 Body:
 ```ts
-{ panelId: string, project: DirectorProject, activeCameraSnapshot: string }
+{
+  panelId: string,
+  project: DirectorProject,
+  shots: Array<{
+    clientId?: string,
+    cameraId: string,
+    name: string,
+    isActive: boolean,
+    fov: number,
+    position: [number,number,number],
+    target: [number,number,number],
+    note?: string,
+    snapshotDataUrl: string   // data:image/jpeg;base64,...
+  }>
+}
 ```
-`activeCameraSnapshot` = dataURL (image/jpeg, base64) of the active camera capture (with labels + aspect frame burned in).
+
+Validation: at most one shot in `shots[]` has `isActive: true` (if multiple, first wins; if none, first shot is auto-marked active). Each snapshotDataURL ≤ 5MB decoded; ≤ 8 shots per save (sanity cap). Total body ≤ ~40MB.
 
 Handler steps (in `prisma.$transaction`):
 1. Auth + verify panel belongs to project.
 2. Validate `project` schema (version === 1, arrays, background color regex, objects within reasonable bounds).
-3. Validate size: `directorLayout` JSON ≤ 1MB; dataURL ≤ 5MB (after strip prefix, base64-decoded).
-4. Decode dataURL → Buffer → upload COS via `uploadObject` → `ensureMediaObjectFromStorageKey` → get `MediaRef`.
-5. Compute `photographyRules` patch from active camera + character positions (see §7.3).
-6. `prisma.novelPromotionPanel.update({ where: { id: panelId }, data: { directorLayout: JSON.stringify(project), directorShotMediaId: mediaRef.id, photographyRules: newPhotographyRulesJsonOrPatch } })`.
-7. Return `{ success: true }`.
+3. Validate shots: shape, dataURL regex, sizes, unique isActive.
+4. `prisma.novelPromotionDirectorShot.deleteMany({ where: { panelId } })` — replace all bound shots (save is idempotent re-upload).
+5. For each shot in `shots[]`: decode dataURL → upload COS via `uploadObject` → `ensureMediaObjectFromStorageKey` → create `NovelPromotionDirectorShot` row with camera params + note + `imageMediaId`. Collect per-shot failures.
+6. Compute `photographyRules` patch from the active shot (isActive=true) + character positions (see §8.3).
+7. `prisma.novelPromotionPanel.update({ where: { id: panelId }, data: { directorLayout: JSON.stringify(project), photographyRules: newPhotographyRulesJsonOrPatch } })`.
+8. Return `{ success: true, shotIds: string[], warning?: 'all_screenshots_failed' | 'some_screenshots_failed' }`.
 
-If screenshot upload fails (storage error): still save `directorLayout` + photographyRules patch, but leave `directorShotMediaId` unchanged; return `{ success: true, warning: 'screenshot_upload_failed' }`. (Guard: don't lose a user's layout work because of a transient upload failure.)
+If some screenshots fail to upload, those shots are skipped (not created) and `warning: 'some_screenshots_failed'` is returned. If ALL fail, still save `directorLayout` + photographyRules patch and return `{ success: true, warning: 'all_screenshots_failed', shotIds: [] }`. (Guard: don't lose a user's layout work because of transient upload failures.)
 
 ### 5.3 `POST /close`
 
@@ -250,7 +296,7 @@ Add a button to `ImageSectionActionButtons` (bottom-center pill):
 - Not disabled when panel has no image (director desk is used *before* generation to seed composition)
 - Click: `window.open(\`/${locale}/workspace/${projectId}/director-desk?panelId=${panelId}\`, '_blank', 'width=1400,height=900')`
 
-Optional nicety (v1, small): if `panel.directorShotMediaId` exists, show a small "🎬" corner badge on the panel card image indicating "this panel has a saved blocking". Skip if it adds too much CSS friction.
+Optional nicety (v1, small): if `panel.directorShots.length > 0`, show a small "🎬 N" corner badge on the panel card image indicating "N director shots bound to this panel". Skip if it adds too much CSS friction.
 
 ### 6.3 3D Canvas
 
@@ -313,7 +359,7 @@ Reference project shell sizes: left 220px, right 300px. Copy.
 - **PropPanel:** transform (position/rotation Y/uniform scale), image picker (lists project props with images).
 - **CameraPanel:**
   - Tab 1 "属性": camera dropdown/switcher, name, fov slider (10–120), position XYZ inputs, target XYZ inputs, "看向选中对象" button (fills target from selected object's position), "添加机位" / "删除机位" (cannot delete last camera), "设为激活机位".
-  - Tab 2 "截图": thumbnail list of captures for this camera (stored in zustand memory, not persisted); "截取当前机位" button (renders to canvas, crops to aspect ratio, bakes Text labels); thumbnail click → preview modal; per-capture: "设为激活截图" / "下载" / "删除". The "active camera snapshot" sent to save API is the latest capture of activeCameraId (or, if none, auto-capture on save).
+  - Tab 2 "截图": thumbnail list of in-session captures for this camera (dataURLs in zustand memory); "截取当前机位" button (renders to canvas, crops to aspect ratio, bakes Text labels); thumbnail click → preview modal; per-capture: "⭐ 设为主机位（激活）" / "📌 绑定到镜头" / "下载" / "删除". Captures marked "bound" are added to the `shots[]` payload sent to save API and become `NovelPromotionDirectorShot` rows (persisted). At most one capture per camera is starred as active (isActive). Unbound captures disappear on window close.
 - **CrowdPanel:** rows/cols steppers, spacing sliders, color picker, transform, "解散群演" button (converts to individual characters? YAGNI: just remove the crowd).
 
 ### 6.6 TopBar
@@ -322,7 +368,7 @@ Reference project shell sizes: left 220px, right 300px. Copy.
 - Center: segmented control "导演视角 | 机位视角".
 - Right:
   - "重置" (text button + tooltip "重置为上次保存"): confirms → re-call load API, overwrite store.
-  - "保存" (primary button): captures active camera if no fresh capture → POST save API → toast success → clear dirty.
+  - "保存" (primary button): collects all "bound" captures from all cameras (if none, auto-captures the active camera once and binds it), posts the `shots[]` array to save API → toast success → clear dirty, store returned shotIds.
   - "保存并关闭": save → on success `window.close()`.
   - "×" close icon: if dirty → confirm dialog ("放弃未保存的布局？ 保存 / 放弃 / 取消"); if clean → `window.close()`.
 
@@ -438,19 +484,21 @@ If both `photographyRules` and characters are empty/malformed: place characters 
 
 ## 8. Downstream Integration (Panel Image Generation)
 
-### 8.1 Reference image: director shot as first reference
+### 8.1 Reference images: all bound director shots prepended
 
-In `collectPanelReferenceImages` (`src/lib/workers/handlers/image-task-handler-shared.ts`), if `panel.directorShotMediaId` is set, prepend it to refs with an explicit role/priority marker:
+In `collectPanelReferenceImages` (`src/lib/workers/handlers/image-task-handler-shared.ts`), load all `NovelPromotionDirectorShot` rows for the panel (ordered `isActive DESC, createdAt ASC`), resolve their `imageMediaId` to signed URLs, and prepend ALL to refs before sketch/character/location images:
 
 ```ts
-if (panel.directorShotMediaId) {
-  const media = await resolveMedia(panel.directorShotMediaId)
-  if (media) refs.unshift({ url: toSignedUrlIfCos(media.storageKey), role: 'director_shot' })
+// panelLike now also carries directorShots: Array<{imageMediaId: string}>
+// (resolved via Prisma include by the caller and passed in, or resolved inline)
+for (const shot of panel.directorShots ?? []) {
+  const media = await prisma.mediaObject.findUnique({ where: { id: shot.imageMediaId } })
+  if (media) refs.push(getSignedUrl(media.storageKey, 3600))
 }
 // then: sketch → character appearances → location image
 ```
 
-Existing `normalizeReferenceImagesForGeneration` deduplicates by URL; adjust if needed so the director shot stays first. No weight field exists in the current ref type — rely on position ordering (first image = strongest reference). The image prompt template already instructs the model to follow reference images; the in-prompt `director_shot` metadata (§8.2) reinforces this verbally.
+Ordering matters: first image is strongest visual reference; the active shot goes first so its composition dominates. Existing `normalizeReferenceImagesForGeneration` deduplicates by URL. The in-prompt `director_shot` metadata (§8.2) reinforces verbally.
 
 ### 8.2 Prompt context: `director_shot` field
 
@@ -459,32 +507,43 @@ In `buildPanelPromptContext` (`panel-image-task-handler.ts`), after building the
 ```ts
 const director = safeParseJson(panel.directorLayout) as DirectorProject | null
 if (director?.version === 1) {
-  const cam = director.cameras.find(c => c.id === director.activeCameraId)
-  if (cam) {
-    panelLike.director_shot = {
-      camera_fov: cam.fov,
-      camera_position: { x: round(cam.position[0],2), y: round(cam.position[1],2), z: round(cam.position[2],2) },
-      camera_target:   { x: round(cam.target[0],2),   y: round(cam.target[1],2),   z: round(cam.target[2],2)   },
-      characters: director.objects
-        .filter(o => o.kind === 'character' && o.visible)
-        .map(o => ({
-          name: o.name,
-          position: { x: round(o.transform.position[0],2), y: round(o.transform.position[1],2), z: round(o.transform.position[2],2) },
-          facing_deg: Math.round(((o.facing ?? 0) * 180) / Math.PI),
-          posture: o.posePresetId ?? 'stand',
-          render_mode: o.mode,
-        })),
-    }
+  const activeCam = director.cameras.find(c => c.id === director.activeCameraId)
+  const boundShots = panel.directorShots ?? []
+  const round2 = (n: number) => Math.round(n*100)/100
+  panelLike.director_shot = {
+    active_camera: activeCam ? {
+      camera_fov: activeCam.fov,
+      camera_position: { x: round2(activeCam.position[0]), y: round2(activeCam.position[1]), z: round2(activeCam.position[2]) },
+      camera_target:   { x: round2(activeCam.target[0]),   y: round2(activeCam.target[1]),   z: round2(activeCam.target[2]) },
+    } : null,
+    bound_shots: boundShots.map(s => ({
+      name: s.name,
+      is_active: s.isActive,
+      camera_fov: s.fov,
+      camera_position: { x: round2(s.posX), y: round2(s.posY), z: round2(s.posZ) },
+      camera_target:   { x: round2(s.targetX), y: round2(s.targetY), z: round2(s.targetZ) },
+      note: s.note ?? null,
+    })),
+    characters: director.objects
+      .filter(o => o.kind === 'character' && o.visible)
+      .map(o => ({
+        name: o.name,
+        position: { x: round2(o.transform.position[0]), y: round2(o.transform.position[1]), z: round2(o.transform.position[2]) },
+        facing_deg: Math.round(((o.facing ?? 0) * 180) / Math.PI),
+        posture: o.posePresetId ?? 'stand',
+        render_mode: o.mode,
+      })),
   }
 }
 ```
 
-This gets serialized into the existing `storyboard_text_json_input` placeholder in both single and grid prompt templates — no template restructuring needed, but append a strict rule to both `single_panel_image.zh.txt` and `panel_grid_image.zh.txt` under the `【分镜数据】` block:
+This gets serialized into the existing `storyboard_text_json_input` placeholder in both single and grid prompt templates — no template restructuring needed, but append a strict rule to both `single_panel_image.zh.txt`/`.en.txt` and `panel_grid_image.zh.txt`/`.en.txt`:
 
 ```
-- 若分镜数据包含 director_shot（导演台预演机位元数据），则必须严格遵循其摄像机 FOV、机位坐标、look-at 目标、角色站位和朝向来构图。
-  参考图中第一张为导演台机位图（含角色站位示意和名字标注），是最高优先级的构图参考。
-  坐标系说明：单位米，y 轴向上，z 轴负方向为镜头前方，x 轴向右。
+- 若分镜数据包含 director_shot（导演台预演机位元数据），必须严格遵循其机位构图与角色站位。
+  director_shot.active_camera 为主机位（构图最高优先级），按其 FOV/机位坐标/目标点及角色站位/朝向构图。
+  director_shot.bound_shots 列出绑定到该镜头的其他机位图（含特写、反打等）；参考图前 N 张即对应这些机位图（激活主机位第一张），需保持角色形象/光影/风格一致，但整体构图以 active_camera 为准。
+  坐标系：单位米，y 轴向上，z 轴负方向为镜头前方，x 轴向右。
 ```
 
 Grid video prompt rewrites automatically benefit: `gridVideoPromptAt` flow reads `gridGenerationContext`, which is a serialized snapshot of the promptContext — `director_shot` rides along.
@@ -525,16 +584,22 @@ Then merge into existing photographyRules:
 
 ## 9. Screenshot Generation
 
-The "active camera snapshot" is produced client-side via R3F's `gl.domElement.toDataURL('image/jpeg', 0.88)` (or `gl.getContext().canvas.toDataURL`). Before readback:
+Each capture is produced client-side via R3F's `gl.domElement.toDataURL('image/jpeg', 0.88)`. Before readback:
 
-1. Switch view to camera view on active camera.
+1. Switch to camera view on the selected camera (user can capture any camera, not just active).
 2. Ensure labels (drei `<Text>`), grid-of-thirds overlay, aspect frame are visible.
-3. Ensure UI chrome (TransformControls gizmo, OrbitControls, GizmoHelper, Tree/Props panels are DOM and not on the canvas — already safe) is hidden; specifically hide the camera rig wireframe for the active camera (don't show a wireframe of the camera we're looking through).
-4. Render one frame; read back; crop to the project's `videoRatio` aspect (letterbox crop around center) at short-edge 1024px.
-   - Use Three.js viewport or a secondary offscreen canvas + `drawImage` to crop and resize; the cropped JPEG is what gets sent to the save API.
-5. If capture fails (e.g., toDataURL blocked, or context lost), fall back to not sending a screenshot (per §5.2 guard: layout still saves).
+3. Hide UI chrome (TransformControls gizmo, OrbitControls, GizmoHelper are DOM/drei helpers not drawn to canvas — already safe); specifically hide camera rig wireframes during capture.
+4. Render one frame; read back; crop to project `videoRatio` at short-edge 1024px.
+   - Use a secondary offscreen canvas + `drawImage` to crop/resize; the cropped JPEG is stored as a dataURL in zustand.
+5. If capture fails (toDataURL blocked, context lost) → show toast; user can retry.
 
-Non-active cameras can have captures too (stored in memory as dataURLs in zustand `captures: Record<cameraId, Array<{id, dataUrl, meta}>>`) for the director's own reference while staging; only the active camera's latest capture is uploaded.
+Captures start as in-memory dataURLs per camera in zustand (`captures: Record<cameraId, Array<{id, dataUrl, name, isBound, isActiveStar, note}>>`). User can:
+- 📌 **绑定到镜头** (bind): mark this capture for commit on next save.
+- ⭐ star one bound capture as the **active shot** (drives photographyRules reverse-sync; the star also marks it as "primary" in UI).
+- Download the JPEG locally.
+- Delete.
+
+On save, only bound captures are uploaded and become `NovelPromotionDirectorShot` rows. Previously-bound shots that are no longer in the bound list are deleted (save = full replace of bound shots).
 
 ---
 
@@ -559,12 +624,17 @@ Non-active cameras can have captures too (stored in memory as dataURLs in zustan
 - `director-desk/load.test.ts`
   - Auth required; wrong project → 403.
   - No directorLayout yet → directorLayout null; all imageUrls signed.
-  - Existing directorLayout → parses and returns back.
+  - Existing directorLayout + directorShots → parses and returns both; all imageUrls signed; shots ordered active-first.
+  - Multiple shots → all returned.
 - `director-desk/save.test.ts`
-  - Happy path: directorLayout + valid dataURL → panel updated; MediaObject created; directorShotMediaId set.
+  - Happy path: directorLayout + shots[] with 2 dataURLs → panel updated; 2 NovelPromotionDirectorShot rows created + their MediaObjects; first shot marked isActive.
   - Corrupt JSON → 400.
   - JSON > 1MB → 400.
-  - Storage failure (mocked): returns warning; directorLayout + photographyRules still saved; directorShotMediaId unchanged.
+  - > 8 shots → 400.
+  - Multiple isActive shots → only first becomes active (server normalizes).
+  - Partial storage failure (one screenshot fails): other shots created; warning 'some_screenshots_failed'; directorLayout + photographyRules still saved.
+  - Total storage failure: warning 'all_screenshots_failed'; directorLayout + photographyRules still saved, no shots created.
+  - Re-saving replaces existing shots (old rows deleted).
   - Unmatched character name in photographyRules patch appends a new entry rather than crashing.
 - `director-desk/auth.test.ts`: user B cannot save a panel in user A's project.
 
@@ -652,21 +722,26 @@ tests/guards/director-desk/old-panel-generates.test.ts
 
 Modified files:
 ```
-prisma/schema.prisma                               (add directorLayout + directorShotMediaId to NovelPromotionPanel)
+prisma/schema.prisma                               (add directorLayout to NovelPromotionPanel + new NovelPromotionDirectorShot model)
+prisma/migrations/<timestamp>_add_director_desk/   (migration SQL)
 src/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/storyboard/ImageSectionActionButtons.tsx
                                                      (add 🎬 导演台 button)
 src/lib/workers/handlers/panel-image-task-handler.ts
-                                                     (buildPanelPromptContext: attach director_shot)
+                                                     (buildPanelPromptContext: attach director_shot with active_camera + bound_shots)
 src/lib/workers/handlers/image-task-handler-shared.ts
-                                                     (collectPanelReferenceImages: prepend director shot)
+                                                     (collectPanelReferenceImages: prepend all bound director shots, active first)
 lib/prompts/novel-promotion/single_panel_image.zh.txt
 lib/prompts/novel-promotion/single_panel_image.en.txt
 lib/prompts/novel-promotion/panel_grid_image.zh.txt
 lib/prompts/novel-promotion/panel_grid_image.en.txt
-                                                     (append director_shot rule under 分镜数据)
+                                                     (append director_shot rule under 分镜数据, note bound_shots + active_camera semantics)
 src/lib/workers/handlers/panel-variant-task-handler.ts
                                                      (verify director_shot flows through, add if not)
-messages/zh/common.json (or storyboard.json)         (add storyboard.directorDesk key)
+messages/zh/storyboard.json
+messages/en/storyboard.json                         (add storyboard.directorDesk key block)
+```
+
+Also add i18n keys for director-shot actions: `directorDesk.bindShot`, `directorDesk.starActive`, `directorDesk.unbind` etc.
 messages/en/*.json
 ```
 
