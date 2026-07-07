@@ -1,6 +1,8 @@
 'use client'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
+import { useParams } from 'next/navigation'
+import { Clapperboard } from 'lucide-react'
 import { AppIcon } from '@/components/ui/icons'
 import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
 import { getImageGenerationCountOptions, normalizeImageGenerationCount } from '@/lib/image-generation/count'
@@ -35,6 +37,9 @@ export default function ImageSectionActionButtons({
   triggerPulse,
 }: ImageSectionActionButtonsProps) {
   const t = useTranslations('storyboard')
+  const locale = useLocale()
+  const params = useParams<{ projectId?: string }>()
+  const projectId = params?.projectId
   const { count, setCount } = useImageGenerationCount('storyboard-candidates')
   // 分镜宫格数：读写项目级配置（所有镜头共享、与项目配置同源）
   const runtime = useWorkspaceStageRuntime()
@@ -95,6 +100,22 @@ export default function ImageSectionActionButtons({
               <AppIcon name="chart" className="w-2.5 h-2.5" />
               <span>{t('aiData.viewData')}</span>
             </button>
+            {projectId && (
+              <>
+                <div className="w-px h-3 bg-[var(--glass-stroke-base)]" />
+                <button
+                  onClick={() => {
+                    const url = `/${locale}/workspace/${projectId}/director-desk?panelId=${panelId}`
+                    window.open(url, '_blank', 'width=1400,height=900')
+                  }}
+                  className={`glass-btn-base glass-btn-secondary flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] transition-all active:scale-95 ${isSubmittingPanelImageTask || isModifying ? 'opacity-75' : ''}`}
+                  title={t('directorDesk.button')}
+                >
+                  <Clapperboard className="w-2.5 h-2.5" />
+                  <span>{t('directorDesk.button')}</span>
+                </button>
+              </>
+            )}
             {imageUrl && (
               <button
                 onClick={onOpenEditModal}
