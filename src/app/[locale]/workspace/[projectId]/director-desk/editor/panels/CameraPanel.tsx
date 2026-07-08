@@ -27,7 +27,7 @@ function Triplet({ value, onChange }: { value: [number, number, number]; onChang
             onChange={(e) => {
               const n = Number(e.target.value)
               if (!Number.isFinite(n)) return
-              const next: [number, number, number] = [...value] as any
+              const next: [number, number, number] = [value[0], value[1], value[2]]
               next[i] = n
               onChange(next)
             }}
@@ -52,8 +52,10 @@ export function CameraPanel() {
   const addCameraCapture = useDirectorStore((s) => s.addCameraCapture)
   const toggleCaptureBound = useDirectorStore((s) => s.toggleCaptureBound)
   const toggleCaptureActive = useDirectorStore((s) => s.toggleCaptureActive)
+  const setCaptureName = useDirectorStore((s) => s.setCaptureName)
   const setCaptureNote = useDirectorStore((s) => s.setCaptureNote)
   const removeCameraCapture = useDirectorStore((s) => s.removeCameraCapture)
+  const bindAllCaptures = useDirectorStore((s) => s.bindAllCaptures)
   const videoRatio = useDirectorStore((s) => s.videoRatio)
   const selectedObject = useSelectedObject()
   const [tab, setTab] = useState<'props' | 'shots'>('props')
@@ -170,47 +172,53 @@ export function CameraPanel() {
 
       {tab === 'shots' && (
         <div className="flex flex-col gap-3">
-          <button
-            onClick={() => void doCapture()}
-            disabled={capturing}
-            className="rounded bg-blue-500/80 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-          >
-            {capturing ? '截取中…' : '截取当前机位'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void doCapture()}
+              disabled={capturing}
+              className="flex-1 rounded bg-blue-500/80 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {capturing ? '截取中…' : '截取当前机位'}
+            </button>
+            <button
+              onClick={bindAllCaptures}
+              disabled={captures.length === 0}
+              className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/70 hover:bg-white/10 disabled:opacity-40"
+            >
+              📌 全部绑定
+            </button>
+          </div>
           {captures.length === 0 ? (
-            <div className="text-xs text-white/40">暂无截图</div>
+            <div className="text-xs text-white/40">暂无截图，点击上方按钮截取当前机位</div>
           ) : (
             <div className="flex flex-col gap-2">
               {captures.map((cap) => (
-                <div key={cap.id} className="rounded border border-white/10 bg-white/5 p-2">
+                <div key={cap.id} className={`rounded border bg-white/5 p-2 ${cap.isBound ? 'border-emerald-400/30' : 'border-white/10'}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={cap.dataUrl} alt={cap.name} className="mb-1 max-h-32 w-full rounded object-contain" />
                   <input
                     value={cap.name}
-                    onChange={(e) => {
-                      // no name setter — reuse note setter would confuse; skip name edit
-                      cap.name = e.target.value
-                    }}
-                    className="mb-1 w-full rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] outline-none focus:border-white/30"
+                    onChange={(e) => setCaptureName(cam.id, cap.id, e.target.value)}
+                    className="mb-1 w-full rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[11px] outline-none focus:border-white/30"
                   />
                   <input
                     placeholder="备注"
                     value={cap.note ?? ''}
                     onChange={(e) => setCaptureNote(cam.id, cap.id, e.target.value)}
-                    className="mb-1 w-full rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] outline-none focus:border-white/30"
+                    className="mb-1 w-full rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[11px] outline-none focus:border-white/30"
                   />
                   <div className="flex flex-wrap gap-1">
                     <button
                       onClick={() => toggleCaptureBound(cam.id, cap.id)}
                       className={`rounded border px-1.5 py-0.5 text-[10px] ${cap.isBound ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-200' : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'}`}
                     >
-                      {cap.isBound ? '已绑定' : '绑定'}
+                      {cap.isBound ? '📌 已绑定' : '绑定'}
                     </button>
                     <button
                       onClick={() => toggleCaptureActive(cam.id, cap.id)}
                       className={`rounded border px-1.5 py-0.5 text-[10px] ${cap.isActiveStar ? 'border-amber-400/50 bg-amber-500/25 text-amber-200' : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'}`}
                     >
-                      {cap.isActiveStar ? '★ 主机位' : '☆'}
+                      {cap.isActiveStar ? '★ 主机位' : '☆ 设为主机位'}
                     </button>
                     <a
                       href={cap.dataUrl}
@@ -230,6 +238,9 @@ export function CameraPanel() {
               ))}
             </div>
           )}
+          <p className="text-[10px] leading-relaxed text-white/40">
+            提示：绑定（📌）的截图会随保存发送到 AI 出图，设为主机位（★）的作为构图最优先参考。每个机位可绑定多张不同角度的截图。
+          </p>
         </div>
       )}
     </div>

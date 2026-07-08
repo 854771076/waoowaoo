@@ -6,6 +6,14 @@ import { create } from 'zustand'
 import type { DirectorProject, DirectorObject, DirectorCamera, DirectorSceneSettings } from '@/lib/director-desk/schema'
 import { createDefaultDirectorProject } from '@/lib/director-desk/schema'
 
+interface LoadedPanel {
+  directorLayout: unknown
+  directorShots?: Array<{ id?: string; cameraId: string; name: string; isActive: boolean; imageUrl: string; imageMediaId?: string | null; note?: string; fov: number; pos: [number,number,number]; target: [number,number,number] }>
+  characters: Array<{ imageMediaId?: string | null; imageUrl?: string | null }>
+  props: Array<{ imageMediaId?: string | null; imageUrl?: string | null }>
+  location?: { imageUrl?: string | null } | null
+}
+
 export interface CameraCapture {
   id: string
   dataUrl: string
@@ -14,6 +22,13 @@ export interface CameraCapture {
   name: string
   note?: string
   capturedAt: number
+  /** Set for shots hydrated from DB so save can retain/update them without re-uploading. */
+  persistedShotId?: string
+  persistedImageMediaId?: string
+  /** DB camera fields (fov/pos/target) at time of hydration, for save fallback if camera moved. */
+  persistedFov?: number
+  persistedPos?: [number, number, number]
+  persistedTarget?: [number, number, number]
 }
 
 interface DirectorState {
@@ -49,10 +64,12 @@ interface DirectorState {
   addCameraCapture: (cameraId: string, dataUrl: string, name?: string) => string
   toggleCaptureBound: (cameraId: string, captureId: string) => void
   toggleCaptureActive: (cameraId: string, captureId: string) => void
+  setCaptureName: (cameraId: string, captureId: string, name: string) => void
   setCaptureNote: (cameraId: string, captureId: string, note: string) => void
   removeCameraCapture: (cameraId: string, captureId: string) => void
+  bindAllCaptures: () => void
   clearBoundCaptures: () => void
-  hydrateBoundShots: (shots: Array<{cameraId:string;name:string;isActive:boolean;imageUrl:string;note?:string}>) => void
+  hydrateBoundShots: (shots: Array<{id?:string;cameraId:string;name:string;isActive:boolean;imageUrl:string;imageMediaId?:string|null;note?:string;fov?:number;pos?:[number,number,number];target?:[number,number,number]}>) => void
   setGlCanvas: (canvas: HTMLCanvasElement | null) => void
   undo: () => void
   redo: () => void
@@ -98,6 +115,11 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
           name: s.name || '机位',
           note: s.note,
           capturedAt: Date.now(),
+          persistedShotId: (s as { id?: string }).id,
+          persistedImageMediaId: (s as { imageMediaId?: string | null }).imageMediaId ?? undefined,
+          persistedFov: s.fov,
+          persistedPos: s.pos,
+          persistedTarget: s.target,
         }
         if (!cameraCaptures[s.cameraId]) cameraCaptures[s.cameraId] = []
         cameraCaptures[s.cameraId].push(cap)
@@ -120,25 +142,29 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
 
   async reset() {
     // Caller reloads from API; for now just mark not dirty and clear history (actual reload is page-level)
-    const { panelId, projectId, videoRatio } = get()
+    const { panelId, projectId } = get()
     try {
       const res = await fetch(`/api/novel-promotion/${projectId}/director-desk/load?panelId=${encodeURIComponent(panelId)}`)
       if (!res.ok) return
-      const data = await res.json()
+      const data = await res.json() as {
+        panel: LoadedPanel
+        project: { videoRatio: string }
+      }
       const { initDirectorProjectFromPanel } = await import('@/lib/director-desk/init')
       const { parseDirectorProject } = await import('@/lib/director-desk/schema')
-      const proj = (data.panel.directorLayout && parseDirectorProject(data.panel.directorLayout))
-        || initDirectorProjectFromPanel({ panel: data.panel as any, project: data.project })
+      const parsed = data.panel.directorLayout ? parseDirectorProject(data.panel.directorLayout) : null
+      const proj: DirectorProject = parsed
+        ?? initDirectorProjectFromPanel({ panel: data.panel as unknown as Parameters<typeof initDirectorProjectFromPanel>[0]['panel'], project: data.project })
       // Re-inject signed imageUrls onto objects (not persisted)
       for (const o of proj.objects) {
-        const ch = data.panel.characters.find((c: any) => c.imageMediaId === o.refId)
-        const pr = data.panel.props.find((p: any) => p.imageMediaId === o.refId)
+        const ch = data.panel.characters.find((c) => c.imageMediaId === o.refId)
+        const pr = data.panel.props.find((p) => p.imageMediaId === o.refId)
         const url = ch?.imageUrl ?? pr?.imageUrl ?? null
-        if (url) (o as any).imageUrl = url
+        if (url) o.imageUrl = url
       }
       // Set backdrop signed url
       if (data.panel.location?.imageUrl) {
-        (proj.scene as any).backdropImageUrl = data.panel.location.imageUrl
+        proj.scene.backdropImageUrl = data.panel.location.imageUrl
       }
       set({
         project: proj, history: [], future: [], isDirty: false, selectedId: null, viewMode: 'director',
@@ -166,7 +192,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const next = clone(project)
     const o = next.objects.find(x => x.id === id)
     if (!o) return
-    ;(o as any)[k] = v
+    ;(o as Record<keyof DirectorObject, unknown>)[k] = v
     set(pushHistory(get(), next))
   },
 
@@ -183,7 +209,9 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const { project } = get()
     const next = clone(project)
     const id = uid(partial.kind)
-    const { id: _ignore, ...rest } = partial as Partial<DirectorObject>
+    // omit caller-provided id (we generate our own); build rest without it
+    const { id: _unusedId, ...partialRest } = partial as Partial<DirectorObject> & { id?: string }
+    void _unusedId
     const newObj: DirectorObject = {
       kind: partial.kind,
       name: partial.name,
@@ -193,7 +221,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       color: partial.color ?? '#7AA7FF',
       mode: partial.mode ?? 'billboard',
       transform: partial.transform ?? { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-      ...rest,
+      ...partialRest,
       id,
     }
     next.objects.push(newObj)
@@ -262,7 +290,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const next = clone(project)
     const c = next.cameras.find(x => x.id === id)
     if (!c) return
-    ;(c as any)[k] = v
+    ;(c as Record<keyof DirectorCamera, unknown>)[k] = v
     set(pushHistory(get(), next))
   },
 
@@ -301,6 +329,15 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     set({ cameraCaptures: next, isDirty: true })
   },
 
+  setCaptureName(cameraId, captureId, name) {
+    const { cameraCaptures } = get()
+    const list = [...(cameraCaptures[cameraId] ?? [])]
+    const cap = list.find(c => c.id === captureId)
+    if (!cap) return
+    cap.name = name
+    set({ cameraCaptures: { ...cameraCaptures, [cameraId]: list }, isDirty: true })
+  },
+
   setCaptureNote(cameraId, captureId, note) {
     const { cameraCaptures } = get()
     const list = [...(cameraCaptures[cameraId] ?? [])]
@@ -312,15 +349,26 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
 
   removeCameraCapture(cameraId, captureId) {
     const { cameraCaptures } = get()
+    // Drop from store entirely. Save uses deleteMany+createMany so only the
+    // currently-bound list (which excludes removed entries) is recreated.
     const list = (cameraCaptures[cameraId] ?? []).filter(c => c.id !== captureId)
     set({ cameraCaptures: { ...cameraCaptures, [cameraId]: list }, isDirty: true })
+  },
+
+  bindAllCaptures() {
+    const { cameraCaptures } = get()
+    const next: Record<string, CameraCapture[]> = {}
+    for (const [cId, caps] of Object.entries(cameraCaptures)) {
+      next[cId] = caps.map(c => ({ ...c, isBound: true }))
+    }
+    set({ cameraCaptures: next, isDirty: true })
   },
 
   clearBoundCaptures() {
     const { cameraCaptures } = get()
     const next: Record<string, CameraCapture[]> = {}
     for (const [cId, caps] of Object.entries(cameraCaptures)) {
-      next[cId] = caps.filter(c => !c.dataUrl.startsWith('data:')).map(c => ({ ...c, isBound: false }))
+      next[cId] = caps.filter(c => !!c.persistedShotId).map(c => ({ ...c, isBound: false }))
     }
     set({ cameraCaptures: next })
   },
@@ -354,7 +402,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   },
 }))
 
-function buildCapturesFromShots(shots: Array<{cameraId:string;name:string;isActive:boolean;imageUrl:string;note?:string}>): Record<string, CameraCapture[]> {
+function buildCapturesFromShots(shots: Array<{id?:string;cameraId:string;name:string;isActive:boolean;imageUrl:string;imageMediaId?:string|null;note?:string;fov?:number;pos?:[number,number,number];target?:[number,number,number]}>): Record<string, CameraCapture[]> {
   const out: Record<string, CameraCapture[]> = {}
   for (const s of shots) {
     if (!out[s.cameraId]) out[s.cameraId] = []
@@ -366,6 +414,11 @@ function buildCapturesFromShots(shots: Array<{cameraId:string;name:string;isActi
       name: s.name || '机位',
       note: s.note,
       capturedAt: Date.now(),
+      persistedShotId: s.id,
+      persistedImageMediaId: s.imageMediaId ?? undefined,
+      persistedFov: s.fov,
+      persistedPos: s.pos,
+      persistedTarget: s.target,
     })
   }
   return out

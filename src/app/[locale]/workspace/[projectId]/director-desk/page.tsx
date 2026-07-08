@@ -14,7 +14,7 @@ interface LoadResponse {
     props: Array<{ imageMediaId: string | null; imageUrl: string | null; name: string }>
     location: { imageUrl: string | null; imageMediaId: string | null; name: string; availableSlots: unknown } | null
     directorLayout: DirectorProject | null
-    directorShots: Array<{ cameraId: string; name: string; isActive: boolean; imageUrl: string | null; note: string | null; fov: number; pos: [number, number, number]; target: [number, number, number] }>
+    directorShots: Array<{ id: string; cameraId: string; name: string; isActive: boolean; imageUrl: string | null; imageMediaId: string | null; note: string | null; fov: number; pos: [number, number, number]; target: [number, number, number] }>
     photographyRules?: unknown
     shotType?: string
     cameraMove?: string
@@ -49,23 +49,28 @@ export default function DirectorDeskPage() {
         if (aborted) return
         const proj: DirectorProject =
           data.panel.directorLayout ??
-          initDirectorProjectFromPanel({ panel: data.panel as any, project: data.project })
+          initDirectorProjectFromPanel({
+            panel: data.panel as unknown as Parameters<typeof initDirectorProjectFromPanel>[0]['panel'],
+            project: data.project,
+          })
         for (const o of proj.objects) {
           const ch = data.panel.characters.find((c) => c.imageMediaId === o.refId)
           const pr = data.panel.props.find((p) => p.imageMediaId === o.refId)
           const url = ch?.imageUrl ?? pr?.imageUrl ?? null
-          if (url) (o as any).imageUrl = url
+          if (url) o.imageUrl = url
         }
         if (data.panel.location?.imageUrl) {
-          ;(proj.scene as any).backdropImageUrl = data.panel.location.imageUrl
+          proj.scene.backdropImageUrl = data.panel.location.imageUrl
         }
         const boundShots = data.panel.directorShots
           .filter((s) => s.imageUrl)
           .map((s) => ({
+            id: s.id,
             cameraId: s.cameraId,
             name: s.name,
             isActive: s.isActive,
             imageUrl: s.imageUrl as string,
+            imageMediaId: s.imageMediaId,
             note: s.note ?? undefined,
             fov: s.fov,
             pos: s.pos,
@@ -84,7 +89,7 @@ export default function DirectorDeskPage() {
   if (error) {
     let text: string = error
     try {
-      const msg = t(error as any)
+      const msg = t(error as Parameters<typeof t>[0])
       if (msg) text = msg
     } catch {
       /* not a known key */

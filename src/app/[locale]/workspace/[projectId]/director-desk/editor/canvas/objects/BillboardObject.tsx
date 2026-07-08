@@ -37,7 +37,7 @@ function Placeholder({ color, height }: { color: string; height: number }) {
 export function BillboardObject({ object }: Props) {
   const showLabels = useDirectorStore((s) => s.project.scene.showLabels)
   const height = object.kind === 'character' ? 1.7 : 0.6
-  const url = (object as any).imageUrl as string | undefined | null
+  const url = object.imageUrl
   const facing = object.facing
 
   const disc = useMemo(

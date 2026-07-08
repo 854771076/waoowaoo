@@ -23,6 +23,8 @@ interface IncomingShot {
   target: [number, number, number]
   note?: string
   snapshotDataUrl: string
+  /** When set, update the existing DB shot row (metadata only, no re-upload). */
+  existingShotId?: string
 }
 
 const MAX_SHOTS = 8
@@ -58,7 +60,8 @@ function validateShot(raw: unknown): IncomingShot | null {
   if (typeof s.fov !== 'number' || !Number.isFinite(s.fov)) return null
   if (!isTriplet(s.position)) return null
   if (!isTriplet(s.target)) return null
-  if (typeof s.snapshotDataUrl !== 'string') return null
+  const hasExisting = typeof s.existingShotId === 'string' && s.existingShotId.length > 0
+  if (!hasExisting && typeof s.snapshotDataUrl !== 'string') return null
   return {
     clientId: typeof s.clientId === 'string' ? s.clientId : undefined,
     cameraId: s.cameraId,
@@ -68,7 +71,8 @@ function validateShot(raw: unknown): IncomingShot | null {
     position: s.position,
     target: s.target,
     note: typeof s.note === 'string' ? s.note : undefined,
-    snapshotDataUrl: s.snapshotDataUrl,
+    snapshotDataUrl: typeof s.snapshotDataUrl === 'string' ? s.snapshotDataUrl : '',
+    existingShotId: hasExisting ? (s.existingShotId as string) : undefined,
   }
 }
 
@@ -139,8 +143,8 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS', { message: 'director project too large' })
   }
 
-  // 处理截图上传
-  const createdShots: Array<{
+  // Upload new captures and build rows to create + list of existing shot IDs to retain.
+  const toCreate: Array<{
     panelId: string
     cameraId: string
     name: string
@@ -155,13 +159,54 @@ export const POST = apiHandler(async (
     imageMediaId: string
     note: string | null
   }> = []
-  let succeeded = 0
+  const existingUpdates: Array<{
+    id: string
+    cameraId: string
+    name: string
+    isActive: boolean
+    fov: number
+    posX: number
+    posY: number
+    posZ: number
+    targetX: number
+    targetY: number
+    targetZ: number
+    note: string | null
+  }> = []
+  const retainIds = new Set<string>()
+  let newSucceeded = 0
+  let newFailed = 0
 
   for (const s of shots) {
+    const fov = Number.isFinite(Number(s.fov)) ? Number(s.fov) : 50
+    const posX = Number.isFinite(Number(s.position?.[0])) ? Number(s.position[0]) : 0
+    const posY = Number.isFinite(Number(s.position?.[1])) ? Number(s.position[1]) : 1.55
+    const posZ = Number.isFinite(Number(s.position?.[2])) ? Number(s.position[2]) : 5.4
+    const targetX = Number.isFinite(Number(s.target?.[0])) ? Number(s.target[0]) : 0
+    const targetY = Number.isFinite(Number(s.target?.[1])) ? Number(s.target[1]) : 1.05
+    const targetZ = Number.isFinite(Number(s.target?.[2])) ? Number(s.target[2]) : 0
+    const note = typeof s.note === 'string' ? s.note : null
+    const name = s.name || '机位'
+
+    if (s.existingShotId) {
+      // Verify ownership: belongs to this panel.
+      const existing = await prisma.novelPromotionDirectorShot.findFirst({
+        where: { id: s.existingShotId, panelId },
+        select: { id: true },
+      })
+      if (existing) {
+        retainIds.add(s.existingShotId)
+        existingUpdates.push({ id: s.existingShotId, cameraId: s.cameraId, name, isActive: !!s.isActive, fov, posX, posY, posZ, targetX, targetY, targetZ, note })
+        continue
+      }
+      // existingShotId not found → fall through to treat as new shot (needs snapshotDataUrl)
+    }
+
     try {
       const parsed = parseDataUrl(s.snapshotDataUrl)
       if (!parsed || parsed.buffer.length > MAX_DATAURL_BYTES) {
         console.error('[director-desk] bad shot dataUrl', s.cameraId)
+        newFailed++
         continue
       }
       const jpeg = await sharp(parsed.buffer).jpeg({ quality: 88, mozjpeg: true }).toBuffer()
@@ -171,33 +216,22 @@ export const POST = apiHandler(async (
         mimeType: 'image/jpeg',
         sizeBytes: jpeg.length,
       })
-      createdShots.push({
-        panelId,
-        cameraId: s.cameraId,
-        name: s.name || '机位',
-        isActive: !!s.isActive,
-        fov: Number.isFinite(Number(s.fov)) ? Number(s.fov) : 50,
-        posX: Number.isFinite(Number(s.position?.[0])) ? Number(s.position[0]) : 0,
-        posY: Number.isFinite(Number(s.position?.[1])) ? Number(s.position[1]) : 1.55,
-        posZ: Number.isFinite(Number(s.position?.[2])) ? Number(s.position[2]) : 5.4,
-        targetX: Number.isFinite(Number(s.target?.[0])) ? Number(s.target[0]) : 0,
-        targetY: Number.isFinite(Number(s.target?.[1])) ? Number(s.target[1]) : 1.05,
-        targetZ: Number.isFinite(Number(s.target?.[2])) ? Number(s.target[2]) : 0,
-        imageMediaId: mediaRef.id,
-        note: typeof s.note === 'string' ? s.note : null,
-      })
-      succeeded++
+      toCreate.push({ panelId, cameraId: s.cameraId, name, isActive: !!s.isActive, fov, posX, posY, posZ, targetX, targetY, targetZ, imageMediaId: mediaRef.id, note })
+      newSucceeded++
     } catch (err) {
       console.error('[director-desk] shot upload failed:', err)
+      newFailed++
     }
   }
 
-  // 计算 photographyRules patch：使用真正保存下来的 active shot 的相机参数
+  // Compute photographyRules patch using the effective active camera (prefer DB shot).
   let projectForPatch: DirectorProject = parsedProject
-  if (createdShots.length > 0) {
-    const active = createdShots.find((c) => c.isActive) ?? createdShots[0]
+  const activeUpdate = existingUpdates.find(u => u.isActive)
+  const activeCreate = toCreate.find(c => c.isActive)
+  const active = activeUpdate ?? activeCreate ?? existingUpdates[0] ?? toCreate[0] ?? null
+  if (active) {
     const patchedCameras = parsedProject.cameras.map((cam) => {
-      if (cam.id !== active.cameraId) return cam
+      if (cam.id !== (active as { cameraId?: string }).cameraId) return cam
       return {
         ...cam,
         fov: active.fov,
@@ -205,23 +239,11 @@ export const POST = apiHandler(async (
         target: [active.targetX, active.targetY, active.targetZ] as [number, number, number],
       }
     })
-    // 若 shot 的 cameraId 在 parsedProject.cameras 中不存在，则补一个临时相机
-    const exists = parsedProject.cameras.some((c) => c.id === active.cameraId)
-    if (!exists) {
-      patchedCameras.push({
-        id: active.cameraId,
-        name: active.name || '机位',
-        fov: active.fov,
-        position: [active.posX, active.posY, active.posZ],
-        target: [active.targetX, active.targetY, active.targetZ],
-        visible: true,
-      })
+    const camId = (active as { cameraId?: string; id?: string }).cameraId
+    if (camId && !parsedProject.cameras.some(c => c.id === camId)) {
+      patchedCameras.push({ id: camId, name: active.name, fov: active.fov, position: [active.posX, active.posY, active.posZ], target: [active.targetX, active.targetY, active.targetZ], visible: true })
     }
-    projectForPatch = {
-      ...parsedProject,
-      cameras: patchedCameras,
-      activeCameraId: active.cameraId,
-    }
+    projectForPatch = { ...parsedProject, cameras: patchedCameras, activeCameraId: camId ?? parsedProject.activeCameraId }
   }
 
   const patch = computePhotographyRulesPatch({ project: projectForPatch })
@@ -265,10 +287,29 @@ export const POST = apiHandler(async (
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.novelPromotionDirectorShot.deleteMany({ where: { panelId } })
-    if (createdShots.length > 0) {
-      await tx.novelPromotionDirectorShot.createMany({ data: createdShots })
+    // Delete shots that are no longer bound (cascade will clean up their MediaObjects).
+    if (retainIds.size > 0) {
+      await tx.novelPromotionDirectorShot.deleteMany({ where: { panelId, id: { notIn: Array.from(retainIds) } } })
+    } else {
+      await tx.novelPromotionDirectorShot.deleteMany({ where: { panelId } })
     }
+    // Update metadata on retained shots.
+    for (const u of existingUpdates) {
+      await tx.novelPromotionDirectorShot.update({
+        where: { id: u.id },
+        data: {
+          name: u.name, isActive: u.isActive, fov: u.fov,
+          posX: u.posX, posY: u.posY, posZ: u.posZ,
+          targetX: u.targetX, targetY: u.targetY, targetZ: u.targetZ,
+          note: u.note,
+        },
+      })
+    }
+    // Create new shots.
+    if (toCreate.length > 0) {
+      await tx.novelPromotionDirectorShot.createMany({ data: toCreate })
+    }
+    // Persist layout + patch photographyRules.
     await tx.novelPromotionPanel.update({
       where: { id: panelId },
       data: {
@@ -279,12 +320,12 @@ export const POST = apiHandler(async (
   }, { maxWait: 15000, timeout: 30000 })
 
   let warning: string | undefined
-  if (succeeded === 0 && shots.length > 0) warning = 'all_screenshots_failed'
-  else if (succeeded < shots.length) warning = 'some_screenshots_failed'
+  const totalNew = shots.filter(s => !s.existingShotId).length
+  if (totalNew > 0 && newSucceeded === 0) warning = 'all_screenshots_failed'
+  else if (newFailed > 0) warning = 'some_screenshots_failed'
 
   return NextResponse.json({
     success: true,
-    shotIds: createdShots.map((s) => `shot-${s.cameraId}`),
     ...(warning ? { warning } : {}),
   })
 })

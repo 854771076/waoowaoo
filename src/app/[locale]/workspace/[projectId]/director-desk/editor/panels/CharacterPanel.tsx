@@ -46,7 +46,7 @@ function TripletInput({
             onChange={(e) => {
               const n = Number(e.target.value)
               if (!Number.isFinite(n)) return
-              const next: [number, number, number] = [...value] as any
+              const next: [number, number, number] = [value[0], value[1], value[2]]
               next[i] = n
               onChange(next)
             }}

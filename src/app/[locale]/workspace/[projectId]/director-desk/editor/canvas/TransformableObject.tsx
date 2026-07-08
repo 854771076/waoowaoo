@@ -21,7 +21,7 @@ export function TransformableObject({ objectId, transform, locked, kind, mode, c
   const transformMode = useDirectorStore((s) => s.transformMode)
   const setObjectTransform = useDirectorStore((s) => s.setObjectTransform)
   const select = useDirectorStore((s) => s.select)
-  const { controls: sceneControls } = useThree() as any
+  const { controls: sceneControls } = useThree() as { controls: { enabled: boolean } | null }
 
   const isSelected = selectedId === objectId
 
@@ -36,9 +36,9 @@ export function TransformableObject({ objectId, transform, locked, kind, mode, c
     if (!groupRef.current) return
     const g = groupRef.current
     let rx = g.rotation.x
-    let ry = g.rotation.y
+    const ry = g.rotation.y
     let rz = g.rotation.z
-    let sx = g.scale.x
+    const sx = g.scale.x
     let sy = g.scale.y
     let sz = g.scale.z
     // billboards: Y-only rotation + uniform scale
@@ -73,10 +73,10 @@ export function TransformableObject({ objectId, transform, locked, kind, mode, c
       <TransformControls
         mode={transformMode}
         onMouseDown={() => {
-          if (sceneControls && 'enabled' in sceneControls) (sceneControls as any).enabled = false
+          if (sceneControls && 'enabled' in sceneControls) sceneControls.enabled = false
         }}
         onMouseUp={() => {
-          if (sceneControls && 'enabled' in sceneControls) (sceneControls as any).enabled = true
+          if (sceneControls && 'enabled' in sceneControls) sceneControls.enabled = true
         }}
         onObjectChange={commit}
       >

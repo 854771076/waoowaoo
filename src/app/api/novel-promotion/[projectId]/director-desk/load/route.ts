@@ -178,6 +178,7 @@ export const GET = apiHandler(async (
     pos: [s.posX, s.posY, s.posZ] as [number, number, number],
     target: [s.targetX, s.targetY, s.targetZ] as [number, number, number],
     imageUrl: toSignedIfKey(s.imageMedia?.storageKey ?? null),
+    imageMediaId: s.imageMediaId,
     note: s.note,
     createdAt: s.createdAt.toISOString(),
   }))

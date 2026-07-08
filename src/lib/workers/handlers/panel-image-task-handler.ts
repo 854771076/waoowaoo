@@ -27,6 +27,7 @@ import {
 } from '@/lib/location-available-slots'
 import { buildStoryboardGridLayout } from '@/lib/storyboard-images/grid'
 import { buildGridInvalidationPatch } from './panel-image-grid-invalidate'
+import { parseDirectorProject } from '@/lib/director-desk/schema'
 
 function formatPanelGridLayout(layout: ReturnType<typeof buildStoryboardGridLayout>, locale: TaskJobData['locale']) {
   if (locale === 'zh') {
@@ -183,8 +184,6 @@ function buildPanelPromptContext(params: {
   // Build director_shot metadata from saved director layout + bound shots
   const directorShot = (() => {
     if (!params.panel.directorLayout) return null
-    // Lazy-import to avoid circular deps
-    const { parseDirectorProject } = require('@/lib/director-desk/schema') as typeof import('@/lib/director-desk/schema')
     const parsed = parseDirectorProject(parseJsonUnknown(params.panel.directorLayout))
     if (!parsed || parsed.version !== 1) return null
     const dbShots = params.panel.directorShots ?? []

@@ -2,7 +2,6 @@
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { useTranslations, useLocale } from 'next-intl'
 import { useParams } from 'next/navigation'
-import { Clapperboard } from 'lucide-react'
 import { AppIcon } from '@/components/ui/icons'
 import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
 import { getImageGenerationCountOptions, normalizeImageGenerationCount } from '@/lib/image-generation/count'
@@ -111,7 +110,7 @@ export default function ImageSectionActionButtons({
                   className={`glass-btn-base glass-btn-secondary flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] transition-all active:scale-95 ${isSubmittingPanelImageTask || isModifying ? 'opacity-75' : ''}`}
                   title={t('directorDesk.button')}
                 >
-                  <Clapperboard className="w-2.5 h-2.5" />
+                  <AppIcon name="clapperboard" className="w-2.5 h-2.5" />
                   <span>{t('directorDesk.button')}</span>
                 </button>
               </>
