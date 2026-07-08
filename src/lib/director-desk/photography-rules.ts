@@ -176,6 +176,7 @@ export interface PhotographyRulesPatch {
 
 export function computePhotographyRulesPatch(params: {
   project: DirectorProject;
+  videoRatio?: string;
 }): PhotographyRulesPatch {
   const { project } = params;
   const cam = pickActiveCamera(project);
@@ -186,7 +187,13 @@ export function computePhotographyRulesPatch(params: {
   );
   if (visibleChars.length === 0) return { characters: [] };
 
-  const aspect = 9 / 16;
+  // ponytail: accept w:h or w/h; default 9:16 portrait
+  const aspect = (() => {
+    const r = params.videoRatio ?? '9:16';
+    const m = /^(\d+(?:\.\d+)?)[:/x](\d+(?:\.\d+)?)$/.exec(r);
+    if (!m) return 9 / 16;
+    return Number(m[1]) / Number(m[2]);
+  })();
 
   // 先计算每个角色的深度（供前后景相对判定）
   const projected = visibleChars.map((obj) => {

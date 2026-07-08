@@ -21,7 +21,7 @@ function parseJsonUnknown(value: string | null | undefined): unknown {
 function toSignedIfKey(keyOrUrl: string | null | undefined): string | null {
   if (!keyOrUrl) return null
   return keyOrUrl.startsWith('images/') || keyOrUrl.startsWith('voice/') || keyOrUrl.startsWith('video/')
-    ? getSignedUrl(keyOrUrl, 3600)
+    ? getSignedUrl(keyOrUrl, 24 * 3600)
     : keyOrUrl
 }
 

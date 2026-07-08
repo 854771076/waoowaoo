@@ -62,14 +62,17 @@ export default function DirectorDeskPage() {
         if (data.panel.location?.imageUrl) {
           proj.scene.backdropImageUrl = data.panel.location.imageUrl
         }
+        // Keep all shots returned by server: shots with imageUrl render in UI;
+        // shots with only imageMediaId (signed URL generation failed) are still
+        // tracked by persistedShotId so save retains them (see #1 data-loss risk).
         const boundShots = data.panel.directorShots
-          .filter((s) => s.imageUrl)
+          .filter((s) => s.imageUrl || s.imageMediaId)
           .map((s) => ({
             id: s.id,
             cameraId: s.cameraId,
             name: s.name,
             isActive: s.isActive,
-            imageUrl: s.imageUrl as string,
+            imageUrl: s.imageUrl ?? '',
             imageMediaId: s.imageMediaId,
             note: s.note ?? undefined,
             fov: s.fov,

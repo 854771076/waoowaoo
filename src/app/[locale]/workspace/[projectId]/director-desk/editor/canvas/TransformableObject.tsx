@@ -17,6 +17,7 @@ interface TransformableObjectProps {
 
 export function TransformableObject({ objectId, transform, locked, kind, mode, children }: TransformableObjectProps) {
   const groupRef = useRef<THREE.Group>(null)
+  const draggingRef = useRef(false)
   const selectedId = useDirectorStore((s) => s.selectedId)
   const transformMode = useDirectorStore((s) => s.transformMode)
   const setObjectTransform = useDirectorStore((s) => s.setObjectTransform)
@@ -26,6 +27,8 @@ export function TransformableObject({ objectId, transform, locked, kind, mode, c
   const isSelected = selectedId === objectId
 
   useEffect(() => {
+    // Skip sync while the user is mid-drag — avoids fighting TransformControls.
+    if (draggingRef.current) return
     if (!groupRef.current) return
     groupRef.current.position.set(transform.position[0], transform.position[1], transform.position[2])
     groupRef.current.rotation.set(transform.rotation[0], transform.rotation[1], transform.rotation[2])
@@ -73,9 +76,11 @@ export function TransformableObject({ objectId, transform, locked, kind, mode, c
       <TransformControls
         mode={transformMode}
         onMouseDown={() => {
+          draggingRef.current = true
           if (sceneControls && 'enabled' in sceneControls) sceneControls.enabled = false
         }}
         onMouseUp={() => {
+          draggingRef.current = false
           if (sceneControls && 'enabled' in sceneControls) sceneControls.enabled = true
         }}
         onObjectChange={commit}

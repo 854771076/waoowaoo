@@ -50,6 +50,8 @@ interface DirectorState {
   reset: () => void
   select: (id: string | null) => void
   setViewMode: (m: 'director' | 'camera') => void
+  /** Silent: set viewMode without pushing undo history (used for temporary capture view switches). */
+  setViewModeSilent: (m: 'director' | 'camera') => void
   setTransformMode: (m: 'translate' | 'rotate' | 'scale') => void
   setSceneField: <K extends keyof DirectorSceneSettings>(k: K, v: DirectorSceneSettings[K]) => void
   setObjectField: <K extends keyof DirectorObject>(id: string, k: K, v: DirectorObject[K]) => void
@@ -61,6 +63,8 @@ interface DirectorState {
   removeCamera: (id: string) => void
   setCameraField: <K extends keyof DirectorCamera>(id: string, k: K, v: DirectorCamera[K]) => void
   setActiveCamera: (id: string) => void
+  /** Silent: set active camera without pushing undo history (used for temporary capture switches). */
+  setActiveCameraSilent: (id: string) => void
   addCameraCapture: (cameraId: string, dataUrl: string, name?: string) => string
   toggleCaptureBound: (cameraId: string, captureId: string) => void
   toggleCaptureActive: (cameraId: string, captureId: string) => void
@@ -177,6 +181,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
 
   select(id) { set({ selectedId: id }) },
   setViewMode(m) { set({ viewMode: m }) },
+  setViewModeSilent(m) { set({ viewMode: m }) },
   setTransformMode(m) { set({ transformMode: m }) },
   setGlCanvas(canvas) { set({ glCanvas: canvas }) },
 
@@ -300,6 +305,12 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const next = clone(project)
     next.activeCameraId = id
     set(pushHistory(get(), next))
+  },
+
+  setActiveCameraSilent(id) {
+    const { project } = get()
+    if (!project.cameras.find(c => c.id === id)) return
+    set({ project: { ...project, activeCameraId: id } })
   },
 
   addCameraCapture(cameraId, dataUrl, name) {

@@ -63,4 +63,28 @@ describe('position to prose', () => {
     const patch = computePhotographyRulesPatch({ project: proj })
     expect(patch.characters).toHaveLength(0)
   })
+
+  it('videoRatio=16:9 produces a wider projection than default 9:16', () => {
+    // character offset x=-2 should still land on the LEFT half in portrait,
+    // but in landscape (16:9) the horizontal FOV is wider so |nx| is smaller.
+    const portrait = projectCharacterToScreen({ charPos: [-2, 1.55, 0], ...DEFAULT_CAM })
+    const landscape = projectCharacterToScreen({
+      charPos: [-2, 1.55, 0],
+      camFov: 50,
+      camPos: [0, 1.55, 5.4],
+      camTarget: [0, 1.55, 0],
+      aspect: 16 / 9,
+    })
+    expect(Math.abs(landscape.nx)).toBeLessThan(Math.abs(portrait.nx))
+  })
+
+  it('videoRatio parsing accepts "16:9" and "/" and "x" separators', () => {
+    const proj = createDefaultDirectorProject()
+    // no characters — aspect doesn't affect output length, but exercise the parser path
+    expect(computePhotographyRulesPatch({ project: proj, videoRatio: '16:9' }).characters).toHaveLength(0)
+    expect(computePhotographyRulesPatch({ project: proj, videoRatio: '1/1' }).characters).toHaveLength(0)
+    expect(computePhotographyRulesPatch({ project: proj, videoRatio: '4x3' }).characters).toHaveLength(0)
+    // garbage falls back to default (9/16) without throwing
+    expect(computePhotographyRulesPatch({ project: proj, videoRatio: 'not-a-ratio' }).characters).toHaveLength(0)
+  })
 })

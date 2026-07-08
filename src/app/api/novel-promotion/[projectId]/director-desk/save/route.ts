@@ -137,6 +137,7 @@ export const POST = apiHandler(async (
   if (!panel || panel.storyboard.episode.novelPromotionProject.projectId !== projectId) {
     throw new ApiError('NOT_FOUND')
   }
+  const videoRatio = panel.storyboard.episode.novelPromotionProject.videoRatio ?? '9:16'
 
   const serializedLayout = serializeDirectorProject(parsedProject)
   if (!validateDirectorProjectSize(serializedLayout)) {
@@ -246,7 +247,7 @@ export const POST = apiHandler(async (
     projectForPatch = { ...parsedProject, cameras: patchedCameras, activeCameraId: camId ?? parsedProject.activeCameraId }
   }
 
-  const patch = computePhotographyRulesPatch({ project: projectForPatch })
+  const patch = computePhotographyRulesPatch({ project: projectForPatch, videoRatio })
 
   // 合并到现有 panel.photographyRules（保留除 characters 的其它字段）
   let existingRules: Record<string, unknown> = {}

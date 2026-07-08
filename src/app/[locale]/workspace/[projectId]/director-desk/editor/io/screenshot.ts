@@ -82,13 +82,14 @@ export async function captureCameraScreenshot(videoRatio: string, cameraId?: str
   const prevView = s.viewMode
   const prevActive = s.project.activeCameraId
   const target = cameraId ?? prevActive
-  if (target !== prevActive) s.setActiveCamera(target)
-  if (prevView !== 'camera') s.setViewMode('camera')
+  // Use silent setters — temporary view/camera switches must not land in undo history.
+  if (target !== prevActive) s.setActiveCameraSilent(target)
+  if (prevView !== 'camera') s.setViewModeSilent('camera')
   await nextFrames(3)
   try {
     return await captureActiveCameraScreenshot(videoRatio)
   } finally {
-    if (prevView !== 'camera') useDirectorStore.getState().setViewMode(prevView)
-    if (target !== prevActive) useDirectorStore.getState().setActiveCamera(prevActive)
+    if (prevView !== 'camera') useDirectorStore.getState().setViewModeSilent(prevView)
+    if (target !== prevActive) useDirectorStore.getState().setActiveCameraSilent(prevActive)
   }
 }
