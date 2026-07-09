@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { NovelPromotionStoryboard, NovelPromotionClip } from '@/types/project'
 import { CharacterPickerModal, LocationPickerModal } from '../PanelEditForm'
 import ImageEditModal from './ImageEditModal'
@@ -10,6 +11,10 @@ import StoryboardToolbar from './StoryboardToolbar'
 import StoryboardCanvas from './StoryboardCanvas'
 import { useStoryboardStageController } from './hooks/useStoryboardStageController'
 import { useStoryboardModalRuntime } from './hooks/useStoryboardModalRuntime'
+import { useRefreshStoryboards } from '@/lib/query/hooks/useStoryboards'
+import { useRefreshEpisodeData } from '@/lib/query/hooks/useProjectData'
+
+const DIRECTOR_DESK_SAVED_EVENT = 'director-desk:saved'
 
 interface StoryboardStageProps {
   projectId: string
@@ -117,6 +122,22 @@ export default function StoryboardStage({
     pendingPanelCount,
     handleGenerateAllPanels,
   } = controller
+
+  const refreshStoryboards = useRefreshStoryboards(episodeId)
+  const refreshEpisode = useRefreshEpisodeData(projectId, episodeId)
+
+  // Listen for postMessage from director-desk popup: when it saves a render,
+  // refetch storyboards so the panel preview updates to the new director shot.
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const data = event.data as { type?: string; panelId?: string } | null
+      if (!data || data.type !== DIRECTOR_DESK_SAVED_EVENT) return
+      refreshEpisode()
+      refreshStoryboards()
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [refreshEpisode, refreshStoryboards])
 
   const modalRuntime = useStoryboardModalRuntime({
     projectId,

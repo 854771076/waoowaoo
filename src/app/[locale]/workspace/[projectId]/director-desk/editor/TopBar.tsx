@@ -5,6 +5,19 @@ import { collectBoundShotsForSave, getActiveCameraSnapshot } from './store/direc
 import { captureCameraScreenshot } from './io/screenshot'
 import { serializeDirectorProject } from '@/lib/director-desk/schema'
 
+const DIRECTOR_DESK_SAVED_EVENT = 'director-desk:saved'
+
+function notifyOpener(panelId: string) {
+  // Notify the storyboard opener (if any) that saves happened so it can refresh the panel preview.
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: DIRECTOR_DESK_SAVED_EVENT, panelId }, '*')
+    }
+  } catch {
+    /* cross-origin opener — ignore */
+  }
+}
+
 export function TopBar() {
   const viewMode = useDirectorStore((s) => s.viewMode)
   const setViewMode = useDirectorStore((s) => s.setViewMode)
@@ -55,6 +68,7 @@ export function TopBar() {
       const data = await res.json().catch(() => null)
       if (data?.warning) alert(data.warning)
       useDirectorStore.setState({ isDirty: false })
+      notifyOpener(panelId)
       return true
     } finally {
       setSaving(false)
@@ -76,10 +90,38 @@ export function TopBar() {
     if (ok) window.close()
   }
 
+  const onRenderToStoryboard = async () => {
+    // 渲染为分镜 = 自动截图当前主机位 → 保存 → 通知父页面刷新 → 关闭
+    const active = getActiveCameraSnapshot()
+    if (active) {
+      const store = useDirectorStore.getState()
+      const captures = store.cameraCaptures[active.id] ?? []
+      // If no capture exists yet for the active cam, take one now.
+      if (captures.length === 0) {
+        try {
+          const dataUrl = await captureCameraScreenshot(videoRatio, active.id)
+          const capId = store.addCameraCapture(active.id, dataUrl, active.name)
+          store.toggleCaptureBound(active.id, capId)
+          store.toggleCaptureActive(active.id, capId)
+        } catch (err) {
+          console.error('[TopBar] auto-capture failed', err)
+        }
+      } else {
+        // Ensure at least one bound capture exists.
+        const hasBound = captures.some((c) => c.isBound)
+        if (!hasBound) store.toggleCaptureBound(active.id, captures[0].id)
+        const hasActive = Object.values(store.cameraCaptures).some((list) => list.some((c) => c.isActiveStar))
+        if (!hasActive) store.toggleCaptureActive(active.id, captures.find((c) => c.isBound)?.id ?? captures[0].id)
+      }
+    }
+    const ok = await doSave()
+    if (ok) window.close()
+  }
+
   return (
-    <div className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 px-4">
+    <div className="flex h-12 shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-4">
       <div className="text-sm font-medium">3D 导演台</div>
-      <div className="ml-4 inline-flex overflow-hidden rounded border border-white/10 text-xs">
+      <div className="inline-flex overflow-hidden rounded border border-white/10 text-xs">
         <button
           onClick={() => setViewMode('director')}
           className={`px-3 py-1 ${viewMode === 'director' ? 'bg-white/15 text-white' : 'text-white/60 hover:bg-white/5'}`}
@@ -111,9 +153,16 @@ export function TopBar() {
       <button
         onClick={() => void onSaveAndClose()}
         disabled={saving}
-        className="rounded bg-emerald-500/80 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+        className="rounded border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/5 disabled:opacity-50"
       >
         保存并关闭
+      </button>
+      <button
+        onClick={() => void onRenderToStoryboard()}
+        disabled={saving}
+        className="rounded bg-emerald-500/80 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+      >
+        {saving ? '渲染中…' : '渲染为分镜'}
       </button>
       <button
         onClick={onClose}

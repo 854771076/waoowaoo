@@ -9,8 +9,8 @@ import { createDefaultDirectorProject } from '@/lib/director-desk/schema'
 interface LoadedPanel {
   directorLayout: unknown
   directorShots?: Array<{ id?: string; cameraId: string; name: string; isActive: boolean; imageUrl: string; imageMediaId?: string | null; note?: string; fov: number; pos: [number,number,number]; target: [number,number,number] }>
-  characters: Array<{ imageMediaId?: string | null; imageUrl?: string | null }>
-  props: Array<{ imageMediaId?: string | null; imageUrl?: string | null }>
+  characters: Array<{ name?: string; imageMediaId?: string | null; imageUrl?: string | null }>
+  props: Array<{ name?: string; imageMediaId?: string | null; imageUrl?: string | null }>
   location?: { imageUrl?: string | null } | null
 }
 
@@ -159,11 +159,22 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       const parsed = data.panel.directorLayout ? parseDirectorProject(data.panel.directorLayout) : null
       const proj: DirectorProject = parsed
         ?? initDirectorProjectFromPanel({ panel: data.panel as unknown as Parameters<typeof initDirectorProjectFromPanel>[0]['panel'], project: data.project })
-      // Re-inject signed imageUrls onto objects (not persisted)
+      // Re-inject signed imageUrls onto objects (not persisted). refId-first, name fallback for legacy layouts.
       for (const o of proj.objects) {
-        const ch = data.panel.characters.find((c) => c.imageMediaId === o.refId)
-        const pr = data.panel.props.find((p) => p.imageMediaId === o.refId)
-        const url = ch?.imageUrl ?? pr?.imageUrl ?? null
+        let url: string | null = null
+        if (o.refId) {
+          const ch = data.panel.characters.find((c) => c.imageMediaId === o.refId)
+          const pr = data.panel.props.find((p) => p.imageMediaId === o.refId)
+          url = ch?.imageUrl ?? pr?.imageUrl ?? null
+        }
+        if (!url && o.kind === 'character') {
+          const ch = data.panel.characters.find((c) => c.name === o.name)
+          url = ch?.imageUrl ?? null
+        }
+        if (!url && o.kind === 'prop') {
+          const pr = data.panel.props.find((p) => p.name === o.name)
+          url = pr?.imageUrl ?? null
+        }
         if (url) o.imageUrl = url
       }
       // Set backdrop signed url

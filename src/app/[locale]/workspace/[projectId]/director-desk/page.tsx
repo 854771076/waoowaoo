@@ -54,9 +54,21 @@ export default function DirectorDeskPage() {
             project: data.project,
           })
         for (const o of proj.objects) {
-          const ch = data.panel.characters.find((c) => c.imageMediaId === o.refId)
-          const pr = data.panel.props.find((p) => p.imageMediaId === o.refId)
-          const url = ch?.imageUrl ?? pr?.imageUrl ?? null
+          // Match by refId (imageMediaId) first; fall back to name match when refId is null (legacy layouts).
+          let url: string | null = null
+          if (o.refId) {
+            const ch = data.panel.characters.find((c) => c.imageMediaId === o.refId)
+            const pr = data.panel.props.find((p) => p.imageMediaId === o.refId)
+            url = ch?.imageUrl ?? pr?.imageUrl ?? null
+          }
+          if (!url && o.kind === 'character') {
+            const ch = data.panel.characters.find((c) => c.name === o.name)
+            url = ch?.imageUrl ?? null
+          }
+          if (!url && o.kind === 'prop') {
+            const pr = data.panel.props.find((p) => p.name === o.name)
+            url = pr?.imageUrl ?? null
+          }
           if (url) o.imageUrl = url
         }
         if (data.panel.location?.imageUrl) {

@@ -1,6 +1,6 @@
 'use client'
-import { useMemo } from 'react'
-import { Billboard, useTexture } from '@react-three/drei'
+import { useEffect, useMemo, useState } from 'react'
+import { Billboard } from '@react-three/drei'
 import * as THREE from 'three'
 import { useDirectorStore } from '../../store/directorStore'
 import { NameLabel } from '../NameLabel'
@@ -10,9 +10,51 @@ interface Props {
   object: DirectorObject
 }
 
+// ponytail: avoid drei useTexture (throws Suspense on error → one failed image can stall the scene / kill dragging).
+// Hand-roll texture loading with onError fallback so broken URLs render as a placeholder plane instead of crash.
+function useImageTexture(url: string | null | undefined): { texture: THREE.Texture | null; failed: boolean } {
+  const [texture, setTexture] = useState<THREE.Texture | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setTexture(null)
+    setFailed(false)
+    if (!url) return
+    let cancelled = false
+    const loader = new THREE.TextureLoader()
+    loader.setCrossOrigin('anonymous')
+    loader.load(
+      url,
+      (tex) => {
+        if (cancelled) { tex.dispose(); return }
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.needsUpdate = true
+        setTexture(tex)
+      },
+      undefined,
+      () => {
+        if (cancelled) return
+        setFailed(true)
+      },
+    )
+    return () => {
+      cancelled = true
+      // Do not dispose textures shared across mounts (single-owner here, safe).
+      setTexture((prev) => {
+        if (prev) prev.dispose()
+        return null
+      })
+    }
+  }, [url])
+
+  return { texture, failed }
+}
+
 function ImagePlane({ url, height }: { url: string; height: number }) {
-  const texture = useTexture(url)
-  ;(texture as THREE.Texture).colorSpace = THREE.SRGBColorSpace
+  const { texture, failed } = useImageTexture(url)
+  if (failed || !texture) {
+    return <Placeholder color="#333" height={height} opacity={0.4} />
+  }
   const image = texture.image as HTMLImageElement | undefined
   const aspect = image && image.width ? image.width / image.height : 0.6
   const width = height * aspect
@@ -24,12 +66,12 @@ function ImagePlane({ url, height }: { url: string; height: number }) {
   )
 }
 
-function Placeholder({ color, height }: { color: string; height: number }) {
+function Placeholder({ color, height, opacity = 0.5 }: { color: string; height: number; opacity?: number }) {
   const width = height * 0.6
   return (
     <mesh position={[0, height / 2, 0]}>
       <planeGeometry args={[width, height]} />
-      <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} />
+      <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} />
     </mesh>
   )
 }
