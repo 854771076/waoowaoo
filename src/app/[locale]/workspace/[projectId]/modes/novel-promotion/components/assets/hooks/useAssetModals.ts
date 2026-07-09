@@ -129,7 +129,7 @@ export function useAssetModals({
     }
 
     // 编辑场景
-    const handleEditLocation = (location: Location) => {
+    const handleEditLocation = (location: Location | Prop) => {
         const firstImage = location.images?.[0]
         setEditingLocation({
             locationId: location.id,
@@ -138,7 +138,7 @@ export function useAssetModals({
         })
     }
 
-    const handleEditProp = (prop: Prop) => {
+    const handleEditProp = (prop: Location | Prop) => {
         const firstImage = prop.images?.[0]
         setEditingProp({
             propId: prop.id,

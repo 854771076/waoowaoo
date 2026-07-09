@@ -66,6 +66,8 @@ function renderPanel(propsCount: number) {
     id: `prop-${index + 1}`,
     name: `道具${index + 1}`,
     summary: `道具描述${index + 1}`,
+    sceneType: 'macro' as const,
+    parentId: null,
     selectedImageId: null,
     images: [],
   }))

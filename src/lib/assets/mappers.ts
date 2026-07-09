@@ -79,6 +79,8 @@ type ProjectLocationRecord = {
   id: string
   name: string
   summary: string | null
+  sceneType: string
+  parentId: string | null
   images: LocationImageRecord[]
 }
 
@@ -87,6 +89,8 @@ type GlobalLocationRecord = {
   name: string
   summary: string | null
   folderId: string | null
+  sceneType: 'macro'
+  parentId: null
   images: LocationImageRecord[]
 }
 
@@ -94,6 +98,8 @@ type ProjectPropRecord = {
   id: string
   name: string
   summary: string | null
+  sceneType?: string
+  parentId?: string | null
   images: LocationImageRecord[]
 }
 
@@ -102,6 +108,8 @@ type GlobalPropRecord = {
   name: string
   summary: string | null
   folderId: string | null
+  sceneType?: 'macro'
+  parentId?: null
   images: LocationImageRecord[]
 }
 
@@ -355,10 +363,9 @@ function mapLocationLikeProjectAsset(
   const registration = getAssetKindRegistration(kind)
   const variants = buildLocationVariants('project', asset.id, asset.images)
   const selectedVariant = variants.find((variant) => variant.renders[0]?.isSelected)
-  const base = {
+  const baseCommon = {
     id: asset.id,
     scope: 'project' as const,
-    kind,
     family: 'visual' as const,
     name: asset.name,
     folderId: null,
@@ -375,7 +382,21 @@ function mapLocationLikeProjectAsset(
     summary: asset.summary,
     selectedVariantId: selectedVariant?.id ?? null,
   }
-  return base
+  if (kind === 'prop') {
+    return {
+      ...baseCommon,
+      kind: 'prop',
+      sceneType: 'macro',
+      parentId: null,
+    }
+  }
+  const normalizedSceneType: 'macro' | 'micro' = asset.sceneType === 'micro' ? 'micro' : 'macro'
+  return {
+    ...baseCommon,
+    kind: 'location',
+    sceneType: normalizedSceneType,
+    parentId: asset.parentId ?? null,
+  }
 }
 
 function mapLocationLikeGlobalAsset(
@@ -385,11 +406,10 @@ function mapLocationLikeGlobalAsset(
   const registration = getAssetKindRegistration(kind)
   const variants = buildLocationVariants('global', asset.id, asset.images)
   const selectedVariant = variants.find((variant) => variant.renders[0]?.isSelected)
-  return {
+  const baseCommon = {
     id: asset.id,
-    scope: 'global',
-    kind,
-    family: 'visual',
+    scope: 'global' as const,
+    family: 'visual' as const,
     name: asset.name,
     folderId: asset.folderId,
     capabilities: registration.capabilities,
@@ -404,6 +424,21 @@ function mapLocationLikeGlobalAsset(
     variants,
     summary: asset.summary,
     selectedVariantId: selectedVariant?.id ?? null,
+  }
+  if (kind === 'prop') {
+    return {
+      ...baseCommon,
+      kind: 'prop',
+      sceneType: 'macro',
+      parentId: null,
+    }
+  }
+  const normalizedSceneType: 'macro' | 'micro' = (asset.sceneType as string) === 'micro' ? 'micro' : 'macro'
+  return {
+    ...baseCommon,
+    kind: 'location',
+    sceneType: normalizedSceneType,
+    parentId: asset.parentId ?? null,
   }
 }
 

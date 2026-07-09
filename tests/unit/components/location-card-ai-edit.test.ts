@@ -106,6 +106,8 @@ describe('LocationCard AI edit button', () => {
             id: 'prop-1',
             name: '银质餐具',
             summary: '银质西式餐具套装',
+            sceneType: 'macro',
+            parentId: null,
             selectedImageId: 'prop-image-1',
             images: [
               {
@@ -156,6 +158,8 @@ describe('LocationCard AI edit button', () => {
             id: 'location-1',
             name: '餐厅',
             summary: '极简餐厅',
+            sceneType: 'macro',
+            parentId: null,
             selectedImageId: 'location-image-1',
             images: [
               {

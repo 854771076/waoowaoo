@@ -16,6 +16,8 @@ type ProjectLocationBackedAssetRow = {
   selectedImageId: string | null
   sourceGlobalLocationId: string | null
   assetKind: LocationBackedAssetKind
+  sceneType: string
+  parentId: string | null
 }
 
 type GlobalLocationBackedAssetRow = {
@@ -26,6 +28,8 @@ type GlobalLocationBackedAssetRow = {
   summary: string | null
   artStyle: string | null
   assetKind: LocationBackedAssetKind
+  sceneType: 'macro'
+  parentId: null
 }
 
 type LocationBackedImageRow = {
@@ -144,7 +148,9 @@ export async function listProjectLocationBackedAssets(
       summary,
       selectedImageId,
       sourceGlobalLocationId,
-      assetKind
+      assetKind,
+      sceneType,
+      parentId
     FROM novel_promotion_locations
     WHERE novelPromotionProjectId = ${novelPromotionProjectId}
       AND assetKind = ${kind}
@@ -173,7 +179,9 @@ export async function listGlobalLocationBackedAssets(input: {
       name,
       summary,
       artStyle,
-      assetKind
+      assetKind,
+      'macro' AS sceneType,
+      NULL AS parentId
     FROM global_locations
     WHERE userId = ${input.userId}
       AND assetKind = ${input.kind}

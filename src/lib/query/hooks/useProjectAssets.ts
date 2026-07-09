@@ -82,6 +82,8 @@ function mapLocationAssetToProjectLocation(asset: AssetGroupMap['location'][numb
         id: asset.id,
         name: asset.name,
         summary: asset.summary,
+        sceneType: asset.sceneType,
+        parentId: asset.parentId,
         selectedImageId: asset.selectedVariantId,
         images: asset.variants.map((variant) => mapLocationVariantToProjectImage(asset, variant)),
     }
@@ -92,6 +94,8 @@ function mapPropAssetToProjectProp(asset: AssetGroupMap['prop'][number]): Prop {
         id: asset.id,
         name: asset.name,
         summary: asset.summary,
+        sceneType: 'macro' as const,
+        parentId: null,
         selectedImageId: asset.selectedVariantId,
         images: asset.variants.map((variant) => mapLocationVariantToProjectImage(asset, variant)),
     }
