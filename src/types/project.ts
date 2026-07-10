@@ -131,6 +131,9 @@ export interface AssetLibraryLocation {
   description: string
   imageUrl: string | null
   media?: MediaRef | null
+  // 层级：可选，缺省视为大场景（macro）；子场景（micro）持有 parentId
+  sceneType?: 'macro' | 'micro'
+  parentId?: string | null
 }
 
 // ============================================
