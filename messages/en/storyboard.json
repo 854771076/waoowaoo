@@ -124,6 +124,7 @@
         "selectLocation": "Select Location",
         "noCharacterAssets": "No character assets",
         "noLocationAssets": "No location assets",
+        "uncategorizedSubLocations": "Uncategorized sub-locations",
         "selected": "Selected",
         "defaultAppearance": "Default appearance",
         "newPanelDescription": "New shot description",

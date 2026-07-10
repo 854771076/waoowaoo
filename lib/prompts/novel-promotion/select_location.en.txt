@@ -13,6 +13,16 @@ Selection rules:
 3. Deduplicate aliases of the same location.
 4. Prefer exact library names when a location already exists.
 
+Location hierarchy — macro vs. micro:
+- Macro (top-level location entry): the overall setting/building/place (e.g. "Lin Manor", "the Palace", "the school", "the starship").
+- Micro (nested under `sub_locations`): a specific room, corner, or area *inside* a macro (e.g. "Main Hall", "garden", "classroom", "cockpit").
+- Only nest a micro under a macro when there is a **clear physical containment** relation. A micro must actually be located *inside* that macro.
+- Independent, unrelated places stay at the top level as separate macros — do not force-nest them.
+- If the source text only mentions the macro (no specific sub-space), emit only the macro and omit `sub_locations` (or return `[]`).
+- Every macro and every micro must have complete `descriptions` and `available_slots` — the same field-level rules apply.
+- Macro descriptions focus on the **overall environment/atmosphere/exterior/spatial silhouette**.
+- Micro descriptions focus on the **specific interior layout / local details / close-in anchors**.
+
 For each selected location, generate 3 wide-angle environment descriptions.
 Each description should:
 - start with location name in brackets: "[Location Name] ..."
@@ -32,8 +42,8 @@ Output format (JSON only):
 {
   "locations": [
     {
-      "name": "location_name",
-      "summary": "short usage summary",
+      "name": "macro_location_name",
+      "summary": "overall macro summary",
       "has_crowd": false,
       "crowd_description": "",
       "available_slots": [
@@ -42,13 +52,36 @@ Output format (JSON only):
         "the position against the inner wall beside the rear doorway"
       ],
       "descriptions": [
-        "[location_name] description 1",
-        "[location_name] description 2",
-        "[location_name] description 3"
+        "[macro_name] overall description 1",
+        "[macro_name] overall description 2",
+        "[macro_name] overall description 3"
+      ],
+      "sub_locations": [
+        {
+          "name": "micro_location_name",
+          "summary": "specific room/area usage",
+          "has_crowd": false,
+          "crowd_description": "",
+          "available_slots": [
+            "the seat beside the window on the right side of the desk",
+            "the open floor in front of the antique shelf"
+          ],
+          "descriptions": [
+            "[micro_name] interior detail description 1",
+            "[micro_name] interior detail description 2",
+            "[micro_name] interior detail description 3"
+          ]
+        }
       ]
     }
   ]
 }
+
+Notes on sub_locations:
+- Emit `sub_locations` only when the source text explicitly names a specific room/area *inside* the macro with a clear containment relation.
+- If only the macro is mentioned, omit `sub_locations` or return `[]`.
+- Micro entries follow the exact same field format and quality bar as macros (3 descriptions, 2-6 available_slots, anchor-grounded).
+- Focus difference: macro = overall environment / exterior / spatial silhouette; micro = interior layout / local detail / close-in anchors.
 
 Strict constraints:
 1. JSON only.

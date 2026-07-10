@@ -129,9 +129,10 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
       })
     }
   }
-  // 只有 macro 名字进入 existingLocationNames（用于 macro 去重）；micro 通过 existingChildPaths 去重
+  // 只有 macro 名字进入 existingLocationNames（用于 macro 去重）；
+  // micro 通过 existingChildPaths 去重；孤立 micro 不影响 macro 去重。
   const existingLocationNames = existingLocationEntries
-    .filter((e) => e.sceneType === 'macro' || (e.sceneType === 'micro' && !e.parentName))
+    .filter((e) => e.sceneType === 'macro')
     .map((e) => e.name)
   const existingLocationInfo = existingLocationEntries.map((e) => formatLocationExistingInfo(e))
   const existingPropNames = novelData.locations

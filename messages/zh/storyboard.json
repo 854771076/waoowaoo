@@ -124,6 +124,7 @@
         "selectLocation": "选择场景",
         "noCharacterAssets": "暂无角色资产",
         "noLocationAssets": "暂无场景资产",
+        "uncategorizedSubLocations": "未归类局部场景",
         "selected": "已选择",
         "defaultAppearance": "初始形象",
         "newPanelDescription": "新镜头描述",

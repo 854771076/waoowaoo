@@ -2,6 +2,7 @@ import {
   formatLocationAvailableSlotsText,
   parseLocationAvailableSlots,
 } from '@/lib/location-available-slots'
+import { logWarn } from '@/lib/logging/core'
 
 export type PromptLocationAssetWithParent = {
   id?: string
@@ -94,8 +95,12 @@ export function findLocationAsset(
     return { found, parent }
   }
 
-  // 4) ambiguous or nothing — return first tail match if any (caller logs a warning)
+  // 4) ambiguous — return first tail match but warn
   if (tailMatches.length > 1) {
+    logWarn('[findLocationAsset] ambiguous tail match, taking first', {
+      needle,
+      candidates: tailMatches.map((m) => ({ id: m.id, name: m.name, parentId: m.parentId ?? null })),
+    })
     const found = tailMatches[0]
     const parent = found.parentId ? byId.get(found.parentId) ?? null : null
     return { found, parent }

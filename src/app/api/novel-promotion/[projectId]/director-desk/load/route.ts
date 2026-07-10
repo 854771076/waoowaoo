@@ -13,6 +13,7 @@ import {
   findLocationAsset,
   type PromptLocationAssetWithParent,
 } from '@/lib/assets/location-hierarchy'
+import { resolveTaskLocale } from '@/lib/task/resolve-locale'
 
 function parseJsonUnknown(value: string | null | undefined): unknown {
   if (!value) return null
@@ -47,9 +48,11 @@ function parseJsonStringArray(value: string | null | undefined): string[] {
  */
 export const GET = apiHandler(async (
   request: NextRequest,
-  context: { params: Promise<{ projectId: string }> },
+  context: { params: Promise<{ projectId: string; locale?: string }> },
 ) => {
-  const { projectId } = await context.params
+  const { projectId, locale: rawLocale } = await context.params
+  const resolved = rawLocale || resolveTaskLocale(request) || 'zh'
+  const locale: 'zh' | 'en' = resolved === 'en' ? 'en' : 'zh'
 
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
@@ -181,7 +184,7 @@ export const GET = apiHandler(async (
       const image = dbLocation?.images[0]
       locationData = {
         name: found.name,
-        description: assembleLocationDescription(found, parent, 'zh'),
+        description: assembleLocationDescription(found, parent, locale),
         imageUrl: toSignedIfKey(image?.imageUrl ?? null),
         imageMediaId: image?.imageMediaId ?? null,
         availableSlots: parseJsonUnknown(image?.availableSlots),

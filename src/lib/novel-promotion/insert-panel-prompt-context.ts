@@ -39,8 +39,9 @@ export function buildInsertPanelLocationsDescription(
     )
     if (!found) continue
     const text = assembleLocationDescription(found, parent, locale)
-    const displayName = parent ? `${parent.name}/${found.name}` : found.name
-    lines.push(`${displayName}: ${text}`)
+    // ponytail: micro 的 text 已经带 "{parent.name}: ...\n\n{found.name}: ..." 前缀
+    // 只有 macro / 孤立 micro 需要我们加 "{name}: " 前缀。
+    lines.push(parent ? text : `${found.name}: ${text}`)
   }
 
   return lines.length > 0 ? lines.join('\n') : '无'
