@@ -6,7 +6,8 @@ import {
 export type PromptLocationAssetWithParent = {
   id?: string
   name: string
-  sceneType: 'macro' | 'micro'
+  // ponytail: 缺省视为 macro，兼容不带 sceneType 的旧输入
+  sceneType?: 'macro' | 'micro'
   summary?: string | null
   parentId?: string | null
   parentName?: string | null
@@ -15,6 +16,10 @@ export type PromptLocationAssetWithParent = {
     description?: string | null
     availableSlots?: string | null
   }>
+}
+
+function resolveSceneType(loc: PromptLocationAssetWithParent): 'macro' | 'micro' {
+  return loc.sceneType === 'micro' ? 'micro' : 'macro'
 }
 
 type LibEntry = {
@@ -73,7 +78,7 @@ export function findLocationAsset(
 
   // 2) path suffix match — e.g. "林家老宅/正堂" against micro name "正堂" with parent name "林家老宅"
   for (const l of locations) {
-    if (l.sceneType !== 'micro' || !l.parentId) continue
+    if (resolveSceneType(l) !== 'micro' || !l.parentId) continue
     const parent = byId.get(l.parentId)
     if (!parent) continue
     const full = normalizeForCompare(`${parent.name}/${l.name}`)
@@ -117,7 +122,7 @@ export function assembleLocationDescription(
   const childText = childSlots ? `${childDesc}\n\n${childSlots}` : childDesc
 
   // ponytail: 大场景或孤立子场景（父被删）直接用自身描述；有父时父在前、子在后
-  if (found.sceneType !== 'micro' || !parent) {
+  if (resolveSceneType(found) !== 'micro' || !parent) {
     return childText
   }
 

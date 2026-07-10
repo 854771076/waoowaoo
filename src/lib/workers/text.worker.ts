@@ -537,7 +537,7 @@ async function handleInsertPanelTask(job: Job<TaskJobData>) {
     .join('\n') || '无'
 
   const locationsDescription = buildInsertPanelLocationsDescription(
-    projectLocations,
+    projectLocations as unknown as Parameters<typeof buildInsertPanelLocationsDescription>[0],
     relatedLocations,
     job.data.locale,
   )

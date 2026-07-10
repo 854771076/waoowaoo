@@ -1,8 +1,9 @@
 import { buildCharactersIntroduction } from '@/lib/constants'
 import {
-  formatLocationAvailableSlotsText,
-  parseLocationAvailableSlots,
-} from '@/lib/location-available-slots'
+  assembleLocationDescription,
+  findLocationAsset,
+  type PromptLocationAssetWithParent,
+} from '@/lib/assets/location-hierarchy'
 
 type PromptLocale = 'zh' | 'en'
 
@@ -23,6 +24,11 @@ export type PromptCharacterAsset = {
 
 export type PromptLocationAsset = {
   name: string
+  id?: string
+  sceneType?: 'macro' | 'micro'
+  parentId?: string | null
+  parentName?: string | null
+  summary?: string | null
   images?: Array<{
     isSelected?: boolean
     description?: string | null
@@ -137,19 +143,15 @@ export function buildPromptAssetContext(input: PromptAssetContextInput): PromptA
       }).join('\n')
     }).join('\n') || '无'
 
+  // ponytail: 升级为层级匹配：全名/路径/同名消歧；子场景拼父描述
   const environmentName = input.clipLocation
-  const matchedLocation = environmentName
-    ? input.locations.find((location) => normalizeName(location.name) === normalizeName(environmentName))
-    : null
-  const selectedImage = matchedLocation?.images?.find((image) => image.isSelected) ?? matchedLocation?.images?.[0]
-  const locationDescription = selectedImage?.description || '无'
-  const locationSlotsText = formatLocationAvailableSlotsText(
-    parseLocationAvailableSlots(selectedImage?.availableSlots),
-    input.locale ?? 'zh',
+  const { found, parent } = findLocationAsset(
+    input.locations as PromptLocationAssetWithParent[],
+    environmentName,
   )
-  const locationDescriptionText = locationSlotsText
-    ? `${locationDescription}\n\n${locationSlotsText}`
-    : locationDescription
+  const locationDescriptionText = found
+    ? assembleLocationDescription(found, parent, input.locale ?? 'zh')
+    : '无'
 
   return {
     subjectNames,
@@ -157,7 +159,7 @@ export function buildPromptAssetContext(input: PromptAssetContextInput): PromptA
     propNames,
     appearanceListText,
     fullDescriptionText,
-    locationDescriptionText: environmentName ? locationDescriptionText : '无',
+    locationDescriptionText,
     propsDescriptionText: getFilteredPropsDescription(input.props, propNames),
     charactersIntroductionText: buildCharactersIntroduction(input.characters),
   }
