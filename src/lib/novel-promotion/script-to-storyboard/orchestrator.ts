@@ -11,6 +11,7 @@ import {
   type PropAsset,
   type PhotographyRule,
   type StoryboardPanel,
+  buildStoryboardLocationsLibName,
   formatClipId,
   getFilteredAppearanceList,
   getFilteredFullDescription,
@@ -303,7 +304,7 @@ export async function runScriptToStoryboardOrchestrator(
 
   const totalStepCount = clips.length * 4 + 2
   const charactersLibName = (novelPromotionData.characters || []).map((c) => c.name).join(', ') || '无'
-  const locationsLibName = (novelPromotionData.locations || []).map((l) => l.name).join(', ') || '无'
+  const locationsLibName = buildStoryboardLocationsLibName(novelPromotionData.locations || [])
   const charactersIntroduction = buildCharactersIntroduction(novelPromotionData.characters || [])
 
   const phase1PanelsByClipId = new Map<string, StoryboardPanel[]>()

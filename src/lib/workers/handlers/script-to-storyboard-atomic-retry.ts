@@ -11,6 +11,7 @@ import {
   type ActingDirection,
   type CharacterAsset,
   type ClipCharacterRef,
+  buildStoryboardLocationsLibName,
   formatClipId,
   getFilteredAppearanceList,
   getFilteredFullDescription,
@@ -407,7 +408,7 @@ export async function runScriptToStoryboardAtomicRetry(params: {
     }
     const filteredAppearanceList = getFilteredAppearanceList(params.novelPromotionData.characters || [], clipCharacters)
     const charactersLibName = (params.novelPromotionData.characters || []).map((item) => item.name).join(', ') || '无'
-    const locationsLibName = (params.novelPromotionData.locations || []).map((item) => item.name).join(', ') || '无'
+    const locationsLibName = buildStoryboardLocationsLibName(params.novelPromotionData.locations || [])
     const charactersIntroduction = buildCharactersIntroduction(params.novelPromotionData.characters || [])
     const clipJson = JSON.stringify(
       {

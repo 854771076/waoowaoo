@@ -8,6 +8,11 @@ import {
   findCharacterByName,
 } from '@/lib/workers/handlers/image-task-handler-shared'
 import { parseDirectorProject } from '@/lib/director-desk/schema'
+import {
+  assembleLocationDescription,
+  findLocationAsset,
+  type PromptLocationAssetWithParent,
+} from '@/lib/assets/location-hierarchy'
 
 function parseJsonUnknown(value: string | null | undefined): unknown {
   if (!value) return null
@@ -149,17 +154,34 @@ export const GET = apiHandler(async (
   // 场景
   let locationData: {
     name: string
+    description: string
     imageUrl: string | null
     imageMediaId: string | null
     availableSlots: unknown
   } | null = null
   if (typeof panel.location === 'string' && panel.location.trim()) {
-    const lower = panel.location.toLowerCase().trim()
-    const location = project.locations.find((l) => l.name.toLowerCase().trim() === lower)
-    if (location) {
-      const image = location.images[0]
+    const locationAssets: PromptLocationAssetWithParent[] = (project.locations || []).map((l) => ({
+      id: l.id,
+      name: l.name,
+      sceneType: ((l as unknown as { sceneType?: string }).sceneType === 'micro'
+        ? 'micro'
+        : 'macro') as 'macro' | 'micro',
+      parentId: (l as unknown as { parentId?: string | null }).parentId ?? null,
+      summary: l.summary,
+      images: (l.images || []).map((img) => ({
+        isSelected: true,
+        description: img.description,
+        availableSlots: img.availableSlots as string | null,
+      })),
+    }))
+    const { found, parent } = findLocationAsset(locationAssets, panel.location)
+    if (found) {
+      // 匹配到 DB 记录，用于取 imageUrl/imageMediaId/availableSlots
+      const dbLocation = project.locations.find((l) => l.id === found.id)
+      const image = dbLocation?.images[0]
       locationData = {
-        name: location.name,
+        name: found.name,
+        description: assembleLocationDescription(found, parent, 'zh'),
         imageUrl: toSignedIfKey(image?.imageUrl ?? null),
         imageMediaId: image?.imageMediaId ?? null,
         availableSlots: parseJsonUnknown(image?.availableSlots),

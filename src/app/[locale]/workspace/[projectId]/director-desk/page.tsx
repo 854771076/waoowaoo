@@ -12,7 +12,7 @@ interface LoadResponse {
     id: string
     characters: Array<{ imageMediaId: string | null; imageUrl: string | null; name: string; appearance: string | null; slot: string | null }>
     props: Array<{ imageMediaId: string | null; imageUrl: string | null; name: string }>
-    location: { imageUrl: string | null; imageMediaId: string | null; name: string; availableSlots: unknown } | null
+    location: { imageUrl: string | null; imageMediaId: string | null; name: string; description: string; availableSlots: unknown } | null
     directorLayout: DirectorProject | null
     directorShots: Array<{ id: string; cameraId: string; name: string; isActive: boolean; imageUrl: string | null; imageMediaId: string | null; note: string | null; fov: number; pos: [number, number, number]; target: [number, number, number] }>
     photographyRules?: unknown
