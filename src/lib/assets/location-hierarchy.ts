@@ -28,7 +28,7 @@ export function buildLocationPathName(name: string, parentName: string | null | 
 }
 
 export function buildLocationLibList(entries: LibEntry[]): string {
-  if (entries.length === 0) return '无'
+  if (entries.length === 0) return ''
   return entries
     .map((e) => {
       const path = buildLocationPathName(e.name, e.parentName ?? null)
