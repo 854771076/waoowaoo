@@ -40,6 +40,8 @@ interface LocationCardProps {
   onClearTaskKey?: (key: string) => void
   projectId: string
   onConfirmSelection?: (locationId: string) => Promise<void> | void
+  /** 是否为子场景（局部场景），启用细微视觉区分 */
+  isSubLocation?: boolean
 }
 
 export default function LocationCard({
@@ -56,7 +58,8 @@ export default function LocationCard({
   onCopyFromGlobal,
   activeTaskKeys = new Set(),
   projectId,
-  onConfirmSelection
+  onConfirmSelection,
+  isSubLocation = false,
 }: LocationCardProps) {
   // 🔥 使用 mutation
   const uploadImage = useUploadProjectLocationImage(projectId)
@@ -182,6 +185,10 @@ export default function LocationCard({
 
   const showSelectionMode = displaySlotCount > 1
   const singleImageAspectClassName = assetType === 'prop' ? 'aspect-[3/2]' : 'aspect-square'
+  const displayLocationName = isSubLocation ? `↳ ${location.name}` : location.name
+  const subLocationClass = isSubLocation
+    ? 'opacity-95 border-l-2 border-[var(--glass-tone-info-fg)]/40'
+    : ''
 
   // 选择模式：显示名字在上，三张图片在下
   if (showSelectionMode) {
@@ -235,7 +242,7 @@ export default function LocationCard({
     )
 
     return (
-      <div className="col-span-3 glass-surface-elevated p-4 transition-all">
+      <div className={`col-span-3 glass-surface-elevated p-4 transition-all ${subLocationClass}`}>
         <input
           ref={fileInputRef}
           type="file"
@@ -245,7 +252,7 @@ export default function LocationCard({
         />
         <LocationCardHeader
           mode="selection"
-          locationName={location.name}
+          locationName={displayLocationName}
           summary={location.summary}
           selectedIndex={selectedIndex}
           statusText={selectionStatusText}
@@ -368,7 +375,7 @@ export default function LocationCard({
   const canGenerate = canGenerateLocationBackedAsset(location, assetType)
 
   return (
-    <div className="flex flex-col gap-2 glass-surface-elevated p-3">
+    <div className={`flex flex-col gap-2 glass-surface-elevated p-3 ${subLocationClass}`}>
       <input
         ref={fileInputRef}
         type="file"
@@ -394,7 +401,7 @@ export default function LocationCard({
 
       <LocationCardHeader
         mode="compact"
-        locationName={location.name}
+        locationName={displayLocationName}
         summary={location.summary}
         actions={compactHeaderActions}
       />

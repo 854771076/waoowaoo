@@ -16,6 +16,9 @@ interface AddLocationModalProps {
   projectId: string
   onClose: () => void
   onSuccess: () => void
+  /** 若指定，则本次创建的是该大场景的子场景（局部场景） */
+  parentId?: string | null
+  parentName?: string | null
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -47,7 +50,9 @@ const SparklesIcon = ({ className }: { className?: string }) => (
 export default function AddLocationModal({
   projectId,
   onClose,
-  onSuccess
+  onSuccess,
+  parentId = null,
+  parentName = null,
 }: AddLocationModalProps) {
   const t = useTranslations('assets')
   const tc = useTranslations('common')
@@ -117,6 +122,8 @@ export default function AddLocationModal({
         artStyle,
         count: locationGenerationCount,
         availableSlots,
+        parentId: parentId ?? null,
+        sceneType: parentId ? 'micro' : 'macro',
       })
       onSuccess()
       onClose()
@@ -138,7 +145,9 @@ export default function AddLocationModal({
           {/* 标题 */}
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-[var(--glass-text-primary)]">
-              {t('modal.addLocation')}
+              {parentId && parentName
+                ? `在「${parentName}」下添加局部场景`
+                : t('modal.addLocation')}
             </h3>
             <button
               onClick={onClose}

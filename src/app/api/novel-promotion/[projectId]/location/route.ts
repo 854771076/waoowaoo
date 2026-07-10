@@ -80,13 +80,46 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
+  // 场景层级：macro（默认大场景）| micro（局部场景，必须有 parentId）
+  const rawSceneType = normalizeString(body.sceneType)
+  const rawParentId = normalizeString(body.parentId)
+  const sceneType: 'macro' | 'micro' = rawSceneType === 'micro' ? 'micro' : 'macro'
+  const parentId = sceneType === 'micro' && rawParentId ? rawParentId : null
+  if (sceneType === 'micro' && !parentId) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'MISSING_PARENT_ID',
+      message: 'micro scene requires parentId',
+    })
+  }
+  if (parentId) {
+    // 校验父场景存在且属于同一项目
+    const parent = await prisma.novelPromotionLocation.findUnique({
+      where: { id: parentId },
+      select: { novelPromotionProjectId: true, sceneType: true },
+    })
+    if (!parent || parent.novelPromotionProjectId !== novelData.id) {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'INVALID_PARENT',
+        message: 'parent location not found in this project',
+      })
+    }
+    if (parent.sceneType === 'micro') {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'INVALID_PARENT',
+        message: 'parent must be a macro location',
+      })
+    }
+  }
+
   // 创建场景
   const cleanDescription = removeLocationPromptSuffix(description.trim())
   const location = await prisma.novelPromotionLocation.create({
     data: {
       novelPromotionProjectId: novelData.id,
       name: name.trim(),
-      summary: summary || null
+      summary: summary || null,
+      sceneType,
+      parentId,
     }
   })
 

@@ -277,6 +277,8 @@ export function useCreateProjectLocation(projectId: string) {
             artStyle?: string
             count?: number
             availableSlots?: LocationAvailableSlot[]
+            parentId?: string | null
+            sceneType?: 'macro' | 'micro'
         }) =>
             await requestJsonWithError(
                 `/api/novel-promotion/${projectId}/location`,
