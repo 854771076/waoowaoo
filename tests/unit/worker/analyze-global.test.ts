@@ -34,6 +34,7 @@ const persistMock = vi.hoisted(() => ({
     newProps: 0,
     skippedCharacters: 0,
     skippedLocations: 0,
+    skippedSubLocations: 0,
     skippedProps: 0,
   })),
   persistAnalyzeGlobalChunk: vi.fn(async (args: { stats: { newCharacters: number; newLocations: number; newProps: number } }) => {
@@ -120,7 +121,7 @@ describe('worker analyze-global behavior', () => {
       analysisModel: 'llm::analysis-1',
       globalAssetText: '全局设定',
       characters: [{ id: 'char-1', name: 'Hero', aliases: null, introduction: 'hero intro' }],
-      locations: [{ id: 'loc-1', name: 'Old Town', summary: 'old town summary', assetKind: 'location' }],
+      locations: [{ id: 'loc-1', name: 'Old Town', summary: 'old town summary', assetKind: 'location', sceneType: 'macro', parentId: null, children: [] }],
       episodes: [{ id: 'ep-1', name: '第一集', novelText: 'episode text' }],
     })
   })
@@ -155,6 +156,7 @@ describe('worker analyze-global behavior', () => {
         newProps: 2,
         skippedCharacters: 0,
         skippedLocations: 0,
+        skippedSubLocations: 0,
         skippedProps: 0,
         totalCharacters: 1,
         totalLocations: 1,

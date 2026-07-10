@@ -19,6 +19,7 @@ import {
 import { buildAnalyzeGlobalPrompts, loadAnalyzeGlobalPromptTemplates } from './analyze-global-prompt'
 import { createAnalyzeGlobalStats, persistAnalyzeGlobalChunk } from './analyze-global-persist'
 import { resolveAnalysisModel } from './resolve-analysis-model'
+import { formatLocationExistingInfo } from '@/lib/assets/location-hierarchy'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -40,7 +41,11 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
     where: { projectId },
     include: {
       characters: true,
-      locations: true,
+      locations: {
+        include: {
+          children: true,
+        },
+      },
       episodes: {
         orderBy: { episodeNumber: 'asc' },
         select: {
@@ -82,15 +87,53 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
     introduction: readText((item as Record<string, unknown>).introduction),
   }))
   const existingCharacterNames = existingCharacters.flatMap((item) => [item.name, ...item.aliases])
-  const existingLocationNames = novelData.locations
-    .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) !== 'prop')
-    .map((item) => item.name)
-  const existingLocationInfo = novelData.locations
-    .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) !== 'prop')
-    .map((item) => {
-    const summary = readText(item.summary)
-    return summary ? `${item.name}(${summary})` : item.name
-  })
+  const existingLocationEntries: Array<{
+    name: string
+    summary: string | null
+    sceneType: 'macro' | 'micro'
+    parentName: string | null
+  }> = []
+  const existingChildPaths = new Set<string>()
+  for (const loc of novelData.locations) {
+    if (readAssetKind(loc as unknown as Record<string, unknown>) === 'prop') continue
+    const sceneType = (loc as unknown as { sceneType?: string }).sceneType === 'micro' ? 'micro' : 'macro'
+    const parentId = (loc as unknown as { parentId?: string | null }).parentId ?? null
+    if (sceneType === 'macro') {
+      existingLocationEntries.push({
+        name: loc.name,
+        summary: readText(loc.summary),
+        sceneType: 'macro',
+        parentName: null,
+      })
+      const children = (loc as unknown as { children?: Array<Record<string, unknown>> }).children || []
+      for (const child of children) {
+        if (readAssetKind(child) === 'prop') continue
+        if (child.sceneType !== 'micro') continue
+        const childName = typeof child.name === 'string' ? child.name : ''
+        if (!childName) continue
+        existingLocationEntries.push({
+          name: childName,
+          summary: readText(child.summary),
+          sceneType: 'micro',
+          parentName: loc.name,
+        })
+        existingChildPaths.add(`${loc.name.toLowerCase()}/${childName.toLowerCase()}`)
+      }
+    } else if (sceneType === 'micro' && !parentId) {
+      // ponytail: 孤立子场景（parent 被删）作为顶层条目兜底
+      existingLocationEntries.push({
+        name: loc.name,
+        summary: readText(loc.summary),
+        sceneType: 'micro',
+        parentName: null,
+      })
+    }
+  }
+  // 只有 macro 名字进入 existingLocationNames（用于 macro 去重）；micro 通过 existingChildPaths 去重
+  const existingLocationNames = existingLocationEntries
+    .filter((e) => e.sceneType === 'macro' || (e.sceneType === 'micro' && !e.parentName))
+    .map((e) => e.name)
+  const existingLocationInfo = existingLocationEntries.map((e) => formatLocationExistingInfo(e))
   const existingPropNames = novelData.locations
     .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) === 'prop')
     .map((item) => item.name)
@@ -196,6 +239,7 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
         existingCharacterNames,
         existingLocationNames,
         existingLocationInfo,
+        existingChildPaths,
         existingPropNames,
         stats,
       })
@@ -222,9 +266,10 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
       newProps: stats.newProps,
       skippedCharacters: stats.skippedCharacters,
       skippedLocations: stats.skippedLocations,
+      skippedSubLocations: stats.skippedSubLocations,
       skippedProps: stats.skippedProps,
       totalCharacters: existingCharacterNames.length,
-      totalLocations: existingLocationNames.length,
+      totalLocations: existingLocationNames.length + existingChildPaths.size,
       totalProps: existingPropNames.length,
     },
   }
