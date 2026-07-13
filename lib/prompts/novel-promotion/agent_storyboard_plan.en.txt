@@ -51,6 +51,15 @@ Planning rules:
 2. Avoid missing key beats from clip_content.
 3. Keep panel transitions smooth and logically continuous.
 4. Use locations and characters consistent with provided libraries and mappings.
+
+   Macro vs. micro location selection:
+   - The location library annotates each entry: `(大场景)` = macro overall setting; `(局部)` = micro specific room/area inside a macro.
+   - Shot-scale drives the choice:
+     - Wide / establishing / aerial / exterior shots → select the **macro** entry (marked `大场景`). Fill the `location` field with just the macro name (e.g. `"Lin Manor"`).
+     - Medium / close-up / interior-detail shots → select the **micro** entry (marked `局部`). Fill the `location` field with the **full path** `"macroName/microName"` (e.g. `"Lin Manor/Main Hall"`).
+   - Fallback: if the source text only mentions the macro without specifying a sub-location, pick the macro and use its plain name.
+   - Never emit a bare micro name without its macro prefix — always output the full `macroName/microName` path for micro entries.
+
 5. Prefer concrete, visible actions over abstract wording.
 6. If location context contains available slots, treat them as preferred placement anchors rather than mandatory hard boundaries.
 7. Prefer assigning a `slot` by copying one full placement phrase from `available_slots` verbatim when a character is stably positioned in the scene.

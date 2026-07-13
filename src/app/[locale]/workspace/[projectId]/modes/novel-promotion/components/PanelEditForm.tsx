@@ -1,11 +1,13 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import PanelEditFormV2 from '@/components/ui/patterns/PanelEditFormV2'
 import { GlassButton, GlassModalShell, GlassSurface } from '@/components/ui/primitives'
 import { Character, Location } from '@/types/project'
 import { useProjectAssets } from '@/lib/query/hooks/useProjectAssets'
 import { AppIcon } from '@/components/ui/icons'
+import { buildLocationPathName } from '@/lib/assets/location-hierarchy'
 
 interface CharacterAppearance {
   id?: string
@@ -148,40 +150,138 @@ export function LocationPickerModal({
   onClose
 }: LocationPickerModalProps) {
   const ts = useTranslations('storyboard')
+  const tCommon = useTranslations('common')
   const { data: assets } = useProjectAssets(projectId)
   const locations: Location[] = assets?.locations ?? []
+  const [query, setQuery] = useState('')
+
+  const { macros, childrenByParent, orphans } = useMemo(() => {
+    const macroList: Location[] = locations.filter((l) => l.sceneType !== 'micro')
+    const macroIds = new Set(macroList.map((m) => m.id))
+    const microByParent = new Map<string, Location[]>()
+    const orphanList: Location[] = []
+    for (const loc of locations) {
+      if (loc.sceneType !== 'micro') continue
+      if (loc.parentId && macroIds.has(loc.parentId)) {
+        const arr = microByParent.get(loc.parentId) ?? []
+        arr.push(loc)
+        microByParent.set(loc.parentId, arr)
+      } else {
+        orphanList.push(loc)
+      }
+    }
+    return { macros: macroList, childrenByParent: microByParent, orphans: orphanList }
+  }, [locations])
+
+  const needle = query.trim().toLowerCase()
+  const matches = (text: string) => text.toLowerCase().includes(needle)
 
   return (
     <GlassModalShell open onClose={onClose} size="md" title={ts('panel.selectLocation')}>
-      <div className="max-h-[60vh] overflow-y-auto">
+      <div className="max-h-[60vh] overflow-y-auto space-y-3">
         {locations.length === 0 ? (
           <p className="py-8 text-center text-[var(--glass-text-secondary)]">{ts('panel.noLocationAssets')}</p>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {locations.map(loc => {
-              const isSelected = currentLocation === loc.name
-              return (
-                <button
-                  key={loc.id}
-                  type="button"
-                  onClick={() => onSelect(loc.name)}
-                  className={`rounded-[var(--glass-radius-md)] border px-3 py-3 text-left transition-colors ${
-                    isSelected
-                      ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
-                      : 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)]'
-                  }`}
-                >
-                  <div className="font-medium text-[var(--glass-text-primary)] flex items-center gap-1.5">
-                    <AppIcon name="imageAlt" className="h-3.5 w-3.5 text-[var(--glass-text-tertiary)]" />
-                    <span>{loc.name}</span>
+          <>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={tCommon('search')}
+              className="w-full px-3 py-2 rounded-[var(--glass-radius-md)] border border-[var(--glass-stroke-strong)] bg-[var(--glass-bg-surface)] text-sm text-[var(--glass-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--glass-tone-info-fg)]"
+            />
+            <div className="space-y-1">
+              {macros.map((macro) => {
+                const children = childrenByParent.get(macro.id) ?? []
+                // For search: keep this group if macro name matches, or any child matches (path/name)
+                const macroMatch = needle === '' || matches(macro.name)
+                const visibleChildren = needle === ''
+                  ? children
+                  : children.filter((child) => matches(child.name) || matches(buildLocationPathName(child.name, macro.name)))
+                if (needle !== '' && !macroMatch && visibleChildren.length === 0) return null
+
+                const macroSelected = currentLocation === macro.name
+                return (
+                  <div key={macro.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(macro.name)}
+                      className={`w-full rounded-[var(--glass-radius-md)] border px-3 py-2 text-left transition-colors flex items-center gap-2 ${
+                        macroSelected
+                          ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)] border-[var(--glass-stroke-focus)]'
+                          : 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] border-transparent'
+                      }`}
+                    >
+                      <span aria-hidden>🏞</span>
+                      <span className="font-medium text-[var(--glass-text-primary)] flex-1 truncate">{macro.name}</span>
+                      {macroSelected && (
+                        <span className="text-xs text-[var(--glass-tone-success-fg)]">{ts('panel.selected')}</span>
+                      )}
+                    </button>
+
+                    {visibleChildren.length > 0 && (
+                      <div className="mt-1 space-y-1">
+                        {visibleChildren.map((child) => {
+                          const path = buildLocationPathName(child.name, macro.name)
+                          const childSelected = currentLocation === path
+                          return (
+                            <button
+                              key={child.id}
+                              type="button"
+                              onClick={() => onSelect(path)}
+                              className={`w-full pl-6 pr-3 py-1.5 rounded-[var(--glass-radius-md)] border text-left transition-colors flex items-center gap-2 ${
+                                childSelected
+                                  ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)] border-[var(--glass-stroke-focus)]'
+                                  : 'bg-[var(--glass-bg-muted)]/50 text-[var(--glass-text-secondary)] border-transparent'
+                              }`}
+                            >
+                              <span aria-hidden className="text-[var(--glass-text-tertiary)]">↳</span>
+                              <span className="text-sm text-[var(--glass-text-primary)] flex-1 truncate">{path}</span>
+                              {childSelected && (
+                                <span className="text-xs text-[var(--glass-tone-success-fg)]">{ts('panel.selected')}</span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
-                  {isSelected ? (
-                    <span className="text-xs text-[var(--glass-tone-success-fg)]">{ts('panel.selected')}</span>
-                  ) : null}
-                </button>
+                )
+              })}
+            </div>
+            {(() => {
+              const visibleOrphans = needle === '' ? orphans : orphans.filter((o) => matches(o.name))
+              if (visibleOrphans.length === 0) return null
+              return (
+                <div className="pl-3 border-l-2 border-[var(--glass-tone-warning-fg)]/40 ml-1 space-y-1">
+                  <div className="text-xs text-[var(--glass-tone-warning-fg)] pt-1">
+                    {ts('panel.uncategorizedSubLocations')}
+                  </div>
+                  {visibleOrphans.map((orphan) => {
+                    const orphanSelected = currentLocation === orphan.name
+                    return (
+                      <button
+                        key={orphan.id}
+                        type="button"
+                        onClick={() => onSelect(orphan.name)}
+                        className={`w-full pl-6 pr-3 py-1.5 rounded-[var(--glass-radius-md)] border text-left transition-colors flex items-center gap-2 ${
+                          orphanSelected
+                            ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)] border-[var(--glass-stroke-focus)]'
+                            : 'bg-[var(--glass-bg-muted)]/50 text-[var(--glass-text-secondary)] border-transparent'
+                        }`}
+                      >
+                        <span aria-hidden className="text-[var(--glass-text-tertiary)]">↳</span>
+                        <span className="text-sm text-[var(--glass-text-primary)] flex-1 truncate">{orphan.name}</span>
+                        {orphanSelected && (
+                          <span className="text-xs text-[var(--glass-tone-success-fg)]">{ts('panel.selected')}</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
               )
-            })}
-          </div>
+            })()}
+          </>
         )}
       </div>
     </GlassModalShell>

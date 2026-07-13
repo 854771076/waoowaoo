@@ -7,6 +7,8 @@ describe('location-backed asset generation rules', () => {
       id: 'prop-1',
       name: '金箍棒',
       summary: '一根两头包裹金片的黑铁长棍',
+      sceneType: 'macro',
+      parentId: null,
       images: [],
     }, 'prop')).toBe(false)
   })
@@ -16,6 +18,8 @@ describe('location-backed asset generation rules', () => {
       id: 'location-1',
       name: '雨夜街道',
       summary: null,
+      sceneType: 'macro',
+      parentId: null,
       images: [
         {
           id: 'image-1',

@@ -1,9 +1,11 @@
+import { useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import TaskStatusOverlay from '@/components/task/TaskStatusOverlay'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
+import { buildLocationPathName } from '@/lib/assets/location-hierarchy'
 import {
   parseImagePrompt,
   type LocationAssetWithImages,
@@ -45,6 +47,15 @@ export default function PromptListCardView({ runtime }: PromptListCardViewProps)
     handleRemoveSelectedAsset,
     setPreviewImage,
   } = runtime
+
+  // 层级路径显示：子场景（micro）用"父/子"作为 @提及名，与 findLocationAsset 的路径匹配一致
+  const parentNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const loc of assetLibraryLocations) {
+      map.set(loc.id, loc.name)
+    }
+    return map
+  }, [assetLibraryLocations])
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -166,14 +177,18 @@ export default function PromptListCardView({ runtime }: PromptListCardViewProps)
                                           ? locationAsset.images?.find((image) => image.id === locationAsset.selectedImageId)
                                           : locationAsset.images?.find((image) => image.isSelected) || locationAsset.images?.find((image) => image.imageUrl) || locationAsset.images?.[0]
                                         const description = selectedImage?.description || locationAsset.description || ''
+                                        const parentName = location.parentId ? parentNameById.get(location.parentId) ?? null : null
+                                        const displayPath = location.sceneType === 'micro' && parentName
+                                          ? buildLocationPathName(location.name, parentName)
+                                          : location.name
 
                                         return (
                                           <button
                                             key={location.id}
-                                            onClick={() => handleSelectAsset({ id: location.id, name: location.name, description, type: 'location' })}
+                                            onClick={() => handleSelectAsset({ id: location.id, name: displayPath, description, type: 'location' })}
                                             className="w-full text-left px-2 py-1.5 hover:bg-[var(--glass-tone-info-bg)] rounded text-sm"
                                           >
-                                            {location.name}
+                                            {displayPath}
                                           </button>
                                         )
                                       })}

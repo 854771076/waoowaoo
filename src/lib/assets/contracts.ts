@@ -92,6 +92,8 @@ export type LocationAssetSummary = BaseAssetSummary & {
   variants: AssetVariantSummary[]
   summary: string | null
   selectedVariantId: string | null
+  sceneType: 'macro' | 'micro'
+  parentId: string | null
 }
 
 export type PropAssetSummary = BaseAssetSummary & {
@@ -100,6 +102,8 @@ export type PropAssetSummary = BaseAssetSummary & {
   variants: AssetVariantSummary[]
   summary: string | null
   selectedVariantId: string | null
+  sceneType: 'macro'
+  parentId: null
 }
 
 export type VoiceAssetSummary = BaseAssetSummary & {

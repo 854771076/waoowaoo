@@ -363,7 +363,21 @@ async function handleRegenerateStoryboardTextTask(job: Job<TaskJobData>) {
   const normalizedNovelPromotionData = {
     ...novelPromotionData,
     analysisModel: novelPromotionData.analysisModel,
-    locations: novelPromotionData.locations.filter((item) => readAssetKind(item as unknown as Record<string, unknown>) !== 'prop'),
+    locations: novelPromotionData.locations
+      .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) !== 'prop')
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        sceneType: ((item as unknown as { sceneType?: string }).sceneType === 'micro'
+          ? 'micro'
+          : 'macro') as 'macro' | 'micro',
+        parentId: (item as unknown as { parentId?: string | null }).parentId ?? null,
+        images: (item.images || []).map((img) => ({
+          isSelected: (img as unknown as { isSelected?: boolean }).isSelected === true,
+          description: (img as unknown as { description?: string | null }).description ?? null,
+          availableSlots: (img as unknown as { availableSlots?: string | null }).availableSlots ?? null,
+        })),
+      })),
     props: novelPromotionData.locations
       .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) === 'prop')
       .map((item) => ({ name: item.name, summary: item.summary })),
@@ -473,7 +487,21 @@ async function handleInsertPanelTask(job: Job<TaskJobData>) {
     },
   })
   if (!projectData) throw new Error('Novel promotion data not found')
-  const projectLocations = (projectData.locations || []).filter((item) => readAssetKind(item as unknown as Record<string, unknown>) !== 'prop')
+  const projectLocations = (projectData.locations || [])
+    .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) !== 'prop')
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      sceneType: ((item as unknown as { sceneType?: string }).sceneType === 'micro'
+        ? 'micro'
+        : 'macro') as 'macro' | 'micro',
+      parentId: (item as unknown as { parentId?: string | null }).parentId ?? null,
+      images: (item.images || []).map((img) => ({
+        isSelected: (img as unknown as { isSelected?: boolean }).isSelected === true,
+        description: (img as unknown as { description?: string | null }).description ?? null,
+        availableSlots: (img as unknown as { availableSlots?: string | null }).availableSlots ?? null,
+      })),
+    }))
   const projectProps = (projectData.locations || []).filter((item) => readAssetKind(item as unknown as Record<string, unknown>) === 'prop')
 
   const prevPanelJson = JSON.stringify(
@@ -537,7 +565,7 @@ async function handleInsertPanelTask(job: Job<TaskJobData>) {
     .join('\n') || '无'
 
   const locationsDescription = buildInsertPanelLocationsDescription(
-    projectLocations,
+    projectLocations as unknown as Parameters<typeof buildInsertPanelLocationsDescription>[0],
     relatedLocations,
     job.data.locale,
   )

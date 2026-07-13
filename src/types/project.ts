@@ -99,6 +99,8 @@ export interface Location {
   id: string
   name: string
   summary: string | null            // 场景简要描述（用途/人物关联）
+  sceneType: 'macro' | 'micro'
+  parentId: string | null
   selectedImageId?: string | null   // 选中的图片ID（单一真源）
   images: LocationImage[]           // 独立表关联
 }
@@ -109,6 +111,8 @@ export interface Prop {
   id: string
   name: string
   summary: string | null
+  sceneType: 'macro'
+  parentId: null
   selectedImageId?: string | null
   images: PropImage[]
 }
@@ -127,6 +131,9 @@ export interface AssetLibraryLocation {
   description: string
   imageUrl: string | null
   media?: MediaRef | null
+  // 层级：可选，缺省视为大场景（macro）；子场景（micro）持有 parentId
+  sceneType?: 'macro' | 'micro'
+  parentId?: string | null
 }
 
 // ============================================

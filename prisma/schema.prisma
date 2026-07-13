@@ -101,20 +101,25 @@ model NovelPromotionCharacter {
 }
 
 model NovelPromotionLocation {
-  id                      String                @id @default(uuid())
+  id                      String                   @id @default(uuid())
   novelPromotionProjectId String
   name                    String
-  summary                 String?               @db.Text // 场景简要描述（用途/人物关联）
-  assetKind               String                @default("location")
-  createdAt               DateTime              @default(now())
-  updatedAt               DateTime              @default(now()) @updatedAt
+  summary                 String?                  @db.Text // 场景简要描述（用途/人物关联）
+  assetKind               String                   @default("location")
+  sceneType               String                   @default("macro") // "macro" | "micro"
+  parentId                String?
+  parent                  NovelPromotionLocation?  @relation("LocationHierarchy", fields: [parentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  children                NovelPromotionLocation[] @relation("LocationHierarchy")
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @default(now()) @updatedAt
   sourceGlobalLocationId  String? // 🆕 来源全局场景ID（复制时记录）
   selectedImageId         String?
-  selectedImage           LocationImage?        @relation("SelectedLocationImage", fields: [selectedImageId], references: [id], onDelete: SetNull)
-  images                  LocationImage[]       @relation("LocationImages")
-  novelPromotionProject   NovelPromotionProject @relation(fields: [novelPromotionProjectId], references: [id], onDelete: Cascade)
+  selectedImage           LocationImage?           @relation("SelectedLocationImage", fields: [selectedImageId], references: [id], onDelete: SetNull)
+  images                  LocationImage[]          @relation("LocationImages")
+  novelPromotionProject   NovelPromotionProject    @relation(fields: [novelPromotionProjectId], references: [id], onDelete: Cascade)
 
   @@index([novelPromotionProjectId])
+  @@index([parentId])
   @@map("novel_promotion_locations")
 }
 

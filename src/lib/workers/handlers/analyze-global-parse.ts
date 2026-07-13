@@ -16,8 +16,39 @@ export type AnalyzeGlobalCharactersData = {
   characters?: Array<Record<string, unknown>>
 }
 
+export type SubLocationRaw = {
+  name?: unknown
+  summary?: unknown
+  description?: unknown
+  descriptions?: unknown
+  available_slots?: unknown
+}
+
+export type LocationRaw = {
+  name?: unknown
+  summary?: unknown
+  description?: unknown
+  descriptions?: unknown
+  available_slots?: unknown
+  sub_locations?: unknown
+}
+
 export type AnalyzeGlobalLocationsData = {
-  locations?: Array<Record<string, unknown>>
+  locations?: LocationRaw[]
+}
+
+export function asLocationRecordArray(value: unknown): LocationRaw[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (item): item is Record<string, unknown> => typeof item === 'object' && item !== null,
+  ) as LocationRaw[]
+}
+
+export function asSubLocationArray(value: unknown): SubLocationRaw[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (item): item is Record<string, unknown> => typeof item === 'object' && item !== null,
+  ) as SubLocationRaw[]
 }
 
 export type AnalyzeGlobalPropsData = {

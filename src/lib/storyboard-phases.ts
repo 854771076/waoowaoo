@@ -15,6 +15,7 @@ import {
     buildPromptAssetContext,
     compileAssetPromptFragments,
 } from '@/lib/assets/services/asset-prompt-context'
+import { buildLocationLibList } from '@/lib/assets/location-hierarchy'
 
 // 阶段类型
 export type StoryboardPhase = 1 | '2-cinematography' | '2-acting' | 3
@@ -36,10 +37,15 @@ export type CharacterAsset = {
 }
 
 export type LocationAsset = {
+    id?: string
     name: string
+    sceneType?: 'macro' | 'micro'
+    parentId?: string | null
     images?: Array<{
+        id?: string
         isSelected?: boolean
         description?: string | null
+        availableSlots?: string | null
     }>
 }
 
@@ -189,6 +195,30 @@ export function getFilteredLocationsDescription(
     })).locationDescriptionText
 }
 
+// 构建带层级标注的场景库名列表（"XX（大场景）"、"XX/YY（局部）"）
+export function buildStoryboardLocationsLibName(locations: LocationAsset[]): string {
+    const byId = new Map<string, LocationAsset>()
+    for (const l of locations) if (l.id) byId.set(l.id, l)
+
+    const entries: Array<{ name: string; sceneType: 'macro' | 'micro'; parentName: string | null }> = []
+    for (const l of locations) {
+        const sceneType = l.sceneType === 'micro' ? 'micro' : 'macro'
+        if (sceneType === 'macro') {
+            entries.push({ name: l.name, sceneType: 'macro', parentName: null })
+            for (const child of locations) {
+                const childType = child.sceneType === 'micro' ? 'micro' : 'macro'
+                if (childType === 'micro' && child.parentId && child.parentId === l.id) {
+                    entries.push({ name: child.name, sceneType: 'micro', parentName: l.name })
+                }
+            }
+        } else if (!l.parentId || !byId.has(l.parentId)) {
+            // 孤立子场景（父被删或未设置）
+            entries.push({ name: l.name, sceneType: 'micro', parentName: null })
+        }
+    }
+    return buildLocationLibList(entries) || '无'
+}
+
 function parseClipProps(raw: string | null | undefined): string[] {
     if (!raw) return []
     try {
@@ -265,7 +295,7 @@ export async function executePhase1(
 
     // 构建资产信息
     const charactersLibName = novelPromotionData.characters.map((c) => c.name).join(', ') || '无'
-    const locationsLibName = novelPromotionData.locations.map((l) => l.name).join(', ') || '无'
+    const locationsLibName = buildStoryboardLocationsLibName(novelPromotionData.locations)
     const filteredAppearanceList = getFilteredAppearanceList(novelPromotionData.characters, clipCharacters)
     const filteredFullDescription = getFilteredFullDescription(novelPromotionData.characters, clipCharacters)
     const filteredPropsDescription = compileAssetPromptFragments(buildPromptAssetContext({

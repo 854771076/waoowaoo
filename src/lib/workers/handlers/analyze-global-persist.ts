@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { removeLocationPromptSuffix } from '@/lib/constants'
 import {
+  asLocationRecordArray,
+  asSubLocationArray,
   isInvalidLocation,
   readText,
   toStringArray,
@@ -22,6 +24,7 @@ export type AnalyzeGlobalStats = {
   newProps: number
   skippedCharacters: number
   skippedLocations: number
+  skippedSubLocations: number
   skippedProps: number
 }
 
@@ -35,6 +38,7 @@ export function createAnalyzeGlobalStats(totalChunks: number): AnalyzeGlobalStat
     newProps: 0,
     skippedCharacters: 0,
     skippedLocations: 0,
+    skippedSubLocations: 0,
     skippedProps: 0,
   }
 }
@@ -48,6 +52,7 @@ export async function persistAnalyzeGlobalChunk(params: {
   existingCharacterNames: string[]
   existingLocationNames: string[]
   existingLocationInfo: string[]
+  existingChildPaths?: Set<string>
   existingPropNames: string[]
   stats: AnalyzeGlobalStats
 }) {
@@ -147,7 +152,9 @@ export async function persistAnalyzeGlobalChunk(params: {
     }
   }
 
-  for (const loc of params.locationsData.locations || []) {
+  const existingChildPaths = params.existingChildPaths ?? new Set<string>()
+
+  for (const loc of asLocationRecordArray(params.locationsData.locations)) {
     const name = readText(loc.name).trim()
     const summary = readText(loc.summary)
     if (!name) continue
@@ -156,36 +163,38 @@ export async function persistAnalyzeGlobalChunk(params: {
       continue
     }
 
-    const exists = params.existingLocationNames.some((item) => item.toLowerCase() === name.toLowerCase())
-    if (exists) {
+    const macroExists = params.existingLocationNames.some((item) => item.toLowerCase() === name.toLowerCase())
+    if (macroExists) {
       params.stats.skippedLocations += 1
       continue
     }
 
-    try {
-      const descriptionsRaw = Array.isArray(loc.descriptions)
-        ? (loc.descriptions as unknown[])
-        : (readText(loc.description) ? [readText(loc.description)] : [])
-      const descriptions = descriptionsRaw.map((item) => readText(item)).filter(Boolean)
-      const cleanDescriptions = descriptions.map((item) => removeLocationPromptSuffix(item))
-      const availableSlots = normalizeLocationAvailableSlots(loc.available_slots)
+    const macroDescriptionsRaw = Array.isArray(loc.descriptions)
+      ? (loc.descriptions as unknown[])
+      : (readText(loc.description) ? [readText(loc.description)] : [])
+    const macroDescriptions = macroDescriptionsRaw.map((item) => readText(item)).filter(Boolean)
+    const cleanMacroDescriptions = macroDescriptions.map((item) => removeLocationPromptSuffix(item))
+    const macroSlots = normalizeLocationAvailableSlots(loc.available_slots)
 
+    let macroId: string | null = null
+    try {
       const created = await prisma.novelPromotionLocation.create({
         data: {
           novelPromotionProjectId: params.projectInternalId,
           name,
           summary: summary || null,
+          sceneType: 'macro',
+          parentId: null,
         },
-        select: {
-          id: true,
-        },
+        select: { id: true },
       })
+      macroId = created.id
 
       await seedProjectLocationBackedImageSlots({
         locationId: created.id,
-        descriptions: cleanDescriptions,
+        descriptions: cleanMacroDescriptions.length > 0 ? cleanMacroDescriptions : undefined,
         fallbackDescription: summary || name,
-        availableSlots,
+        availableSlots: macroSlots,
       })
 
       params.existingLocationNames.push(name)
@@ -193,6 +202,63 @@ export async function persistAnalyzeGlobalChunk(params: {
       params.stats.newLocations += 1
     } catch {
       params.stats.skippedLocations += 1
+      continue
+    }
+
+    if (!macroId) continue
+    const subLocationNamesInThisMacro = new Set<string>()
+    for (const sub of asSubLocationArray(loc.sub_locations)) {
+      const subName = readText(sub.name).trim()
+      const subSummary = readText(sub.summary)
+      if (!subName) continue
+      if (isInvalidLocation(subName, subSummary)) {
+        params.stats.skippedSubLocations += 1
+        continue
+      }
+      const subKey = subName.toLowerCase()
+      if (subLocationNamesInThisMacro.has(subKey)) {
+        params.stats.skippedSubLocations += 1
+        continue
+      }
+      const crossChunkKey = `${name.toLowerCase()}/${subKey}`
+      if (existingChildPaths.has(crossChunkKey)) {
+        params.stats.skippedSubLocations += 1
+        continue
+      }
+      subLocationNamesInThisMacro.add(subKey)
+
+      const subDescriptionsRaw = Array.isArray(sub.descriptions)
+        ? (sub.descriptions as unknown[])
+        : (readText(sub.description) ? [readText(sub.description)] : [])
+      const subDescriptions = subDescriptionsRaw.map((item) => readText(item)).filter(Boolean)
+      const cleanSubDescriptions = subDescriptions.map((item) => removeLocationPromptSuffix(item))
+      const subSlots = normalizeLocationAvailableSlots(sub.available_slots)
+
+      try {
+        const created = await prisma.novelPromotionLocation.create({
+          data: {
+            novelPromotionProjectId: params.projectInternalId,
+            name: subName,
+            summary: subSummary || null,
+            sceneType: 'micro',
+            parentId: macroId,
+          },
+          select: { id: true },
+        })
+        await seedProjectLocationBackedImageSlots({
+          locationId: created.id,
+          descriptions: cleanSubDescriptions.length > 0 ? cleanSubDescriptions : undefined,
+          fallbackDescription: subSummary || subName,
+          availableSlots: subSlots,
+        })
+        existingChildPaths.add(crossChunkKey)
+        params.existingLocationInfo.push(
+          subSummary ? `${name}/${subName}(${subSummary})` : `${name}/${subName}`,
+        )
+        params.stats.newLocations += 1
+      } catch {
+        params.stats.skippedSubLocations += 1
+      }
     }
   }
 
@@ -222,6 +288,8 @@ export async function persistAnalyzeGlobalChunk(params: {
           name,
           summary,
           assetKind: 'prop',
+          sceneType: 'macro',
+          parentId: null,
         },
       })
       await seedProjectLocationBackedImageSlots({
