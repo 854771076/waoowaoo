@@ -303,7 +303,7 @@ export function useSplitGridPanel(projectId: string | null, episodeId: string | 
                 taskId?: string
             }>
         },
-        onMutate: async ({ panelId, enhance }) => {
+        onMutate: async ({ panelId, enhance, cellIndex }) => {
             if (!projectId || !enhance) return
             await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false })
             upsertTaskTargetOverlay(queryClient, {
@@ -311,6 +311,10 @@ export function useSplitGridPanel(projectId: string | null, episodeId: string | 
                 targetType: 'NovelPromotionPanel',
                 targetId: panelId,
                 intent: 'modify',
+                runningTaskType: 'grid_split_enhance',
+                runningPayload: {
+                    ...(cellIndex ? { cellIndex } : {}),
+                },
             })
         },
         onError: (_error, { panelId, enhance }) => {

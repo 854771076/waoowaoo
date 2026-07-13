@@ -47,4 +47,43 @@ describe('director-desk camera captures', () => {
       },
     ])
   })
+
+  it('adds new characters as mannequins by default', () => {
+    const id = useDirectorStore.getState().addObject({
+      kind: 'character',
+      name: '新角色',
+    })
+
+    const object = useDirectorStore.getState().project.objects.find((item) => item.id === id)
+    expect(object?.mode).toBe('mannequin')
+    expect(object?.bodyType).toBeUndefined()
+  })
+
+  it('stores a recoverable director snapshot with the current layout and camera', () => {
+    const store = useDirectorStore.getState()
+    const characterId = store.addObject({
+      kind: 'character',
+      name: '快照角色',
+      transform: { position: [2, 0, -1], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    })
+    store.setCameraField('cam-1', 'fov', 42)
+    const snapshotId = useDirectorStore.getState().addDirectorSnapshot({
+      name: '构图 A',
+      dataUrl: 'data:image/jpeg;base64,snapshot',
+    })
+    expect(snapshotId).toBeTruthy()
+
+    useDirectorStore.getState().setObjectTransform(characterId, {
+      position: [8, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+    })
+    useDirectorStore.getState().restoreDirectorSnapshot(snapshotId as string)
+
+    const state = useDirectorStore.getState()
+    const restored = state.project.objects.find((item) => item.id === characterId)
+    expect(restored?.transform.position).toEqual([2, 0, -1])
+    expect(state.project.cameras[0].fov).toBe(42)
+    expect(state.project.directorSnapshots).toHaveLength(1)
+  })
 })

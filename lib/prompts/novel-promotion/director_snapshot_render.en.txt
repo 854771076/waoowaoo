@@ -1,0 +1,18 @@
+You are a visual director converting a 3D director-desk snapshot into a finished storyboard frame.
+
+Aspect ratio: {aspect_ratio}
+Visual style: {style}
+
+Source text/dialogue:
+{source_text}
+
+Storyboard and director snapshot JSON:
+{storyboard_text_json_input}
+
+Hard requirements:
+- `director_snapshot` and `panel.director_shot` are the highest-priority composition constraints. Follow the snapshot camera FOV, camera position, target point, character blocking, pose, facing direction, and depth layering.
+- Mannequins in the snapshot represent blocking, body type, pose, and direction only. The final image must render real characters, not gray mannequins, toys, viewport captures, or 3D editor screenshots.
+- If a snapshot reference image is provided, use it to lock composition and spatial relationships. Character identity, costume, hairstyle, props, and scene details still come from project references and the JSON description.
+- Do not change the camera angle, rearrange characters, or include cameras, transform controls, grids, axes, UI, or text labels in the image.
+- If character references conflict with snapshot placement, use the snapshot for blocking/composition and the character references for appearance.
+- The result must feel like a polished illustration or cinematic frame suitable for a novel-promotion storyboard.

@@ -131,6 +131,7 @@ export interface VideoPanel {
   gridVideoPromptTaskRunning?: boolean
   // 宫格拆分图高清化任务状态
   gridSplitEnhanceTaskRunning?: boolean
+  gridSplitEnhanceRunningCellIndex?: number | null
 }
 
 // 匹配的配音信息

@@ -225,7 +225,7 @@ export function initDirectorProjectFromPanel(
       visible: true,
       locked: false,
       color,
-      mode: 'billboard',
+      mode: 'mannequin',
       transform: {
         position: [x, 0, z],
         rotation: [0, 0, 0],

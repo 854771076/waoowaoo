@@ -11,6 +11,7 @@ import type {
 
 interface TaskStateLike {
   phase?: string | null
+  runningPayload?: Record<string, unknown> | null
   lastError?: { code?: string; message?: string } | null
 }
 
@@ -33,6 +34,12 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function pickText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function pickPositiveInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : null
 }
 
 function parseGridGenerationContext(value: unknown): {
@@ -128,6 +135,11 @@ export function useVideoPanelsProjection({
         const gridSplitEnhanceState = panelId && gridSplitEnhanceStates
           ? gridSplitEnhanceStates.getTaskState(`grid-split-enhance:${panelId}`)
           : null
+        const gridSplitEnhanceRunning =
+          gridSplitEnhanceState?.phase === 'queued' || gridSplitEnhanceState?.phase === 'processing'
+        const gridSplitEnhanceRunningCellIndex = gridSplitEnhanceRunning
+          ? pickPositiveInteger(gridSplitEnhanceState?.runningPayload?.cellIndex)
+          : null
         const gridContext = parseGridGenerationContext(panel.gridGenerationContext)
 
         panels.push({
@@ -179,8 +191,8 @@ export function useVideoPanelsProjection({
               : panel.lipSyncErrorMessage || undefined,
           gridVideoPromptTaskRunning:
             gridVideoPromptState?.phase === 'queued' || gridVideoPromptState?.phase === 'processing',
-          gridSplitEnhanceTaskRunning:
-            gridSplitEnhanceState?.phase === 'queued' || gridSplitEnhanceState?.phase === 'processing',
+          gridSplitEnhanceTaskRunning: gridSplitEnhanceRunning,
+          gridSplitEnhanceRunningCellIndex,
         })
       })
     })

@@ -103,6 +103,13 @@ const prismaMock = vi.hoisted(() => ({
           characters: '[]',
           srtSegment: '',
           duration: 3,
+          storyboard: {
+            episode: {
+              novelPromotionProject: {
+                projectId: 'project-1',
+              },
+            },
+          },
         }
       }
       if (id === 'panel-ins') {
@@ -118,6 +125,13 @@ const prismaMock = vi.hoisted(() => ({
           characters: '[]',
           srtSegment: '',
           duration: 3,
+          storyboard: {
+            episode: {
+              novelPromotionProject: {
+                projectId: 'project-1',
+              },
+            },
+          },
         }
       }
       return {
@@ -132,6 +146,13 @@ const prismaMock = vi.hoisted(() => ({
         characters: '[]',
         srtSegment: '',
         duration: 3,
+        storyboard: {
+          episode: {
+            novelPromotionProject: {
+              projectId: 'project-1',
+            },
+          },
+        },
       }
     }),
     update: vi.fn(async () => ({})),
@@ -504,6 +525,56 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
     expectedProjectId: 'project-1',
   },
   {
+    routeFile: 'src/app/api/novel-promotion/[projectId]/director-desk/render-snapshot/route.ts',
+    body: {
+      panelId: 'panel-1',
+      snapshot: {
+        id: 'snapshot-1',
+        name: '快照一',
+        capturedAt: 1700000000000,
+        cameraId: 'cam-1',
+        camera: {
+          fov: 50,
+          position: [0, 1.55, 5.4],
+          target: [0, 1.05, 0],
+        },
+        project: {
+          version: 1,
+          scene: {
+            backgroundColor: '#1a1d23',
+            showGround: true,
+            groundOpacity: 0.8,
+            showLabels: true,
+            showGrid: true,
+            backdropAssetId: null,
+            backdropOpacity: 0.6,
+            backdropYaw: 0,
+          },
+          objects: [],
+          cameras: [
+            {
+              id: 'cam-1',
+              name: '主机位',
+              fov: 50,
+              position: [0, 1.55, 5.4],
+              target: [0, 1.05, 0],
+              visible: true,
+            },
+          ],
+          activeCameraId: 'cam-1',
+        },
+      },
+    },
+    params: { projectId: 'project-1' },
+    expectedTaskType: TASK_TYPE.IMAGE_PANEL,
+    expectedTargetType: 'NovelPromotionPanel',
+    expectedProjectId: 'project-1',
+    expectedPayloadSubset: {
+      source: 'director_snapshot',
+      panelId: 'panel-1',
+    },
+  },
+  {
     routeFile: 'src/app/api/novel-promotion/[projectId]/regenerate-single-image/route.ts',
     body: { type: 'character', id: 'character-1', appearanceId: 'appearance-1', imageIndex: 0 },
     params: { projectId: 'project-1' },
@@ -561,7 +632,7 @@ describe('api contract - direct submit routes (behavior)', () => {
   })
 
   it('keeps expected coverage size', () => {
-    expect(DIRECT_CASES.length).toBe(20)
+    expect(DIRECT_CASES.length).toBe(21)
   })
 
   for (const routeCase of DIRECT_CASES) {

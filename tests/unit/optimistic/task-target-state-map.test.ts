@@ -10,6 +10,7 @@ const runtime = vi.hoisted(() => ({
     phase: 'queued' | 'processing'
     runningTaskId: string | null
     runningTaskType: string | null
+    runningPayload: Record<string, unknown> | null
     intent: 'generate' | 'process' | 'regenerate'
     hasOutputAtStart: boolean | null
     progress: number | null
@@ -60,6 +61,7 @@ describe('task target state map behavior', () => {
         phase: 'idle',
         runningTaskId: null,
         runningTaskType: null,
+        runningPayload: null,
         intent: 'process',
         hasOutputAtStart: null,
         progress: null,
@@ -74,6 +76,7 @@ describe('task target state map behavior', () => {
         phase: 'processing',
         runningTaskId: 'task-api-panel',
         runningTaskType: 'IMAGE_PANEL',
+        runningPayload: null,
         intent: 'process',
         hasOutputAtStart: null,
         progress: 10,
@@ -90,6 +93,7 @@ describe('task target state map behavior', () => {
         phase: 'processing',
         runningTaskId: 'task-ov-1',
         runningTaskType: 'IMAGE_CHARACTER',
+        runningPayload: null,
         intent: 'process',
         hasOutputAtStart: false,
         progress: 50,
@@ -105,6 +109,7 @@ describe('task target state map behavior', () => {
         phase: 'queued',
         runningTaskId: 'task-ov-2',
         runningTaskType: 'LIP_SYNC',
+        runningPayload: null,
         intent: 'process',
         hasOutputAtStart: null,
         progress: null,
@@ -151,6 +156,7 @@ describe('task target state map behavior', () => {
         phase: 'completed',
         runningTaskId: null,
         runningTaskType: null,
+        runningPayload: null,
         intent: 'generate',
         hasOutputAtStart: true,
         progress: 100,
@@ -167,6 +173,7 @@ describe('task target state map behavior', () => {
         phase: 'queued',
         runningTaskId: 'task-overlay-new',
         runningTaskType: 'VIDEO_PANEL',
+        runningPayload: null,
         intent: 'generate',
         hasOutputAtStart: true,
         progress: null,
@@ -198,6 +205,7 @@ describe('task target state map behavior', () => {
         phase: 'completed',
         runningTaskId: null,
         runningTaskType: null,
+        runningPayload: null,
         intent: 'generate',
         hasOutputAtStart: true,
         progress: 100,
@@ -214,6 +222,7 @@ describe('task target state map behavior', () => {
         phase: 'queued',
         runningTaskId: 'task-overlay-old',
         runningTaskType: 'VIDEO_PANEL',
+        runningPayload: null,
         intent: 'generate',
         hasOutputAtStart: true,
         progress: null,
@@ -245,6 +254,7 @@ describe('task target state map behavior', () => {
         phase: 'idle',
         runningTaskId: null,
         runningTaskType: null,
+        runningPayload: null,
         intent: 'generate',
         hasOutputAtStart: null,
         progress: null,
@@ -261,6 +271,7 @@ describe('task target state map behavior', () => {
         phase: 'processing',
         runningTaskId: 'task-overlay-upper',
         runningTaskType: 'VIDEO_PANEL',
+        runningPayload: null,
         intent: 'generate',
         hasOutputAtStart: false,
         progress: 15,

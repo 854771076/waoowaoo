@@ -13,6 +13,7 @@ export type TaskTargetOverlayState = {
   phase: TaskTargetOverlayPhase
   runningTaskId: string | null
   runningTaskType: string | null
+  runningPayload: Record<string, unknown> | null
   intent: TaskIntent
   hasOutputAtStart: boolean | null
   progress: number | null
@@ -58,6 +59,7 @@ export function upsertTaskTargetOverlay(
     phase?: TaskTargetOverlayPhase
     runningTaskId?: string | null
     runningTaskType?: string | null
+    runningPayload?: Record<string, unknown> | null
     intent?: TaskIntent
     hasOutputAtStart?: boolean | null
     progress?: number | null
@@ -84,6 +86,7 @@ export function upsertTaskTargetOverlay(
         phase: params.phase || 'queued',
         runningTaskId,
         runningTaskType,
+        runningPayload: params.runningPayload ?? existing?.runningPayload ?? null,
         intent: params.intent || 'process',
         hasOutputAtStart: params.hasOutputAtStart ?? null,
         progress: params.progress ?? null,
@@ -132,6 +135,7 @@ export function applyTaskLifecycleToOverlay(
     progress: number | null
     stage: string | null
     stageLabel: string | null
+    runningPayload?: Record<string, unknown> | null
     eventTs: string | null
   },
 ) {
@@ -149,6 +153,7 @@ export function applyTaskLifecycleToOverlay(
       progress: params.progress,
       stage: params.stage,
       stageLabel: params.stageLabel,
+      runningPayload: params.runningPayload ?? null,
       updatedAt: params.eventTs,
     })
     return
@@ -167,6 +172,7 @@ export function applyTaskLifecycleToOverlay(
       progress: params.progress,
       stage: params.stage,
       stageLabel: params.stageLabel,
+      runningPayload: params.runningPayload ?? null,
       updatedAt: params.eventTs,
     })
     return

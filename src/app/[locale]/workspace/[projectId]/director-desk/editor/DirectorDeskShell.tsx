@@ -5,6 +5,7 @@ import { TopBar } from './TopBar'
 import { DirectorCanvas } from './canvas/DirectorCanvas'
 import { ObjectTreePanel } from './panels/ObjectTreePanel'
 import { RightPanel } from './panels/RightPanel'
+import { SnapshotPanel } from './panels/SnapshotPanel'
 
 export function DirectorDeskShell() {
   const undo = useDirectorStore((s) => s.undo)
@@ -73,6 +74,7 @@ export function DirectorDeskShell() {
       <div className="flex flex-1 min-h-0">
         <aside className="w-[220px] shrink-0 overflow-auto border-r border-white/10 p-2">
           <ObjectTreePanel />
+          <SnapshotPanel />
         </aside>
         <main className="relative flex-1 min-w-0">
           <DirectorCanvas />

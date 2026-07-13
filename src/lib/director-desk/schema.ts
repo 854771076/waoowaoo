@@ -129,6 +129,22 @@ export interface DirectorCamera {
   visible?: boolean;
 }
 
+export interface DirectorSnapshot {
+  id: string;
+  name: string;
+  capturedAt: number;
+  project: DirectorProject;
+  cameraId: string;
+  camera: {
+    fov: number;
+    position: [number, number, number];
+    target: [number, number, number];
+  };
+  imageDataUrl?: string;
+  imageUrl?: string | null;
+  note?: string;
+}
+
 export interface DirectorSceneSettings {
   backgroundColor: string;
   showGround: boolean;
@@ -149,6 +165,7 @@ export interface DirectorProject {
   objects: DirectorObject[];
   cameras: DirectorCamera[];
   activeCameraId: string;
+  directorSnapshots?: DirectorSnapshot[];
 }
 
 const MAX_PROJECT_JSON_BYTES = 1024 * 1024;
@@ -351,6 +368,37 @@ function parseCamera(input: unknown): DirectorCamera | null {
   return cam;
 }
 
+function parseSnapshot(input: unknown): DirectorSnapshot | null {
+  if (!isRecord(input)) return null;
+  if (typeof input.id !== 'string' || !input.id) return null;
+  if (typeof input.name !== 'string') return null;
+  if (typeof input.capturedAt !== 'number' || !Number.isFinite(input.capturedAt)) return null;
+  if (typeof input.cameraId !== 'string' || !input.cameraId) return null;
+  if (!isRecord(input.camera)) return null;
+  const fov = input.camera.fov;
+  if (typeof fov !== 'number' || !Number.isFinite(fov)) return null;
+  if (!isNumTriplet(input.camera.position)) return null;
+  if (!isNumTriplet(input.camera.target)) return null;
+  const project = parseDirectorProject(input.project);
+  if (!project) return null;
+
+  return {
+    id: input.id,
+    name: input.name,
+    capturedAt: input.capturedAt,
+    project,
+    cameraId: input.cameraId,
+    camera: {
+      fov,
+      position: input.camera.position,
+      target: input.camera.target,
+    },
+    imageDataUrl: typeof input.imageDataUrl === 'string' ? input.imageDataUrl : undefined,
+    imageUrl: typeof input.imageUrl === 'string' ? input.imageUrl : null,
+    note: typeof input.note === 'string' ? input.note : undefined,
+  };
+}
+
 export function parseDirectorProject(json: unknown): DirectorProject | null {
   if (!isRecord(json)) return null;
   if (json.version !== DIRECTOR_PROJECT_VERSION) return null;
@@ -376,6 +424,15 @@ export function parseDirectorProject(json: unknown): DirectorProject | null {
     cameras.push(parsed);
   }
 
+  const directorSnapshots: DirectorSnapshot[] = [];
+  if (Array.isArray(json.directorSnapshots)) {
+    for (const raw of json.directorSnapshots) {
+      const parsed = parseSnapshot(raw);
+      if (!parsed) return null;
+      directorSnapshots.push(parsed);
+    }
+  }
+
   // strip transient scene field
   scene.backdropImageUrl = null;
 
@@ -385,19 +442,40 @@ export function parseDirectorProject(json: unknown): DirectorProject | null {
     objects,
     cameras,
     activeCameraId: json.activeCameraId,
+    ...(directorSnapshots.length > 0 ? { directorSnapshots } : {}),
   };
 }
 
-export function serializeDirectorProject(p: DirectorProject): string {
+function stripDirectorProjectForPersistence(p: DirectorProject, includeSnapshots = true): DirectorProject {
   const stripped: DirectorProject = {
     ...p,
     scene: { ...p.scene },
     objects: p.objects.map((o) => ({ ...o })),
     cameras: p.cameras.map((c) => ({ ...c })),
+    ...(includeSnapshots && p.directorSnapshots
+      ? {
+          directorSnapshots: p.directorSnapshots.map((snapshot) => ({
+            ...snapshot,
+            project: stripDirectorProjectForPersistence(snapshot.project, false),
+            imageDataUrl: undefined,
+          })),
+        }
+      : {}),
   };
   delete stripped.scene.backdropImageUrl;
   for (const o of stripped.objects) {
     delete o.imageUrl;
   }
+  if (!includeSnapshots) {
+    delete stripped.directorSnapshots;
+  }
+  if (stripped.directorSnapshots?.length === 0) {
+    delete stripped.directorSnapshots;
+  }
+  return stripped;
+}
+
+export function serializeDirectorProject(p: DirectorProject): string {
+  const stripped = stripDirectorProjectForPersistence(p);
   return JSON.stringify(stripped);
 }

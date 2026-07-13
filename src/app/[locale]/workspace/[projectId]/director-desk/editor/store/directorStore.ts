@@ -3,7 +3,7 @@
  * In-memory only: persists via save API; undo/redo capped at 50.
  */
 import { create } from 'zustand'
-import type { DirectorProject, DirectorObject, DirectorCamera, DirectorSceneSettings } from '@/lib/director-desk/schema'
+import type { DirectorProject, DirectorObject, DirectorCamera, DirectorSceneSettings, DirectorSnapshot } from '@/lib/director-desk/schema'
 import { createDefaultDirectorProject } from '@/lib/director-desk/schema'
 
 interface LoadedPanel {
@@ -69,6 +69,11 @@ interface DirectorState {
   /** Silent: set active camera without pushing undo history (used for temporary capture switches). */
   setActiveCameraSilent: (id: string) => void
   addCameraCapture: (cameraId: string, dataUrl: string, name?: string, meta?: { fov: number; position: [number, number, number]; target: [number, number, number] }) => string
+  addDirectorSnapshot: (input: { name?: string; dataUrl?: string; note?: string }) => string | null
+  restoreDirectorSnapshot: (snapshotId: string) => void
+  setDirectorSnapshotName: (snapshotId: string, name: string) => void
+  setDirectorSnapshotNote: (snapshotId: string, note: string) => void
+  removeDirectorSnapshot: (snapshotId: string) => void
   toggleCaptureBound: (cameraId: string, captureId: string) => void
   toggleCaptureActive: (cameraId: string, captureId: string) => void
   setCaptureName: (cameraId: string, captureId: string, name: string) => void
@@ -93,6 +98,12 @@ function clone<T>(v: T): T {
 function pushHistory(state: DirectorState, next: DirectorProject): Partial<DirectorState> {
   const history = [...state.history, clone(state.project)].slice(-50)
   return { project: next, history, future: [], isDirty: true }
+}
+
+function createSnapshotProject(project: DirectorProject): DirectorProject {
+  const snapshotProject = clone(project)
+  delete snapshotProject.directorSnapshots
+  return snapshotProject
 }
 
 export const useDirectorStore = create<DirectorState>((set, get) => ({
@@ -241,7 +252,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       visible: partial.visible ?? true,
       locked: partial.locked ?? false,
       color: partial.color ?? '#7AA7FF',
-      mode: partial.mode ?? 'billboard',
+      mode: partial.mode ?? (partial.kind === 'character' ? 'mannequin' : 'billboard'),
       transform: partial.transform ?? { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
       ...partialRest,
       id,
@@ -347,6 +358,84 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     })
     set({ cameraCaptures: { ...cameraCaptures, [cameraId]: list }, isDirty: true })
     return capId
+  },
+
+  addDirectorSnapshot(input) {
+    const { project } = get()
+    const camera = project.cameras.find(c => c.id === project.activeCameraId) ?? project.cameras[0]
+    if (!camera) return null
+    const snapshots = project.directorSnapshots ?? []
+    const snapshotId = uid('snap')
+    const snapshot: DirectorSnapshot = {
+      id: snapshotId,
+      name: input.name?.trim() || `快照 ${snapshots.length + 1}`,
+      capturedAt: Date.now(),
+      project: createSnapshotProject(project),
+      cameraId: camera.id,
+      camera: {
+        fov: camera.fov,
+        position: camera.position,
+        target: camera.target,
+      },
+      imageDataUrl: input.dataUrl,
+      note: input.note,
+    }
+    const next = {
+      ...project,
+      directorSnapshots: [snapshot, ...snapshots].slice(0, 24),
+    }
+    set(pushHistory(get(), next))
+    return snapshotId
+  },
+
+  restoreDirectorSnapshot(snapshotId) {
+    const { project } = get()
+    const snapshot = project.directorSnapshots?.find(item => item.id === snapshotId)
+    if (!snapshot) return
+    const snapshots = project.directorSnapshots ?? []
+    const next = {
+      ...createSnapshotProject(snapshot.project),
+      directorSnapshots: snapshots,
+      activeCameraId: snapshot.cameraId,
+      cameras: snapshot.project.cameras.some(camera => camera.id === snapshot.cameraId)
+        ? snapshot.project.cameras.map(camera => camera.id === snapshot.cameraId
+          ? { ...camera, fov: snapshot.camera.fov, position: snapshot.camera.position, target: snapshot.camera.target }
+          : camera)
+        : [
+            ...snapshot.project.cameras,
+            {
+              id: snapshot.cameraId,
+              name: snapshot.name,
+              fov: snapshot.camera.fov,
+              position: snapshot.camera.position,
+              target: snapshot.camera.target,
+              visible: true,
+            },
+          ],
+    }
+    set({ ...pushHistory(get(), next), selectedId: null, viewMode: 'director' })
+  },
+
+  setDirectorSnapshotName(snapshotId, name) {
+    const { project } = get()
+    const snapshots = (project.directorSnapshots ?? []).map(snapshot =>
+      snapshot.id === snapshotId ? { ...snapshot, name } : snapshot,
+    )
+    set(pushHistory(get(), { ...project, directorSnapshots: snapshots }))
+  },
+
+  setDirectorSnapshotNote(snapshotId, note) {
+    const { project } = get()
+    const snapshots = (project.directorSnapshots ?? []).map(snapshot =>
+      snapshot.id === snapshotId ? { ...snapshot, note } : snapshot,
+    )
+    set(pushHistory(get(), { ...project, directorSnapshots: snapshots }))
+  },
+
+  removeDirectorSnapshot(snapshotId) {
+    const { project } = get()
+    const snapshots = (project.directorSnapshots ?? []).filter(snapshot => snapshot.id !== snapshotId)
+    set(pushHistory(get(), { ...project, directorSnapshots: snapshots }))
   },
 
   toggleCaptureBound(cameraId, captureId) {

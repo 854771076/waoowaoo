@@ -28,8 +28,24 @@ import { buildStoryboardGridLayout } from '@/lib/storyboard-images/grid'
 import { buildPreImageGridGenerationContext } from '@/lib/storyboard-images/grid-generation-context'
 import { buildCharacterConsistencyContext } from '@/lib/storyboard-images/character-consistency-context'
 import { buildGridInvalidationPatch } from './panel-image-grid-invalidate'
-import { parseDirectorProject } from '@/lib/director-desk/schema'
+import { parseDirectorProject, type DirectorProject } from '@/lib/director-desk/schema'
 import { archiveToHistory } from '@/lib/novel-promotion/panel-history'
+
+interface DirectorSnapshotPayload {
+  id: string
+  name: string
+  capturedAt: number
+  project: DirectorProject
+  cameraId: string
+  camera: {
+    fov: number
+    position: [number, number, number]
+    target: [number, number, number]
+  }
+  imageDataUrl?: string
+  imageUrl?: string | null
+  note?: string
+}
 
 function formatPanelGridLayout(layout: ReturnType<typeof buildStoryboardGridLayout>, locale: TaskJobData['locale']) {
   if (locale === 'zh') {
@@ -94,6 +110,43 @@ function parseJsonUnknown(raw: string | null | undefined): unknown | null {
     return JSON.parse(raw)
   } catch {
     return null
+  }
+}
+
+function isTriplet(value: unknown): value is [number, number, number] {
+  return Array.isArray(value)
+    && value.length === 3
+    && value.every((item) => typeof item === 'number' && Number.isFinite(item))
+}
+
+function parseDirectorSnapshotPayload(value: unknown): DirectorSnapshotPayload | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const input = value as AnyObj
+  if (typeof input.id !== 'string' || !input.id) return null
+  if (typeof input.name !== 'string') return null
+  if (typeof input.capturedAt !== 'number' || !Number.isFinite(input.capturedAt)) return null
+  if (typeof input.cameraId !== 'string' || !input.cameraId) return null
+  if (!input.camera || typeof input.camera !== 'object' || Array.isArray(input.camera)) return null
+  const camera = input.camera as AnyObj
+  if (typeof camera.fov !== 'number' || !Number.isFinite(camera.fov)) return null
+  if (!isTriplet(camera.position)) return null
+  if (!isTriplet(camera.target)) return null
+  const project = parseDirectorProject(input.project)
+  if (!project) return null
+  return {
+    id: input.id,
+    name: input.name,
+    capturedAt: input.capturedAt,
+    project,
+    cameraId: input.cameraId,
+    camera: {
+      fov: camera.fov,
+      position: camera.position,
+      target: camera.target,
+    },
+    imageDataUrl: typeof input.imageDataUrl === 'string' ? input.imageDataUrl : undefined,
+    imageUrl: typeof input.imageUrl === 'string' ? input.imageUrl : null,
+    note: typeof input.note === 'string' ? input.note : undefined,
   }
 }
 
@@ -212,9 +265,10 @@ function buildPanelPrompt(params: {
   styleText: string
   sourceText: string
   contextJson: string
+  promptId?: typeof PROMPT_IDS.NP_SINGLE_PANEL_IMAGE | typeof PROMPT_IDS.NP_DIRECTOR_SNAPSHOT_RENDER
 }): Promise<string> {
   return buildPromptAsync({
-    promptId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
+    promptId: params.promptId ?? PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
     locale: params.locale,
     projectId: params.projectId,
     variables: {
@@ -230,6 +284,9 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const panelId = pickFirstString(payload.panelId, job.data.targetId)
   if (!panelId) throw new Error('panelId missing')
+  const directorSnapshot = payload.source === 'director_snapshot'
+    ? parseDirectorSnapshotPayload(payload.directorSnapshot)
+    : null
 
   const panel = await prisma.novelPromotionPanel.findUnique({
     where: { id: panelId },
@@ -253,9 +310,29 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const defaultGridSize = clampCount(modelConfig.panelGridSize, 1, 16, 1)
   const panelGridSize = clampCount(payload.panelGridSize, 1, 16, defaultGridSize)
   // Pre-sign director shot URLs (active first) and pass as directorShotUrls
-  const directorShotUrls = (panel.directorShots ?? [])
+  const directorSnapshotShot = directorSnapshot
+    ? [{
+        cameraId: directorSnapshot.cameraId,
+        name: directorSnapshot.name,
+        isActive: true,
+        fov: directorSnapshot.camera.fov,
+        posX: directorSnapshot.camera.position[0],
+        posY: directorSnapshot.camera.position[1],
+        posZ: directorSnapshot.camera.position[2],
+        targetX: directorSnapshot.camera.target[0],
+        targetY: directorSnapshot.camera.target[1],
+        targetZ: directorSnapshot.camera.target[2],
+        note: directorSnapshot.note ?? null,
+      }]
+    : null
+  const directorShotUrls = [
+    ...(directorSnapshot?.imageDataUrl || directorSnapshot?.imageUrl
+      ? [directorSnapshot.imageDataUrl || directorSnapshot.imageUrl].filter((url): url is string => !!url)
+      : []),
+    ...(panel.directorShots ?? [])
     .map(s => (s.imageMedia?.storageKey ? toSignedUrlIfCos(s.imageMedia.storageKey, 3600) : null))
-    .filter((u): u is string => !!u)
+    .filter((u): u is string => !!u),
+  ]
   const refs = await collectPanelReferenceImages(projectData, { ...panel, directorShotUrls })
   const normalizedRefs = await normalizeReferenceImagesForGeneration(refs)
 
@@ -309,8 +386,8 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       srtSegment: panel.srtSegment,
       photographyRules: panel.photographyRules,
       actingNotes: panel.actingNotes,
-      directorLayout: panel.directorLayout,
-      directorShots: (panel.directorShots || []).map(s => ({
+      directorLayout: directorSnapshot ? JSON.stringify(directorSnapshot.project) : panel.directorLayout,
+      directorShots: (directorSnapshotShot ?? (panel.directorShots || [])).map(s => ({
         cameraId: s.cameraId, name: s.name, isActive: s.isActive,
         fov: s.fov, posX: s.posX, posY: s.posY, posZ: s.posZ,
         targetX: s.targetX, targetY: s.targetY, targetZ: s.targetZ,
@@ -323,6 +400,16 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   // 保存宫格生成元数据供后续视频重写使用
   const baseContextWithGridMetadata = {
     ...promptContext,
+    ...(directorSnapshot
+      ? {
+          director_snapshot: {
+            id: directorSnapshot.id,
+            name: directorSnapshot.name,
+            capturedAt: new Date(directorSnapshot.capturedAt).toISOString(),
+            note: directorSnapshot.note ?? null,
+          },
+        }
+      : {}),
     gridMetadata: {
       panelGridSize,
       generatedAt: new Date().toISOString(),
@@ -374,6 +461,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       styleText: artStyle || '与参考图风格一致',
       sourceText: panel.srtSegment || panel.description || '',
       contextJson,
+      promptId: directorSnapshot ? PROMPT_IDS.NP_DIRECTOR_SNAPSHOT_RENDER : PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
     })
   })()
   logger.info({

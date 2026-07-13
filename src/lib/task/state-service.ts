@@ -16,6 +16,7 @@ export type TaskTargetState = {
   phase: TaskTargetPhase
   runningTaskId: string | null
   runningTaskType: string | null
+  runningPayload: Record<string, unknown> | null
   intent: TaskIntent
   hasOutputAtStart: boolean | null
   progress: number | null
@@ -93,6 +94,7 @@ export function buildIdleState(target: TaskTargetQuery): TaskTargetState {
     phase: 'idle',
     runningTaskId: null,
     runningTaskType: null,
+    runningPayload: null,
     intent: 'process',
     hasOutputAtStart: null,
     progress: null,
@@ -141,6 +143,7 @@ export function resolveTargetState(
       phase: running.status === 'processing' ? 'processing' : 'queued',
       runningTaskId: running.id,
       runningTaskType: running.type,
+      runningPayload: asObject(running.payload),
       intent: runningFields.intent,
       hasOutputAtStart: runningFields.hasOutputAtStart,
       progress: runningFields.progress,
@@ -158,6 +161,7 @@ export function resolveTargetState(
       phase: 'completed',
       runningTaskId: null,
       runningTaskType: latest.type,
+      runningPayload: null,
       intent: latestFields.intent,
       hasOutputAtStart: latestFields.hasOutputAtStart,
       progress: 100,
@@ -174,6 +178,7 @@ export function resolveTargetState(
     phase: 'failed',
     runningTaskId: null,
     runningTaskType: latest.type,
+    runningPayload: null,
     intent: latestFields.intent,
     hasOutputAtStart: latestFields.hasOutputAtStart,
     progress: null,

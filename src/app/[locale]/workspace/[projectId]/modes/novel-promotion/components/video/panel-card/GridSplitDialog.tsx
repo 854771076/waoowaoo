@@ -42,7 +42,17 @@ export default function GridSplitDialog({
   const images = panel.gridSplitImages || []
   const hasSplitImages = images.length > 0
   const originalGridImageUrl = toDisplayImageUrl(panel.imageUrl)
-  const isEnhancing = splitMutation.isPending || !!panel.gridSplitEnhanceTaskRunning
+  const pendingEnhance = splitMutation.isPending && splitMutation.variables?.enhance === true
+  const pendingEnhanceCellIndex = pendingEnhance ? splitMutation.variables?.cellIndex ?? null : undefined
+  const runningEnhanceCellIndex = panel.gridSplitEnhanceTaskRunning
+    ? panel.gridSplitEnhanceRunningCellIndex ?? null
+    : undefined
+  const activeEnhanceCellIndex = pendingEnhanceCellIndex !== undefined ? pendingEnhanceCellIndex : runningEnhanceCellIndex
+  const hasEnhanceTask = pendingEnhance || !!panel.gridSplitEnhanceTaskRunning
+  const isBatchEnhancing = hasEnhanceTask && activeEnhanceCellIndex === null
+  const isSplitSubmitting = splitMutation.isPending && splitMutation.variables?.enhance !== true
+  const isCellEnhancing = (cellIndex: number) =>
+    hasEnhanceTask && (isBatchEnhancing || activeEnhanceCellIndex === cellIndex)
   const handleSplit = (force: boolean) => {
     if (!panel.panelId) return
     void splitMutation.mutateAsync({ panelId: panel.panelId, force })
@@ -92,16 +102,16 @@ export default function GridSplitDialog({
               <button
                 type="button"
                 onClick={() => handleSplit(false)}
-                disabled={!panel.panelId || !panel.imageUrl || splitMutation.isPending}
+                disabled={!panel.panelId || !panel.imageUrl || isSplitSubmitting || hasEnhanceTask}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--glass-accent-from)] px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {splitMutation.isPending ? <AppIcon name="loader" className="h-3.5 w-3.5 animate-spin" /> : <AppIcon name="scissors" className="h-3.5 w-3.5" />}
+                {isSplitSubmitting ? <AppIcon name="loader" className="h-3.5 w-3.5 animate-spin" /> : <AppIcon name="scissors" className="h-3.5 w-3.5" />}
                 {hasSplitImages ? t('panelCard.useCurrentSplit') : t('panelCard.startGridSplit')}
               </button>
               <button
                 type="button"
                 onClick={() => handleSplit(true)}
-                disabled={!panel.panelId || !panel.imageUrl || splitMutation.isPending}
+                disabled={!panel.panelId || !panel.imageUrl || isSplitSubmitting || hasEnhanceTask}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--glass-stroke-base)] px-3 py-1.5 text-xs font-medium text-[var(--glass-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <AppIcon name="refresh" className="h-3.5 w-3.5" />
@@ -110,10 +120,10 @@ export default function GridSplitDialog({
               <button
                 type="button"
                 onClick={() => handleEnhance()}
-                disabled={!panel.panelId || !hasSplitImages || isEnhancing}
+                disabled={!panel.panelId || !hasSplitImages || hasEnhanceTask}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] px-3 py-1.5 text-xs font-medium text-[var(--glass-tone-info-fg)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isEnhancing ? <AppIcon name="loader" className="h-3.5 w-3.5 animate-spin" /> : <AppIcon name="sparklesAlt" className="h-3.5 w-3.5" />}
+                {hasEnhanceTask ? <AppIcon name="loader" className="h-3.5 w-3.5 animate-spin" /> : <AppIcon name="sparklesAlt" className="h-3.5 w-3.5" />}
                 {t('panelCard.enhanceAllSplitGrid')}
               </button>
             </div>
@@ -146,10 +156,10 @@ export default function GridSplitDialog({
                       <button
                         type="button"
                         onClick={() => handleEnhance(image.cellIndex)}
-                        disabled={!panel.panelId || isEnhancing}
+                        disabled={!panel.panelId || isCellEnhancing(image.cellIndex)}
                         className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-2 py-1.5 text-[11px] font-medium text-[var(--glass-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {isEnhancing ? <AppIcon name="loader" className="h-3.5 w-3.5 animate-spin" /> : <AppIcon name="sparklesAlt" className="h-3.5 w-3.5" />}
+                        {isCellEnhancing(image.cellIndex) ? <AppIcon name="loader" className="h-3.5 w-3.5 animate-spin" /> : <AppIcon name="sparklesAlt" className="h-3.5 w-3.5" />}
                         {t('panelCard.enhanceSingleSplitGrid')}
                       </button>
                       <p className="mt-2 line-clamp-4 text-[10px] leading-4 text-[var(--glass-text-tertiary)]">

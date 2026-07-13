@@ -20,6 +20,7 @@ export type TaskTargetState = {
   phase: 'idle' | 'queued' | 'processing' | 'completed' | 'failed'
   runningTaskId: string | null
   runningTaskType: string | null
+  runningPayload: Record<string, unknown> | null
   intent: TaskIntent
   hasOutputAtStart: boolean | null
   progress: number | null
@@ -94,6 +95,7 @@ function buildIdleState(target: TaskTargetStateQuery): TaskTargetState {
     phase: 'idle',
     runningTaskId: null,
     runningTaskType: null,
+    runningPayload: null,
     intent: 'process',
     hasOutputAtStart: null,
     progress: null,
@@ -410,7 +412,7 @@ export function useTaskTargetStateMap(
       }
     }
     return map
-  }, [normalizedTargets, overlayQuery.data, query.data])
+  }, [normalizedTargets, overlayQuery.data, projectId, query.data])
 
   const mergedData = useMemo(() => {
     return normalizedTargets.map((target) =>

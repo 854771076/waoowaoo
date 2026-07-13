@@ -121,6 +121,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/editor/render/route.ts',
   'src/app/api/novel-promotion/[projectId]/editor/route.ts',
   'src/app/api/novel-promotion/[projectId]/director-desk/load/route.ts',
+  'src/app/api/novel-promotion/[projectId]/director-desk/render-snapshot/route.ts',
   'src/app/api/novel-promotion/[projectId]/director-desk/save/route.ts',
   'src/app/api/novel-promotion/[projectId]/episodes/[episodeId]/route.ts',
   'src/app/api/novel-promotion/[projectId]/episodes/batch/route.ts',
@@ -264,6 +265,7 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     || routeFile.endsWith('/regenerate-panel-image/route.ts')
     || routeFile.endsWith('/regenerate-single-image/route.ts')
     || routeFile.endsWith('/regenerate-storyboard-text/route.ts')
+    || routeFile.endsWith('/director-desk/render-snapshot/route.ts')
     || routeFile.endsWith('/voice-generate/route.ts')
     || routeFile.endsWith('/editor/render/route.ts')
   ) {

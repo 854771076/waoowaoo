@@ -29,6 +29,7 @@ export const PROMPT_IDS = {
   NP_SELECT_PROP: 'np_select_prop',
   NP_SELECT_LOCATION: 'np_select_location',
   NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image',
+  NP_DIRECTOR_SNAPSHOT_RENDER: 'np_director_snapshot_render',
   NP_PANEL_GRID_IMAGE: 'np_panel_grid_image',
   NP_PANEL_GRID_ENHANCE: 'np_panel_grid_enhance',
   NP_PANEL_GRID_VIDEO: 'np_panel_grid_video',

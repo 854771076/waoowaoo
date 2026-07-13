@@ -80,6 +80,7 @@ vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
 vi.mock('@/lib/prompt-i18n', () => ({
   PROMPT_IDS: {
     NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image',
+    NP_DIRECTOR_SNAPSHOT_RENDER: 'np_director_snapshot_render',
     NP_PANEL_GRID_IMAGE: 'np_panel_grid_image',
   },
   buildPrompt: promptMock.buildPrompt,
@@ -250,6 +251,80 @@ describe('worker panel-image-task-handler behavior', () => {
     await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 1 }))
     expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(
       expect.objectContaining({ promptId: 'np_single_panel_image' }),
+    )
+  })
+
+  it('uses director snapshot prompt and reference image when rendering a snapshot', async () => {
+    const snapshot = {
+      id: 'snap-1',
+      name: '快照一',
+      capturedAt: Date.now(),
+      cameraId: 'cam-snap',
+      camera: {
+        fov: 38,
+        position: [1, 2, 3],
+        target: [0, 1, 0],
+      },
+      imageDataUrl: 'data:image/jpeg;base64,snapshot',
+      note: '低角度构图',
+      project: {
+        version: 1,
+        scene: {
+          backgroundColor: '#111111',
+          showGround: true,
+          groundOpacity: 0.5,
+          showLabels: true,
+          showGrid: true,
+          backdropAssetId: null,
+          backdropOpacity: 0.6,
+          backdropYaw: 0,
+        },
+        objects: [
+          {
+            id: 'char-1',
+            kind: 'character',
+            name: 'Hero',
+            refId: null,
+            visible: true,
+            locked: false,
+            color: '#ffffff',
+            mode: 'mannequin',
+            transform: { position: [2, 0, -1], rotation: [0, 0, 0], scale: [1, 1, 1] },
+            posePresetId: 'stand',
+          },
+        ],
+        cameras: [{
+          id: 'cam-snap',
+          name: '快照机位',
+          fov: 38,
+          position: [1, 2, 3],
+          target: [0, 1, 0],
+          visible: true,
+        }],
+        activeCameraId: 'cam-snap',
+      },
+    }
+
+    await handlePanelImageTask(buildJob({
+      candidateCount: 1,
+      panelGridSize: 1,
+      source: 'director_snapshot',
+      directorSnapshot: snapshot,
+    }))
+
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        promptId: 'np_director_snapshot_render',
+        variables: expect.objectContaining({
+          storyboard_text_json_input: expect.stringContaining('"director_snapshot"'),
+        }),
+      }),
+    )
+    expect(sharedMock.collectPanelReferenceImages).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        directorShotUrls: expect.arrayContaining(['data:image/jpeg;base64,snapshot']),
+      }),
     )
   })
 

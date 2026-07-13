@@ -174,6 +174,7 @@ export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSE
           progress: typeof eventPayload?.progress === 'number' ? Math.floor(eventPayload.progress) : null,
           stage: typeof eventPayload?.stage === 'string' ? eventPayload.stage : null,
           stageLabel: typeof eventPayload?.stageLabel === 'string' ? eventPayload.stageLabel : null,
+          runningPayload: eventPayload,
           eventTs: typeof payload.ts === 'string' ? payload.ts : null,
         })
 

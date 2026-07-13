@@ -49,6 +49,7 @@ describe('auto-init director project from panel', () => {
     const chars = proj.objects.filter(o => o.kind === 'character')
     expect(chars).toHaveLength(2)
     expect(chars[0].refId).toBe('img-1')
+    expect(chars[0].mode).toBe('mannequin')
     expect(chars[0].transform.position[0]).toBeLessThan(-1)
     expect(chars[1].transform.position[0]).toBeGreaterThan(1)
     expect(chars[0].facing).toBe(0)
