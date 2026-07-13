@@ -1,8 +1,9 @@
 import { getAspectRatioConfig } from '@/lib/constants'
 import type { MutableRefObject } from 'react'
 import type { CapabilitySelections, CapabilityValue } from '@/lib/model-config-contract'
-import { VideoPanelCard, type VideoPanel, type VideoModelOption, type MatchedVoiceLine, type FirstLastFrameParams, type VideoGenerationOptions } from '../video'
+import { VideoPanelCard, type GridVideoSource, type VideoPanel, type VideoModelOption, type MatchedVoiceLine, type FirstLastFrameParams, type VideoGenerationOptions } from '../video'
 import type { PromptField } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoPromptState'
+import type { Character, Location } from '@/types/project'
 
 interface VideoRenderPanelProps {
   allPanels: VideoPanel[]
@@ -13,6 +14,8 @@ interface VideoRenderPanelProps {
   defaultVideoModel: string
   capabilityOverrides: CapabilitySelections
   userVideoModels?: VideoModelOption[]
+  characters?: Character[]
+  locations?: Location[]
   projectId: string
   episodeId: string
   runningVoiceLineIds: Set<string>
@@ -40,6 +43,8 @@ interface VideoRenderPanelProps {
     panelId?: string,
     imageLayout?: 'single' | 'grid',
     gridSize?: number,
+    gridVideoSource?: GridVideoSource,
+    videoReferenceImages?: string[],
   ) => Promise<void>
   onUpdatePanelVideoModel: (storyboardId: string, panelIndex: number, model: string) => Promise<void>
   onLipSync: (storyboardId: string, panelIndex: number, voiceLineId: string, panelId?: string) => Promise<void>
@@ -56,6 +61,7 @@ interface VideoRenderPanelProps {
     panelKey: string,
     generationOptions?: VideoGenerationOptions,
     firstPanelId?: string,
+    videoReferenceImages?: string[],
   ) => Promise<void>
   onPreviewImage: (imageUrl: string | null) => void
   onToggleLipSyncVideo: (key: string, value: boolean) => void
@@ -82,6 +88,8 @@ export default function VideoRenderPanel({
   defaultVideoModel,
   capabilityOverrides,
   userVideoModels,
+  characters = [],
+  locations = [],
   projectId,
   episodeId,
   runningVoiceLineIds,
@@ -155,6 +163,8 @@ export default function VideoRenderPanel({
                 capabilityOverrides={capabilityOverrides}
                 videoRatio={videoRatio}
                 userVideoModels={userVideoModels}
+                characters={characters}
+                locations={locations}
                 projectId={projectId}
                 episodeId={episodeId}
                 runningVoiceLineIds={runningVoiceLineIds}

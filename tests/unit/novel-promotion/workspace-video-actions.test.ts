@@ -68,4 +68,30 @@ describe('useWorkspaceVideoActions', () => {
 
     expect(globalThis.alert).toHaveBeenCalledWith('execution.generationFailed: video submit failed')
   })
+
+  it('forwards selected videoReferenceImages to single video mutation', async () => {
+    generateVideoMutateAsyncMock.mockResolvedValueOnce({ taskId: 'task-1' })
+    const actions = useWorkspaceVideoActions({
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      t: (key: string) => key,
+    })
+
+    await actions.handleGenerateVideo(
+      'storyboard-1',
+      0,
+      'veo-3.1',
+      undefined,
+      { duration: 5 },
+      'panel-1',
+      'single',
+      undefined,
+      undefined,
+      ['images/source.png', 'images/character.png'],
+    )
+
+    expect(generateVideoMutateAsyncMock).toHaveBeenCalledWith(expect.objectContaining({
+      videoReferenceImages: ['images/source.png', 'images/character.png'],
+    }))
+  })
 })

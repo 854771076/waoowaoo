@@ -13,7 +13,6 @@ import {
   resolveLipSyncVideoSource,
   resolveVideoSourceFromGeneration,
   toSignedUrlIfCos,
-  uploadImageSourceToCos,
   uploadVideoSourceToCos,
 } from './utils'
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
@@ -28,10 +27,8 @@ import {
   shouldUseGridFirstLastFrame,
 } from '@/lib/storyboard-images/grid-video-frames'
 import {
-  buildGridSplitImagesContext,
-  cropAllGridImageBuffersForVideo,
-  selectReusableGridSplitImages,
-} from '@/lib/storyboard-images/grid-split'
+  ensureGridSplitImagesForPanel,
+} from '@/lib/storyboard-images/grid-split-service'
 import { resolveGridVideoPrompt } from '@/lib/workers/grid-video-prompt-resolver'
 import { resolveAnalysisModel } from './handlers/resolve-analysis-model'
 import { withTextBilling } from '@/lib/billing'
@@ -63,6 +60,19 @@ function extractGenerationOptions(payload: AnyObj): VideoOptionMap {
     }
   }
   return next
+}
+
+function extractVideoReferenceImages(payload: AnyObj): string[] {
+  const rawImages = payload.videoReferenceImages
+  if (!Array.isArray(rawImages)) return []
+  const images: string[] = []
+  for (const rawImage of rawImages) {
+    if (typeof rawImage !== 'string') continue
+    const image = rawImage.trim()
+    if (!image || images.includes(image)) continue
+    images.push(image)
+  }
+  return images
 }
 
 async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number) {
@@ -134,6 +144,7 @@ async function generateVideoForPanel(
   const panelImageLayout = typeof panel.imageLayout === 'string' ? panel.imageLayout : null
   const payloadImageLayout = typeof payload.imageLayout === 'string' ? payload.imageLayout : null
   const isGridImage = isGridLayout(panelImageLayout || payloadImageLayout)
+  const gridVideoSource = payload.gridVideoSource === 'original' ? 'original' : 'split'
 
   let prompt = basePrompt
   let usedGridPrompt = false
@@ -268,12 +279,13 @@ async function generateVideoForPanel(
   })
 
   let sourceImageStorageKeyOrUrl = panel.imageUrl
-  if (isGridImage && !firstLastFramePayload) {
+  if (isGridImage && !firstLastFramePayload && gridVideoSource === 'split') {
     let gridVideoFrames = extractGridVideoFrames(panel.gridGenerationContext)
-    const splitImages = selectReusableGridSplitImages(panel.gridGenerationContext, {
+    const splitResult = await ensureGridSplitImagesForPanel({
+      panel,
       panelGridSize: resolvedGridSize,
-      sourceGridImageUrl: panel.imageUrl,
     })
+    const splitImages = splitResult.images
     const cachedGridVideoSource = splitImages.find((image) => image.cellIndex === 1)
     if (!gridFrameSelection && gridVideoFrames.length > 0) {
       gridFrameSelection = selectGridVideoFrameImages(gridVideoFrames)
@@ -283,44 +295,7 @@ async function generateVideoForPanel(
     }
     if (cachedGridVideoSource) {
       sourceImageStorageKeyOrUrl = gridFrameSelection?.firstImageUrl || cachedGridVideoSource.imageUrl
-    } else if (panel.imageUrl) {
-      const gridImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
-      if (!gridImageUrl) {
-        throw new Error(`Panel ${panel.id} grid image url invalid`)
-      }
-      const response = await fetch(gridImageUrl)
-      if (!response.ok) {
-        throw new Error(`Failed to download grid image for split: ${response.status}`)
-      }
-      const gridImageBuffer = Buffer.from(await response.arrayBuffer())
-      const splitBuffers = await cropAllGridImageBuffersForVideo({
-        imageBuffer: gridImageBuffer,
-        panelGridSize: resolvedGridSize,
-        minOutputWidth: 768,
-      })
-      const uploadedSplitImages = []
-      for (const split of splitBuffers) {
-        const imageUrl = await uploadImageSourceToCos(split.buffer, 'grid-video-source', `${panel.id}-${split.cellIndex}`)
-        uploadedSplitImages.push({
-          imageUrl,
-          cellIndex: split.cellIndex,
-          panelGridSize: resolvedGridSize,
-        })
-      }
-      const firstSplitImage = uploadedSplitImages.find((image) => image.cellIndex === 1) || uploadedSplitImages[0]
-      sourceImageStorageKeyOrUrl = firstSplitImage?.imageUrl || panel.imageUrl
-      const nextGridContext = buildGridSplitImagesContext(panel.gridGenerationContext, {
-        panelGridSize: resolvedGridSize,
-        sourceGridImageUrl: panel.imageUrl,
-        images: uploadedSplitImages,
-      })
-      await prisma.novelPromotionPanel.update({
-        where: { id: panel.id },
-        data: {
-          gridGenerationContext: nextGridContext,
-        },
-      })
-      gridVideoFrames = extractGridVideoFrames(nextGridContext)
+      gridVideoFrames = extractGridVideoFrames(splitResult.gridGenerationContext)
       gridFrameSelection = selectGridVideoFrameImages(gridVideoFrames)
       if (gridFrameSelection.aggregatePrompt) {
         prompt = gridFrameSelection.aggregatePrompt
@@ -333,6 +308,14 @@ async function generateVideoForPanel(
     throw new Error(`Panel ${panel.id} image url invalid`)
   }
   const sourceImageBase64 = await normalizeToBase64ForGeneration(sourceImageUrl)
+  const videoReferenceImages = await Promise.all(
+    extractVideoReferenceImages(payload).map(async (image) => {
+      const signedUrl = toSignedUrlIfCos(image, 3600)
+      if (!signedUrl) return null
+      return normalizeToBase64ForGeneration(signedUrl)
+    }),
+  )
+  const normalizedVideoReferenceImages = videoReferenceImages.filter((image): image is string => !!image)
 
   let lastFrameImageBase64: string | undefined
   let generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
@@ -366,7 +349,7 @@ async function generateVideoForPanel(
         }
       }
     }
-  } else if (isGridImage && gridFrameSelection) {
+  } else if (isGridImage && gridVideoSource === 'split' && gridFrameSelection) {
     const gridFirstLastFrameCapabilities = resolveBuiltinCapabilitiesByModelKey('video', model)
     if (shouldUseGridFirstLastFrame({
       supportsFirstLastFrame: gridFirstLastFrameCapabilities?.video?.firstlastframe === true,
@@ -398,6 +381,7 @@ async function generateVideoForPanel(
       ...(typeof panelDurationSeconds === 'number' ? { duration: panelDurationSeconds } : {}),
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
       ...(lastFrameImageBase64 ? { lastFrameImageUrl: lastFrameImageBase64 } : {}),
+      ...(normalizedVideoReferenceImages.length > 0 ? { videoReferenceImages: normalizedVideoReferenceImages } : {}),
     },
   })
 

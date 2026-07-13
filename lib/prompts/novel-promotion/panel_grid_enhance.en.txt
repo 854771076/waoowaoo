@@ -1,0 +1,23 @@
+Enhance and redraw split grid cell {cell_index}/{panel_grid_size} into a high-resolution image.
+
+Reference image rules:
+- The first reference image is the original split cell and must be preserved strictly: composition, character placement, action direction, shot size, camera angle, lighting, and subject relationships must follow it.
+- Additional reference images are character turnarounds, character references, location/background images, director-desk captures, or sketches. Use them to lock character identity, costume, hairstyle, accessories, scene structure, and the project's visual style.
+- Do not paste additional reference images directly into the frame; use them only as consistency constraints.
+
+Enhancement goals:
+- Keep the original composition, character placement, identity, costume, expression, action direction, scene structure, lighting, and project style consistent.
+- Improve sharpness, edge quality, material detail, facial detail, and background detail. Remove compression artifacts, blur, jagged edges, and low-resolution artifacts from grid cropping.
+- Output one complete single storyboard image. Do not recreate a grid or split-screen layout.
+
+Forbidden:
+- Do not change shot size or camera angle.
+- Do not add, replace, or redesign characters. Do not change age, face shape, hairstyle, costume main colors, or signature accessories.
+- Do not add text, subtitles, watermarks, numbers, borders, split screens, or UI elements.
+- Avoid over-sharpening, excessive HDR, plastic skin, waxy faces, distorted features, extra fingers, and smeared low-resolution details.
+
+Cell information:
+Image prompt: {image_prompt}
+Video prompt: {video_prompt}
+Description: {description}
+Location: {location}

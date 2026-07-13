@@ -16,7 +16,7 @@ interface TransformableObjectProps {
 }
 
 export function TransformableObject({ objectId, transform, locked, kind, mode, children }: TransformableObjectProps) {
-  const groupRef = useRef<THREE.Group>(null)
+  const groupRef = useRef<THREE.Group>(null!)
   const draggingRef = useRef(false)
   const selectedId = useDirectorStore((s) => s.selectedId)
   const transformMode = useDirectorStore((s) => s.transformMode)
@@ -73,20 +73,23 @@ export function TransformableObject({ objectId, transform, locked, kind, mode, c
 
   if (isSelected && !locked) {
     return (
-      <TransformControls
-        mode={transformMode}
-        onMouseDown={() => {
-          draggingRef.current = true
-          if (sceneControls && 'enabled' in sceneControls) sceneControls.enabled = false
-        }}
-        onMouseUp={() => {
-          draggingRef.current = false
-          if (sceneControls && 'enabled' in sceneControls) sceneControls.enabled = true
-        }}
-        onObjectChange={commit}
-      >
+      <>
         {group}
-      </TransformControls>
+        <TransformControls
+          mode={transformMode}
+          object={groupRef}
+          onMouseDown={() => {
+            draggingRef.current = true
+            if (sceneControls && 'enabled' in sceneControls) sceneControls.enabled = false
+          }}
+          onMouseUp={() => {
+            commit()
+            draggingRef.current = false
+            if (sceneControls && 'enabled' in sceneControls) sceneControls.enabled = true
+          }}
+          onObjectChange={commit}
+        />
+      </>
     )
   }
   return group

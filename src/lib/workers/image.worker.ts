@@ -9,6 +9,7 @@ import {
   handleAssetHubImageTask,
   handleAssetHubModifyTask,
   handleCharacterImageTask,
+  handleGridSplitEnhanceTask,
   handleLocationImageTask,
   handleModifyAssetImageTask,
   handlePanelImageTask,
@@ -41,6 +42,8 @@ async function processImageTask(job: Job<TaskJobData>) {
       return await handleAssetHubModifyTask(job)
     case TASK_TYPE.IMAGE_PANEL:
       return await handlePanelImageTask(job)
+    case TASK_TYPE.GRID_SPLIT_ENHANCE:
+      return await handleGridSplitEnhanceTask(job)
     case TASK_TYPE.PANEL_VARIANT:
       return await handlePanelVariantTask(job)
     case TASK_TYPE.IMAGE_PROJECT_COVER:

@@ -2,6 +2,8 @@
 
 import { useMemo } from 'react'
 import { AppIcon } from '@/components/ui/icons'
+import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
+import { toDisplayImageUrl } from '@/lib/media/image-url'
 import { useSplitGridPanel } from '@/lib/query/hooks/useStoryboards'
 import type { GridVideoFrame, VideoPanel } from '../types'
 
@@ -39,9 +41,15 @@ export default function GridSplitDialog({
 
   const images = panel.gridSplitImages || []
   const hasSplitImages = images.length > 0
+  const originalGridImageUrl = toDisplayImageUrl(panel.imageUrl)
+  const isEnhancing = splitMutation.isPending || !!panel.gridSplitEnhanceTaskRunning
   const handleSplit = (force: boolean) => {
     if (!panel.panelId) return
     void splitMutation.mutateAsync({ panelId: panel.panelId, force })
+  }
+  const handleEnhance = (cellIndex?: number) => {
+    if (!panel.panelId) return
+    void splitMutation.mutateAsync({ panelId: panel.panelId, enhance: true, ...(cellIndex ? { cellIndex } : {}) })
   }
 
   return (
@@ -67,11 +75,12 @@ export default function GridSplitDialog({
               <AppIcon name="image" className="h-3.5 w-3.5" />
               {t('panelCard.originalGridImage')}
             </div>
-            {panel.imageUrl ? (
-              <img
-                src={panel.imageUrl}
+            {originalGridImageUrl ? (
+              <MediaImageWithLoading
+                src={originalGridImageUrl}
                 alt={t('panelCard.originalGridImage')}
-                className="w-full rounded-lg border border-[var(--glass-stroke-base)] bg-black object-contain"
+                containerClassName="w-full rounded-lg border border-[var(--glass-stroke-base)] bg-black"
+                className="w-full object-contain"
               />
             ) : (
               <div className="flex aspect-video items-center justify-center rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] text-xs text-[var(--glass-text-tertiary)]">
@@ -98,6 +107,15 @@ export default function GridSplitDialog({
                 <AppIcon name="refresh" className="h-3.5 w-3.5" />
                 {t('panelCard.resplitGrid')}
               </button>
+              <button
+                type="button"
+                onClick={() => handleEnhance()}
+                disabled={!panel.panelId || !hasSplitImages || isEnhancing}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] px-3 py-1.5 text-xs font-medium text-[var(--glass-tone-info-fg)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isEnhancing ? <AppIcon name="loader" className="h-3.5 w-3.5 animate-spin" /> : <AppIcon name="sparklesAlt" className="h-3.5 w-3.5" />}
+                {t('panelCard.enhanceAllSplitGrid')}
+              </button>
             </div>
           </div>
 
@@ -112,17 +130,28 @@ export default function GridSplitDialog({
                 {images.map((image) => {
                   const frame = framesByIndex.get(image.cellIndex)
                   const prompt = getPromptForFrame(frame)
+                  const imageUrl = toDisplayImageUrl(image.imageUrl)
                   return (
                     <div key={`${image.cellIndex}-${image.imageUrl}`} className="rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] p-2">
                       <div className="mb-1.5 flex items-center justify-between text-[11px]">
                         <span className="font-medium text-[var(--glass-text-secondary)]">{t('panelCard.gridCellIndex', { index: image.cellIndex })}</span>
                         <span className="text-[var(--glass-text-tertiary)]">{image.panelGridSize}</span>
                       </div>
-                      <img
-                        src={image.imageUrl}
+                      <MediaImageWithLoading
+                        src={imageUrl || ''}
                         alt={t('panelCard.gridCellIndex', { index: image.cellIndex })}
-                        className="aspect-video w-full rounded border border-[var(--glass-stroke-base)] bg-black object-contain"
+                        containerClassName="aspect-video w-full rounded border border-[var(--glass-stroke-base)] bg-black"
+                        className="h-full w-full object-contain"
                       />
+                      <button
+                        type="button"
+                        onClick={() => handleEnhance(image.cellIndex)}
+                        disabled={!panel.panelId || isEnhancing}
+                        className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-2 py-1.5 text-[11px] font-medium text-[var(--glass-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isEnhancing ? <AppIcon name="loader" className="h-3.5 w-3.5 animate-spin" /> : <AppIcon name="sparklesAlt" className="h-3.5 w-3.5" />}
+                        {t('panelCard.enhanceSingleSplitGrid')}
+                      </button>
                       <p className="mt-2 line-clamp-4 text-[10px] leading-4 text-[var(--glass-text-tertiary)]">
                         {prompt || t('panelCard.noGridCellPrompt')}
                       </p>

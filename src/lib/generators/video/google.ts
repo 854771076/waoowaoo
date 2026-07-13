@@ -68,6 +68,7 @@ export class GoogleVeoVideoGenerator extends BaseVideoGenerator {
             'resolution',
             'duration',
             'lastFrameImageUrl',
+            'videoReferenceImages',
         ])
         for (const [key, value] of Object.entries(options)) {
             if (value === undefined) continue

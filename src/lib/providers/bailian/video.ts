@@ -95,6 +95,7 @@ function assertNoUnsupportedOptions(options: BailianGenerateRequestOptions): voi
     'promptExtend',
     'duration',
     'lastFrameImageUrl',
+    'videoReferenceImages',
   ])
   for (const [key, value] of Object.entries(options)) {
     if (value === undefined) continue

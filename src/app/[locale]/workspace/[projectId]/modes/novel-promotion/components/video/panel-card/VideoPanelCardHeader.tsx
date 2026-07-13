@@ -145,6 +145,9 @@ export default function VideoPanelCardHeader({ runtime, onOpenHistory, historyCo
               videoModel.generationOptions,
               panel.panelId,
               panel.imageLayout,
+              undefined,
+              panel.imageLayout === 'grid' ? runtime.computed.gridVideoSource : undefined,
+              runtime.videoReference.selectedImages,
             )}
           disabled={
             taskStatus.isVideoTaskRunning

@@ -6,6 +6,7 @@ import { useVideoTaskPresentation } from '@/lib/query/hooks/useTaskPresentation'
 import {
   buildPanelLipTargets,
   buildPanelVideoTargets,
+  buildGridSplitEnhanceTargets,
   buildGridVideoPromptTargets,
 } from './task-targets'
 
@@ -24,6 +25,10 @@ export function useVideoTaskStates({
     () => buildGridVideoPromptTargets(storyboards),
     [storyboards],
   )
+  const gridSplitEnhanceTargets = useMemo(
+    () => buildGridSplitEnhanceTargets(storyboards),
+    [storyboards],
+  )
 
   const panelVideoStates = useVideoTaskPresentation(projectId, panelVideoTargets, {
     enabled: !!projectId && panelVideoTargets.length > 0,
@@ -34,10 +39,14 @@ export function useVideoTaskStates({
   const gridVideoPromptStates = useVideoTaskPresentation(projectId, gridVideoPromptTargets, {
     enabled: !!projectId && gridVideoPromptTargets.length > 0,
   })
+  const gridSplitEnhanceStates = useVideoTaskPresentation(projectId, gridSplitEnhanceTargets, {
+    enabled: !!projectId && gridSplitEnhanceTargets.length > 0,
+  })
 
   return {
     panelVideoStates,
     panelLipStates,
     gridVideoPromptStates,
+    gridSplitEnhanceStates,
   }
 }

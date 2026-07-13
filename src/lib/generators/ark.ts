@@ -343,6 +343,7 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             'seed',
             'cameraFixed',
             'watermark',
+            'videoReferenceImages',
         ])
         for (const [key, value] of Object.entries(options)) {
             if (value === undefined) continue

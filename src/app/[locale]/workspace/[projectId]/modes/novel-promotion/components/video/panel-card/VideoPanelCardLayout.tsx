@@ -7,11 +7,16 @@ import VideoPanelCardFooter from './VideoPanelCardFooter'
 import PanelHistoryDrawer from '../../storyboard/PanelHistoryDrawer'
 import { useVideoPanelActions, type VideoPanelCardShellProps } from './hooks/useVideoPanelActions'
 import { parsePanelHistory } from '@/lib/novel-promotion/panel-history'
+import GridSplitDialog from './GridSplitDialog'
 
 export type { VideoPanelCardShellProps }
 
 function VideoPanelCardLayout(props: VideoPanelCardShellProps) {
-  const runtime = useVideoPanelActions(props)
+  const [gridSplitOpen, setGridSplitOpen] = useState(false)
+  const runtime = useVideoPanelActions({
+    ...props,
+    onOpenGridSplit: () => setGridSplitOpen(true),
+  })
   const [historyOpen, setHistoryOpen] = useState(false)
   const historyCount = parsePanelHistory(runtime.panel.videoHistory ?? null).length
   const panelId = runtime.panel.panelId
@@ -32,6 +37,16 @@ function VideoPanelCardLayout(props: VideoPanelCardShellProps) {
           mediaType="video"
           open={historyOpen}
           onOpenChange={setHistoryOpen}
+        />
+      )}
+      {runtime.panel.imageLayout === 'grid' && (
+        <GridSplitDialog
+          open={gridSplitOpen}
+          onOpenChange={setGridSplitOpen}
+          projectId={props.projectId}
+          episodeId={props.episodeId}
+          panel={runtime.panel}
+          t={(key, params) => runtime.t(key as never, params as never)}
         />
       )}
     </div>

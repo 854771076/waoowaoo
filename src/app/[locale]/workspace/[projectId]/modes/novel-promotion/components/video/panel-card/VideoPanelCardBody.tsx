@@ -3,7 +3,9 @@ import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { ModelCapabilityDropdown } from '@/components/ui/config-modals/ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
+import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import type { VideoPanelRuntime } from './hooks/useVideoPanelActions'
+import { toDisplayImageUrl } from '@/lib/media/image-url'
 
 interface VideoPanelCardBodyProps {
   runtime: VideoPanelRuntime
@@ -23,6 +25,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
     promptEditor,
     voiceManager,
     lipSync,
+    videoReference,
     computed,
   } = runtime
   const safeTranslate = (key: string | undefined, fallback = ''): string => {
@@ -55,11 +58,28 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
     ? taskStatus.taskRunningVideoLabel
     : isGridVideoPanel
       ? panel.videoUrl
-        ? t('panelCard.regenerateGridSplitVideo')
-        : t('panelCard.generateGridSplitVideo')
+        ? t('panelCard.regenerateVideo')
+        : t('panelCard.generateVideo')
       : panel.videoUrl
         ? t('stage.hasSynced')
         : t('panelCard.generateVideo')
+  const referenceKindLabel = (kind: string) => {
+    if (kind === 'source') return t('panelCard.videoReference.source')
+    if (kind === 'lastFrame') return t('panelCard.videoReference.lastFrame')
+    if (kind === 'character') return t('panelCard.videoReference.character')
+    if (kind === 'characterSheet') return t('panelCard.videoReference.characterSheet')
+    if (kind === 'location') return t('panelCard.videoReference.location')
+    return kind
+  }
+  const resolvedVideoReference = videoReference || {
+    choices: [],
+    selectedIds: new Set<string>(),
+    selectedImages: [],
+    includeCharacterSheet: false,
+    setIncludeCharacterSheet: () => undefined,
+    toggleChoice: () => undefined,
+  }
+  const showVideoReferenceSelector = resolvedVideoReference.choices.length > 0
 
   return (
     <div className="p-4 space-y-2">
@@ -125,6 +145,61 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
               </div>
             )}
 
+            {showVideoReferenceSelector && (
+              <div className="mt-2 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] p-2">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--glass-text-secondary)]">
+                    <AppIcon name="image" className="h-3.5 w-3.5" />
+                    {t('panelCard.videoReference.title')}
+                  </span>
+                  <label className="inline-flex items-center gap-1.5 text-[10px] text-[var(--glass-text-tertiary)]">
+                    <input
+                      type="checkbox"
+                      checked={resolvedVideoReference.includeCharacterSheet}
+                      onChange={(event) => resolvedVideoReference.setIncludeCharacterSheet(event.target.checked)}
+                      className="h-3 w-3"
+                    />
+                    <span>{t('panelCard.videoReference.characterSheetMode')}</span>
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {resolvedVideoReference.choices.map((choice) => {
+                    const checked = choice.required || resolvedVideoReference.selectedIds.has(choice.id)
+                    const displayImageUrl = toDisplayImageUrl(choice.url)
+                    return (
+                      <label
+                        key={choice.id}
+                        className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] ${checked
+                            ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
+                            : 'border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] text-[var(--glass-text-tertiary)]'
+                          }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={choice.required}
+                          onChange={() => resolvedVideoReference.toggleChoice(choice.id)}
+                          className="h-3 w-3"
+                        />
+                        {displayImageUrl && (
+                          <MediaImageWithLoading
+                            src={displayImageUrl}
+                            alt=""
+                            containerClassName="h-6 w-6 flex-shrink-0 rounded"
+                            className="h-full w-full object-cover"
+                            showLoadingIndicator={false}
+                          />
+                        )}
+                        <span className="truncate">
+                          {referenceKindLabel(choice.kind)}: {choice.label}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {showsFirstLastFrameActions ? (() => {
               const linkedNextPanel = layout.nextPanel!
               return (
@@ -141,6 +216,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                         ...(typeof panel.textPanel?.duration === 'number' ? { duration: panel.textPanel.duration } : {}),
                       },
                       panel.panelId,
+                      resolvedVideoReference.selectedImages,
                     )}
                     disabled={
                       taskStatus.isVideoTaskRunning
@@ -188,6 +264,9 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                         },
                         panel.panelId,
                         panel.imageLayout,
+                        undefined,
+                        isGridVideoPanel ? computed.gridVideoSource : undefined,
+                        resolvedVideoReference.selectedImages,
                       )}
                     disabled={
                       taskStatus.isVideoTaskRunning
@@ -221,9 +300,50 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                 </div>
 
                 {isGridVideoPanel && (
-                  <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-2 py-1.5 text-[10px] leading-4 text-[var(--glass-text-tertiary)]">
-                    <AppIcon name="scissors" className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                    <span>{t('panelCard.gridSplitVideoHint')}</span>
+                  <div className="mt-2 space-y-2 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-2 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={actions.onOpenGridSplit}
+                        disabled={!panel.panelId || !panel.imageUrl}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--glass-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <AppIcon name="scissors" className="h-3.5 w-3.5" />
+                        {t('panelCard.splitGrid')}
+                      </button>
+                      <span className="text-[10px] text-[var(--glass-text-tertiary)]">
+                        {computed.hasGridSplitImages
+                          ? t('panelCard.gridSplitReady', { count: panel.gridSplitImages?.length || 0 })
+                          : t('panelCard.gridSplitNotReady')}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => actions.onGridVideoSourceChange('split')}
+                        disabled={!computed.hasGridSplitImages}
+                        className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${computed.gridVideoSource === 'split'
+                            ? 'bg-[var(--glass-accent-from)] text-white'
+                            : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
+                          }`}
+                      >
+                        {t('panelCard.useSplitGridVideo')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => actions.onGridVideoSourceChange('original')}
+                        className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${computed.gridVideoSource === 'original'
+                            ? 'bg-[var(--glass-accent-from)] text-white'
+                            : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
+                          }`}
+                      >
+                        {t('panelCard.useOriginalGridVideo')}
+                      </button>
+                    </div>
+                    <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[var(--glass-text-tertiary)]">
+                      <AppIcon name="info" className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                      <span>{t('panelCard.gridSplitVideoHint')}</span>
+                    </div>
                   </div>
                 )}
 

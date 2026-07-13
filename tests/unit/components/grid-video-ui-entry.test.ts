@@ -21,8 +21,30 @@ describe('grid video frontend entry', () => {
   it('shows grid split video generation as the grid panel video entry', () => {
     const bodySource = readSource('src/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/panel-card/VideoPanelCardBody.tsx')
 
-    expect(bodySource).toContain('generateGridSplitVideo')
-    expect(bodySource).toContain('regenerateGridSplitVideo')
+    expect(bodySource).not.toContain('generateGridSplitVideo')
+    expect(bodySource).not.toContain('regenerateGridSplitVideo')
+    expect(bodySource).toContain("t('panelCard.generateVideo')")
+    expect(bodySource).toContain("t('panelCard.regenerateVideo')")
     expect(bodySource).toContain('gridSplitVideoHint')
+    expect(bodySource).toContain('splitGrid')
+    expect(bodySource).toContain('useSplitGridVideo')
+    expect(bodySource).toContain('useOriginalGridVideo')
+    expect(bodySource).toContain('onGridVideoSourceChange')
+    expect(bodySource).toContain('gridVideoSource')
+  })
+
+  it('mounts the grid split dialog from the video panel card layout', () => {
+    const layoutSource = readSource('src/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/panel-card/VideoPanelCardLayout.tsx')
+    const dialogSource = readSource('src/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/panel-card/GridSplitDialog.tsx')
+
+    expect(layoutSource).toContain('GridSplitDialog')
+    expect(layoutSource).toContain('onOpenGridSplit')
+    expect(dialogSource).toContain('useSplitGridPanel')
+    expect(dialogSource).toContain('toDisplayImageUrl')
+    expect(dialogSource).toContain('enhanceAllSplitGrid')
+    expect(dialogSource).toContain('enhanceSingleSplitGrid')
+    expect(dialogSource).toContain('handleEnhance(image.cellIndex)')
+    expect(dialogSource).toContain('startGridSplit')
+    expect(dialogSource).toContain('resplitGrid')
   })
 })

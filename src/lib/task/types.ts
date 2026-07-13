@@ -49,6 +49,7 @@ export const TASK_TYPE = {
   REGENERATE_STORYBOARD_TEXT: 'regenerate_storyboard_text',
   INSERT_PANEL: 'insert_panel',
   PANEL_VARIANT: 'panel_variant',
+  GRID_SPLIT_ENHANCE: 'grid_split_enhance',
   MODIFY_ASSET_IMAGE: 'modify_asset_image',
   REGENERATE_GROUP: 'regenerate_group',
   ASSET_HUB_IMAGE: 'asset_hub_image',

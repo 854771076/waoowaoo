@@ -41,13 +41,18 @@ function summarizeImageRef(ref: string | null | undefined): Record<string, unkno
 }
 
 /**
- * 为日志摘要生成 options：把可能超长的 referenceImages（base64 数组）替换为逐项摘要，
+ * 为日志摘要生成 options：把可能超长的 referenceImages/videoReferenceImages（base64 数组）替换为逐项摘要，
  * 其余字段原样保留。
  */
 function summarizeGenOptions(options: Record<string, unknown> | undefined | null): Record<string, unknown> {
   const next: Record<string, unknown> = { ...(options || {}) }
   if (Array.isArray(next.referenceImages)) {
     next.referenceImages = (next.referenceImages as unknown[]).map((item) =>
+      summarizeImageRef(typeof item === 'string' ? item : null),
+    )
+  }
+  if (Array.isArray(next.videoReferenceImages)) {
+    next.videoReferenceImages = (next.videoReferenceImages as unknown[]).map((item) =>
       summarizeImageRef(typeof item === 'string' ? item : null),
     )
   }
@@ -510,8 +515,9 @@ export async function resolveVideoSourceFromGeneration(
       aspectRatio?: string
       generateAudio?: boolean
       lastFrameImageUrl?: string
+      videoReferenceImages?: string[]
       generationMode?: 'normal' | 'firstlastframe'
-      [key: string]: string | number | boolean | undefined
+      [key: string]: string | number | boolean | string[] | undefined
     }
     pollProgress?: { start?: number; end?: number }
   },
@@ -576,10 +582,12 @@ export async function resolveVideoSourceFromGeneration(
 
   const providerCapabilityOptions: Record<string, string | number | boolean> = { ...capabilityOptions }
   delete providerCapabilityOptions.generationMode
-  const providerRequestOptions: Record<string, string | number | boolean> = {}
+  const providerRequestOptions: Record<string, string | number | boolean | string[]> = {}
   for (const [key, value] of Object.entries(params.options || {})) {
     if (key === 'generationMode' || value === undefined) continue
-    providerRequestOptions[key] = value
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value)) {
+      providerRequestOptions[key] = value
+    }
   }
 
   logTaskPayload({

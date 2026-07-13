@@ -29,6 +29,7 @@ const TARGETS: Array<{ promptId: PromptId; locales: Array<'zh' | 'en'> }> = [
   { promptId: PROMPT_IDS.NP_AGENT_ACTING_DIRECTION, locales: ['zh', 'en'] },
   { promptId: PROMPT_IDS.NP_AGENT_STORYBOARD_DETAIL, locales: ['zh', 'en'] },
   { promptId: PROMPT_IDS.NP_PANEL_GRID_IMAGE, locales: ['zh', 'en'] },
+  { promptId: PROMPT_IDS.NP_PANEL_GRID_ENHANCE, locales: ['zh', 'en'] },
   { promptId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE, locales: ['zh', 'en'] },
   { promptId: PROMPT_IDS.NP_PANEL_GRID_VIDEO, locales: ['zh', 'en'] },
   { promptId: PROMPT_IDS.NP_AGENT_STORYBOARD_INSERT, locales: ['en'] },

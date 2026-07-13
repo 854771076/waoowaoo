@@ -232,6 +232,7 @@ export class MinimaxVideoGenerator extends BaseVideoGenerator {
             'generateAudio',
             'lastFrameImageUrl',
             'aspectRatio',  // 接受但不传给 API，避免 worker 层统一注入时报错
+            'videoReferenceImages',
         ])
         for (const [key, value] of Object.entries(options)) {
             if (value === undefined) continue

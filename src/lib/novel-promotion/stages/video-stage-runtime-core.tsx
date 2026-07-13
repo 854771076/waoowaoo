@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   VideoToolbar,
+  type GridVideoSource,
   type VideoGenerationOptionValue,
   type VideoGenerationOptions,
   type VideoModelOption,
@@ -68,6 +69,8 @@ export function useVideoStageRuntime({
   episodeId,
   storyboards,
   clips,
+  characters = [],
+  locations = [],
   defaultVideoModel,
   capabilityOverrides,
   videoRatio = '16:9',
@@ -104,7 +107,7 @@ export function useVideoStageRuntime({
   const downloadRemoteBlobMutation = useDownloadRemoteBlob()
   const matchedVoiceLinesQuery = useMatchedVoiceLines(projectId, episodeId)
 
-  const { panelVideoStates, panelLipStates, gridVideoPromptStates } = useVideoTaskStates({
+  const { panelVideoStates, panelLipStates, gridVideoPromptStates, gridSplitEnhanceStates } = useVideoTaskStates({
     projectId,
     storyboards,
   })
@@ -114,6 +117,7 @@ export function useVideoStageRuntime({
     panelVideoStates,
     panelLipStates,
     gridVideoPromptStates,
+    gridSplitEnhanceStates,
   })
 
   const {
@@ -341,6 +345,8 @@ export function useVideoStageRuntime({
     panelId?: string,
     imageLayout?: 'single' | 'grid',
     gridSize?: number,
+    gridVideoSource?: GridVideoSource,
+    videoReferenceImages?: string[],
   ) => {
     if (isSubmittingVideoBatch) return
 
@@ -363,7 +369,18 @@ export function useVideoStageRuntime({
     }
 
     try {
-      await onGenerateVideo(storyboardId, panelIndex, videoModel, firstLastFrame, generationOptions, panelId, imageLayout, gridSize)
+      await onGenerateVideo(
+        storyboardId,
+        panelIndex,
+        videoModel,
+        firstLastFrame,
+        generationOptions,
+        panelId,
+        imageLayout,
+        gridSize,
+        gridVideoSource,
+        videoReferenceImages,
+      )
     } catch (error) {
       setSubmittingVideoPanelKeys((previous) => {
         if (!previous.has(panelKey)) return previous
@@ -546,6 +563,8 @@ export function useVideoStageRuntime({
         defaultVideoModel={defaultVideoModel}
         capabilityOverrides={capabilityOverrides}
         userVideoModels={normalVideoModelOptions}
+        characters={characters}
+        locations={locations}
         projectId={projectId}
         episodeId={episodeId}
         runningVoiceLineIds={runningVoiceLineIds}

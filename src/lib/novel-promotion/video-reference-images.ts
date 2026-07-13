@@ -31,10 +31,30 @@ function normalizeName(value: unknown): string {
   return normalizeText(value).toLowerCase()
 }
 
+function normalizeComparableName(value: unknown): string {
+  return normalizeName(value).replace(/[\s/／、,，;；:：()（）[\]【】《》"'“”‘’._-]+/g, '')
+}
+
+function splitNameAliases(value: unknown): string[] {
+  return normalizeText(value)
+    .split(/[\/／、,，;；]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 function pushUniqueUrl(urls: string[], url: string | null | undefined): void {
   const normalized = normalizeText(url)
   if (!normalized || urls.includes(normalized)) return
   urls.push(normalized)
+}
+
+function collectAppearanceImageUrls(appearance: CharacterAppearance): string[] {
+  const urls: string[] = []
+  pushUniqueUrl(urls, resolveAppearanceSelectedUrl(appearance))
+  for (const imageUrl of appearance.imageUrls) {
+    pushUniqueUrl(urls, imageUrl)
+  }
+  return urls
 }
 
 function getPanelCharacterNames(panel: Pick<VideoPanel, 'textPanel'>): string[] {
@@ -50,6 +70,25 @@ function getPanelCharacterNames(panel: Pick<VideoPanel, 'textPanel'>): string[] 
     }
   }
   return names
+}
+
+function characterMatchesPanelName(character: Character, panelName: string): boolean {
+  const panelNames = splitNameAliases(panelName)
+  if (panelNames.length === 0) return false
+  const characterNames = [
+    ...splitNameAliases(character.name),
+    ...(Array.isArray(character.aliases) ? character.aliases.flatMap(splitNameAliases) : []),
+  ]
+  return panelNames.some((panelAlias) => {
+    const normalizedPanelAlias = normalizeComparableName(panelAlias)
+    if (!normalizedPanelAlias) return false
+    return characterNames.some((characterAlias) => {
+      const normalizedCharacterAlias = normalizeComparableName(characterAlias)
+      return normalizedCharacterAlias === normalizedPanelAlias
+        || normalizedCharacterAlias.includes(normalizedPanelAlias)
+        || normalizedPanelAlias.includes(normalizedCharacterAlias)
+    })
+  })
 }
 
 function resolveAppearanceSelectedUrl(appearance: CharacterAppearance): string | null {
@@ -97,6 +136,27 @@ function resolveSelectedLocationImage(location: Location) {
     || null
 }
 
+function collectLocationImages(location: Location) {
+  const selectedImage = resolveSelectedLocationImage(location)
+  const images = []
+  if (selectedImage?.imageUrl) images.push(selectedImage)
+  for (const image of location.images) {
+    if (!image.imageUrl) continue
+    if (images.some((item) => item.imageUrl === image.imageUrl)) continue
+    images.push(image)
+  }
+  return images
+}
+
+function locationMatchesPanelName(location: Location, panelName: string): boolean {
+  const normalizedPanelLocation = normalizeComparableName(panelName)
+  const normalizedLocationName = normalizeComparableName(location.name)
+  if (!normalizedPanelLocation || !normalizedLocationName) return false
+  return normalizedLocationName === normalizedPanelLocation
+    || normalizedLocationName.includes(normalizedPanelLocation)
+    || normalizedPanelLocation.includes(normalizedLocationName)
+}
+
 export function buildVideoReferenceImageChoices({
   panel,
   nextPanel,
@@ -132,55 +192,69 @@ export function buildVideoReferenceImageChoices({
   }
 
   const currentCharacterNames = getPanelCharacterNames(panel)
-  const characterLimit = Math.max(1, Math.min(2, Math.floor(characterImagesPerPerson)))
-  for (const characterName of currentCharacterNames) {
-    const character = characters.find((item) => normalizeName(item.name) === normalizeName(characterName))
-    if (!character) continue
+  const defaultCharacterLimit = Math.max(1, Math.min(2, Math.floor(characterImagesPerPerson)))
+  const matchedCharacters = characters.filter((character) =>
+    currentCharacterNames.some((characterName) => characterMatchesPanelName(character, characterName)),
+  )
+  const characterChoices = matchedCharacters.length > 0
+    ? matchedCharacters.map((character) => ({ character, matched: true }))
+    : currentCharacterNames.length > 0
+      // 资产命名和分镜称呼不一致时仍展示角色资产，方便人工检查并手动勾选。
+      ? characters.map((character) => ({ character, matched: false }))
+      : []
+  for (const { character, matched } of characterChoices) {
     const normalAppearance = character.appearances.find((appearance) => !isCharacterSheetAppearance(appearance))
       || character.appearances[0]
     if (normalAppearance) {
-      resolveCharacterReferenceUrls(normalAppearance, characterLimit).forEach((url, index) => {
+      const defaultUrls = new Set(resolveCharacterReferenceUrls(normalAppearance, defaultCharacterLimit))
+      collectAppearanceImageUrls(normalAppearance).forEach((url, index) => {
         choices.push({
           id: `character:${character.id}:${normalAppearance.id}:${index}`,
           kind: 'character',
           url,
           label: character.name,
           required: false,
-          selectedByDefault: index === 0,
+          selectedByDefault: matched && defaultUrls.has(url) && index === 0,
           ownerId: character.id,
         })
       })
     }
-    if (includeCharacterSheet) {
-      const sheetAppearance = character.appearances.find(isCharacterSheetAppearance)
-      const sheetUrl = sheetAppearance ? resolveAppearanceSelectedUrl(sheetAppearance) : null
-      if (sheetAppearance && sheetUrl) {
+    const sheetAppearance = character.appearances.find(isCharacterSheetAppearance)
+    if (sheetAppearance) {
+      collectAppearanceImageUrls(sheetAppearance).forEach((url, index) => {
         choices.push({
-          id: `character-sheet:${character.id}:${sheetAppearance.id}`,
+          id: `character-sheet:${character.id}:${sheetAppearance.id}:${index}`,
           kind: 'characterSheet',
-          url: sheetUrl,
+          url,
           label: `${character.name} 三视图`,
           required: false,
-          selectedByDefault: false,
+          selectedByDefault: matched && includeCharacterSheet && index === 0,
           ownerId: character.id,
         })
-      }
+      })
     }
   }
 
   const panelLocationName = normalizeText(panel.textPanel?.location)
   if (panelLocationName) {
-    const location = locations.find((item) => normalizeName(item.name) === normalizeName(panelLocationName))
-    const selectedImage = location ? resolveSelectedLocationImage(location) : null
-    if (location && selectedImage?.imageUrl) {
-      choices.push({
-        id: `location:${location.id}`,
-        kind: 'location',
-        url: selectedImage.imageUrl,
-        label: location.name,
-        required: false,
-        selectedByDefault: true,
-        ownerId: location.id,
+    const matchedLocations = locations.filter((item) => locationMatchesPanelName(item, panelLocationName))
+    const locationChoices = matchedLocations.length > 0
+      ? matchedLocations.map((location) => ({ location, matched: true }))
+      // 场景名来自文本分镜，可能是“客厅一角”等局部称呼；匹配不到时仍展示项目场景图供人工选择。
+      : locations.map((location) => ({ location, matched: false }))
+    for (const { location, matched } of locationChoices) {
+      const selectedImage = resolveSelectedLocationImage(location)
+      collectLocationImages(location).forEach((image) => {
+        if (!image.imageUrl) return
+        choices.push({
+          id: `location:${location.id}:${image.imageIndex}`,
+          kind: 'location',
+          url: image.imageUrl,
+          label: location.name,
+          required: false,
+          selectedByDefault: matched && selectedImage?.imageUrl === image.imageUrl,
+          ownerId: location.id,
+        })
       })
     }
   }

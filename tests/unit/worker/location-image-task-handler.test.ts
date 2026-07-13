@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, getArtStylePrompt } from '@/lib/constants'
+import { PROP_IMAGE_RATIO, getArtStylePrompt } from '@/lib/constants'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const utilsMock = vi.hoisted(() => ({
@@ -109,7 +109,7 @@ describe('worker location-image-task-handler behavior', () => {
         prompt: expect.stringContaining('雨夜街道'),
         label: 'Old Town',
         targetId: 'location-image-1',
-        options: expect.objectContaining({ aspectRatio: LOCATION_IMAGE_RATIO }),
+        options: expect.objectContaining({ aspectRatio: '16:9' }),
       }),
     )
     expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledWith(

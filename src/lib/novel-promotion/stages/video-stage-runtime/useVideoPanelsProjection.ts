@@ -24,6 +24,7 @@ interface UseVideoPanelsProjectionParams {
   panelVideoStates: TaskPresentationLike
   panelLipStates: TaskPresentationLike
   gridVideoPromptStates?: TaskPresentationLike
+  gridSplitEnhanceStates?: TaskPresentationLike
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -59,7 +60,7 @@ function parseGridGenerationContext(value: unknown): {
         .filter((item): item is GridSplitImage => item !== null)
         .sort((left, right) => left.cellIndex - right.cellIndex),
       gridVideoFrames: frames
-        .map((item) => {
+        .map((item): GridVideoFrame | null => {
           const record = asRecord(item)
           const imageUrl = pickText(record.imageUrl)
           const videoPrompt = pickText(record.videoPrompt)
@@ -92,6 +93,7 @@ export function useVideoPanelsProjection({
   panelVideoStates,
   panelLipStates,
   gridVideoPromptStates,
+  gridSplitEnhanceStates,
 }: UseVideoPanelsProjectionParams) {
   const sortedStoryboards = useMemo(() => {
     return [...storyboards].sort((left, right) => {
@@ -122,6 +124,9 @@ export function useVideoPanelsProjection({
         const panelLipState = panelId ? panelLipStates.getTaskState(`panel-lip:${panelId}`) : null
         const gridVideoPromptState = panelId && gridVideoPromptStates
           ? gridVideoPromptStates.getTaskState(`grid-video-prompt:${panelId}`)
+          : null
+        const gridSplitEnhanceState = panelId && gridSplitEnhanceStates
+          ? gridSplitEnhanceStates.getTaskState(`grid-split-enhance:${panelId}`)
           : null
         const gridContext = parseGridGenerationContext(panel.gridGenerationContext)
 
@@ -174,11 +179,13 @@ export function useVideoPanelsProjection({
               : panel.lipSyncErrorMessage || undefined,
           gridVideoPromptTaskRunning:
             gridVideoPromptState?.phase === 'queued' || gridVideoPromptState?.phase === 'processing',
+          gridSplitEnhanceTaskRunning:
+            gridSplitEnhanceState?.phase === 'queued' || gridSplitEnhanceState?.phase === 'processing',
         })
       })
     })
     return panels
-  }, [panelLipStates, panelVideoStates, gridVideoPromptStates, sortedStoryboards])
+  }, [panelLipStates, panelVideoStates, gridVideoPromptStates, gridSplitEnhanceStates, sortedStoryboards])
 
   return {
     sortedStoryboards,

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   VideoGenerationOptions,
+  GridVideoSource,
   VideoModelOption,
   VideoPanel,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
@@ -53,6 +54,10 @@ interface UseVideoFirstLastFrameFlowParams {
     },
     generationOptions?: VideoGenerationOptions,
     panelId?: string,
+    imageLayout?: 'single' | 'grid',
+    gridSize?: number,
+    gridVideoSource?: GridVideoSource,
+    videoReferenceImages?: string[],
   ) => Promise<void>
   t: (key: string) => string
 }
@@ -211,6 +216,7 @@ export function useVideoFirstLastFrameFlow({
     panelKey: string,
     generationOptions?: VideoGenerationOptions,
     firstPanelId?: string,
+    videoReferenceImages?: string[],
   ) => {
     const persistedCustomPrompt = allPanels.find(
       (panel) =>
@@ -223,7 +229,7 @@ export function useVideoFirstLastFrameFlow({
       lastFramePanelIndex: lastPanelIndex,
       flModel,
       customPrompt,
-    }, generationOptions ?? flGenerationOptions, firstPanelId)
+    }, generationOptions ?? flGenerationOptions, firstPanelId, undefined, undefined, undefined, videoReferenceImages)
   }, [allPanels, flCustomPrompts, flGenerationOptions, flModel, onGenerateVideo])
 
   const getDefaultFlPrompt = useCallback((firstPrompt?: string, lastPrompt?: string): string => {

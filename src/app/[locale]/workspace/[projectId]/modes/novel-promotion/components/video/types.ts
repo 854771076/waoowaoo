@@ -129,6 +129,8 @@ export interface VideoPanel {
   lipSyncErrorCode?: string
   // 宫格视频提示词重写任务状态
   gridVideoPromptTaskRunning?: boolean
+  // 宫格拆分图高清化任务状态
+  gridSplitEnhanceTaskRunning?: boolean
 }
 
 // 匹配的配音信息

@@ -1,5 +1,6 @@
 import type { GridVideoSource, VideoPanel, MatchedVoiceLine, VideoModelOption, FirstLastFrameParams, VideoGenerationOptions } from '../types'
 import type { CapabilitySelections, CapabilityValue } from '@/lib/model-config-contract'
+import type { Character, Location } from '@/types/project'
 
 export interface VideoPanelCardShellProps {
   panel: VideoPanel
@@ -8,6 +9,8 @@ export interface VideoPanelCardShellProps {
   capabilityOverrides: CapabilitySelections
   videoRatio?: string
   userVideoModels?: VideoModelOption[]
+  characters?: Character[]
+  locations?: Location[]
   projectId: string
   episodeId?: string
   runningVoiceLineIds?: Set<string>
@@ -47,6 +50,7 @@ export interface VideoPanelCardShellProps {
     imageLayout?: 'single' | 'grid',
     gridSize?: number,
     gridVideoSource?: GridVideoSource,
+    videoReferenceImages?: string[],
   ) => void
   onUpdatePanelVideoModel: (storyboardId: string, panelIndex: number, model: string) => void
   onToggleLink: (panelKey: string, storyboardId: string, panelIndex: number) => void
@@ -62,6 +66,7 @@ export interface VideoPanelCardShellProps {
     panelKey: string,
     generationOptions?: VideoGenerationOptions,
     firstPanelId?: string,
+    videoReferenceImages?: string[],
   ) => void
   onPreviewImage?: (imageUrl: string) => void
   onOpenGridSplit?: () => void

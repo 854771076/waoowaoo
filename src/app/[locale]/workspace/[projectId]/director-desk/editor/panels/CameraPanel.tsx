@@ -69,7 +69,11 @@ export function CameraPanel() {
     setCapturing(true)
     try {
       const dataUrl = await captureCameraScreenshot(videoRatio, cam.id)
-      addCameraCapture(cam.id, dataUrl, cam.name)
+      addCameraCapture(cam.id, dataUrl, cam.name, {
+        fov: cam.fov,
+        position: cam.position,
+        target: cam.target,
+      })
     } catch (err) {
       alert(`截图失败: ${err instanceof Error ? err.message : String(err)}`)
     } finally {

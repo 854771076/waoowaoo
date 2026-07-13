@@ -59,6 +59,7 @@ export default function AddLocationModal({
   const aiCreateLocationMutation = useAiCreateProjectLocation(projectId)
   const createLocationMutation = useCreateProjectLocation(projectId)
   const { count: locationGenerationCount } = useImageGenerationCount('location')
+  const isLocalScene = !!parentId
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -119,11 +120,11 @@ export default function AddLocationModal({
       await createLocationMutation.mutateAsync({
         name: name.trim(),
         description: description.trim(),
-        artStyle,
+        ...(!isLocalScene ? { artStyle } : {}),
         count: locationGenerationCount,
         availableSlots,
         parentId: parentId ?? null,
-        sceneType: parentId ? 'micro' : 'macro',
+        sceneType: isLocalScene ? 'micro' : 'macro',
       })
       onSuccess()
       onClose()
@@ -172,27 +173,28 @@ export default function AddLocationModal({
               />
             </div>
 
-            {/* 风格选择 */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-[var(--glass-text-secondary)]">
-                {t('modal.artStyle')}
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {ART_STYLES.map((style) => (
-                  <button
-                    key={style.value}
-                    type="button"
-                    onClick={() => setArtStyle(style.value)}
-                    className={`px-3 py-2 rounded-lg text-sm border transition-all flex items-center ${artStyle === style.value
-                      ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
-                      : 'border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-strong)] text-[var(--glass-text-secondary)]'
-                      }`}
-                  >
-                    <span>{style.label}</span>
-                  </button>
-                ))}
+            {!isLocalScene && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-[var(--glass-text-secondary)]">
+                  {t('modal.artStyle')}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {ART_STYLES.map((style) => (
+                    <button
+                      key={style.value}
+                      type="button"
+                      onClick={() => setArtStyle(style.value)}
+                      className={`px-3 py-2 rounded-lg text-sm border transition-all flex items-center ${artStyle === style.value
+                        ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
+                        : 'border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-strong)] text-[var(--glass-text-secondary)]'
+                        }`}
+                    >
+                      <span>{style.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* AI 设计区域 */}
             <div className="bg-[var(--glass-tone-info-bg)] rounded-xl p-4 space-y-3 border border-[var(--glass-stroke-focus)]">

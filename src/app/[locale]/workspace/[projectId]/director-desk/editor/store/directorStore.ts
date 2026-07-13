@@ -29,6 +29,9 @@ export interface CameraCapture {
   persistedFov?: number
   persistedPos?: [number, number, number]
   persistedTarget?: [number, number, number]
+  capturedFov?: number
+  capturedPosition?: [number, number, number]
+  capturedTarget?: [number, number, number]
 }
 
 interface DirectorState {
@@ -65,7 +68,7 @@ interface DirectorState {
   setActiveCamera: (id: string) => void
   /** Silent: set active camera without pushing undo history (used for temporary capture switches). */
   setActiveCameraSilent: (id: string) => void
-  addCameraCapture: (cameraId: string, dataUrl: string, name?: string) => string
+  addCameraCapture: (cameraId: string, dataUrl: string, name?: string, meta?: { fov: number; position: [number, number, number]; target: [number, number, number] }) => string
   toggleCaptureBound: (cameraId: string, captureId: string) => void
   toggleCaptureActive: (cameraId: string, captureId: string) => void
   setCaptureName: (cameraId: string, captureId: string, name: string) => void
@@ -124,6 +127,9 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
           persistedFov: s.fov,
           persistedPos: s.pos,
           persistedTarget: s.target,
+          capturedFov: s.fov,
+          capturedPosition: s.pos,
+          capturedTarget: s.target,
         }
         if (!cameraCaptures[s.cameraId]) cameraCaptures[s.cameraId] = []
         cameraCaptures[s.cameraId].push(cap)
@@ -324,11 +330,21 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     set({ project: { ...project, activeCameraId: id } })
   },
 
-  addCameraCapture(cameraId, dataUrl, name) {
+  addCameraCapture(cameraId, dataUrl, name, meta) {
     const { cameraCaptures } = get()
     const capId = uid('cap')
     const list = [...(cameraCaptures[cameraId] ?? [])]
-    list.push({ id: capId, dataUrl, isBound: false, isActiveStar: list.length === 0, name: name ?? `截图 ${list.length + 1}`, capturedAt: Date.now() })
+    list.push({
+      id: capId,
+      dataUrl,
+      isBound: false,
+      isActiveStar: list.length === 0,
+      name: name ?? `截图 ${list.length + 1}`,
+      capturedAt: Date.now(),
+      capturedFov: meta?.fov,
+      capturedPosition: meta?.position,
+      capturedTarget: meta?.target,
+    })
     set({ cameraCaptures: { ...cameraCaptures, [cameraId]: list }, isDirty: true })
     return capId
   },
@@ -441,6 +457,9 @@ function buildCapturesFromShots(shots: Array<{id?:string;cameraId:string;name:st
       persistedFov: s.fov,
       persistedPos: s.pos,
       persistedTarget: s.target,
+      capturedFov: s.fov,
+      capturedPosition: s.pos,
+      capturedTarget: s.target,
     })
   }
   return out

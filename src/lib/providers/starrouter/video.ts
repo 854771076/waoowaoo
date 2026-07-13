@@ -86,6 +86,17 @@ function readOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
 
+function readOptionalStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const result: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const normalized = item.trim()
+    if (normalized && !result.includes(normalized)) result.push(normalized)
+  }
+  return result
+}
+
 function readOptionalRecord(value: unknown, fieldName: string): Record<string, unknown> | undefined {
   if (value === undefined) return undefined
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -114,6 +125,7 @@ function assertNoUnsupportedOptions(options: StarRouterGenerateRequestOptions): 
     'watermark',
     'user',
     'metadata',
+    'videoReferenceImages',
   ])
   for (const [key, value] of Object.entries(options)) {
     if (value === undefined) continue
@@ -165,12 +177,17 @@ function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
     metadata.generate_audio = generateAudio
   }
 
-  // 构建 content 数组：text + image_url
+  const videoReferenceImages = readOptionalStringArray(params.options.videoReferenceImages)
+
+  // 构建 content 数组：text + image_url；多图参考按调用方选择顺序传递。
   const content: StarRouterVideoSubmitBody['content'] = []
   if (prompt) {
     content.push({ type: 'text', text: prompt })
   }
-  content.push({ type: 'image_url', image_url: { url: imageUrl } })
+  const contentImageUrls = videoReferenceImages.length > 0 ? videoReferenceImages : [imageUrl]
+  for (const contentImageUrl of contentImageUrls) {
+    content.push({ type: 'image_url', image_url: { url: contentImageUrl } })
+  }
 
   const submitBody: StarRouterVideoSubmitBody = {
     model: modelId,

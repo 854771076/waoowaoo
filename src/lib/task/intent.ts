@@ -33,6 +33,7 @@ const TASK_INTENT_BY_TYPE: Record<TaskType, TaskIntent> = {
   [TASK_TYPE.REGENERATE_STORYBOARD_TEXT]: 'regenerate',
   [TASK_TYPE.INSERT_PANEL]: 'build',
   [TASK_TYPE.PANEL_VARIANT]: 'regenerate',
+  [TASK_TYPE.GRID_SPLIT_ENHANCE]: 'modify',
   [TASK_TYPE.MODIFY_ASSET_IMAGE]: 'modify',
   [TASK_TYPE.REGENERATE_GROUP]: 'regenerate',
   [TASK_TYPE.ASSET_HUB_IMAGE]: 'generate',

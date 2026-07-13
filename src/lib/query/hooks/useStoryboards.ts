@@ -188,6 +188,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             imageLayout?: 'single' | 'grid'
             gridSize?: number
             gridVideoSource?: GridVideoSource
+            videoReferenceImages?: string[]
         }) => {
             if (!projectId) throw new Error('Project ID is required')
 
@@ -206,6 +207,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
                 imageLayout?: 'single' | 'grid'
                 gridSize?: number
                 gridVideoSource?: GridVideoSource
+                videoReferenceImages?: string[]
             } = {
                 storyboardId: params.storyboardId,
                 panelIndex: params.panelIndex,
@@ -231,6 +233,10 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
 
             if (params.gridVideoSource) {
                 requestBody.gridVideoSource = params.gridVideoSource
+            }
+
+            if (Array.isArray(params.videoReferenceImages) && params.videoReferenceImages.length > 0) {
+                requestBody.videoReferenceImages = params.videoReferenceImages
             }
 
             const res = await apiFetch(`/api/novel-promotion/${projectId}/generate-video`, {
@@ -274,7 +280,7 @@ export function useSplitGridPanel(projectId: string | null, episodeId: string | 
     const queryClient = useQueryClient()
 
     return useMutation({
-        mutationFn: async (params: { panelId: string; force?: boolean; gridSize?: number }) => {
+        mutationFn: async (params: { panelId: string; force?: boolean; gridSize?: number; enhance?: boolean; cellIndex?: number }) => {
             if (!projectId) throw new Error('Project ID is required')
             const res = await apiFetch(`/api/novel-promotion/${projectId}/panel/${params.panelId}/split-grid`, {
                 method: 'POST',
@@ -282,14 +288,38 @@ export function useSplitGridPanel(projectId: string | null, episodeId: string | 
                 body: JSON.stringify({
                     ...(params.force ? { force: true } : {}),
                     ...(params.gridSize ? { gridSize: params.gridSize } : {}),
+                    ...(params.enhance ? { enhance: true } : {}),
+                    ...(params.cellIndex ? { cellIndex: params.cellIndex } : {}),
                 }),
             })
             await checkApiResponse(res)
             return res.json() as Promise<{
-                images: GridSplitImage[]
-                frames: GridVideoFrame[]
-                reused: boolean
+                images?: GridSplitImage[]
+                frames?: GridVideoFrame[]
+                reused?: boolean
+                enhanced?: boolean
+                enhancedCount?: number
+                async?: boolean
+                taskId?: string
             }>
+        },
+        onMutate: async ({ panelId, enhance }) => {
+            if (!projectId || !enhance) return
+            await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false })
+            upsertTaskTargetOverlay(queryClient, {
+                projectId,
+                targetType: 'NovelPromotionPanel',
+                targetId: panelId,
+                intent: 'modify',
+            })
+        },
+        onError: (_error, { panelId, enhance }) => {
+            if (!projectId || !enhance) return
+            clearTaskTargetOverlay(queryClient, {
+                projectId,
+                targetType: 'NovelPromotionPanel',
+                targetId: panelId,
+            })
         },
         onSettled: () => {
             if (!projectId) return

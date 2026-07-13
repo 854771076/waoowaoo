@@ -41,7 +41,11 @@ export function TopBar() {
           try {
             const dataUrl = await captureCameraScreenshot(videoRatio, active.id)
             const store = useDirectorStore.getState()
-            const capId = store.addCameraCapture(active.id, dataUrl, active.name)
+            const capId = store.addCameraCapture(active.id, dataUrl, active.name, {
+              fov: active.fov,
+              position: active.position,
+              target: active.target,
+            })
             store.toggleCaptureBound(active.id, capId)
             store.toggleCaptureActive(active.id, capId)
             shots = collectBoundShotsForSave()
@@ -100,7 +104,11 @@ export function TopBar() {
       if (captures.length === 0) {
         try {
           const dataUrl = await captureCameraScreenshot(videoRatio, active.id)
-          const capId = store.addCameraCapture(active.id, dataUrl, active.name)
+          const capId = store.addCameraCapture(active.id, dataUrl, active.name, {
+            fov: active.fov,
+            position: active.position,
+            target: active.target,
+          })
           store.toggleCaptureBound(active.id, capId)
           store.toggleCaptureActive(active.id, capId)
         } catch (err) {

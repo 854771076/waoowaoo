@@ -418,6 +418,7 @@ export class ViduVideoGenerator extends BaseVideoGenerator {
             'meta_data',
             'callbackUrl',
             'callback_url',
+            'videoReferenceImages',
         ])
 
         for (const [key, value] of Object.entries(options)) {

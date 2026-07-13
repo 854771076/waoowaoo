@@ -1,7 +1,9 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import type { VideoPanelCardShellProps } from '../types'
+import type { GridVideoSource } from '../../types'
 import { EMPTY_RUNNING_VOICE_LINE_IDS } from './shared'
 import { usePanelTaskStatus } from './hooks/usePanelTaskStatus'
 import { usePanelVideoModel } from './hooks/usePanelVideoModel'
@@ -9,6 +11,11 @@ import { usePanelPlayer } from './hooks/usePanelPlayer'
 import { usePanelPromptEditor } from './hooks/usePanelPromptEditor'
 import { usePanelVoiceManager } from './hooks/usePanelVoiceManager'
 import { usePanelLipSync } from './hooks/usePanelLipSync'
+import {
+  buildVideoReferenceImageChoices,
+  getDefaultSelectedVideoReferenceImageIds,
+  resolveSelectedVideoReferenceImages,
+} from '@/lib/novel-promotion/video-reference-images'
 
 export function useVideoPanelActions({
   panel,
@@ -17,6 +24,8 @@ export function useVideoPanelActions({
   capabilityOverrides,
   videoRatio = '16:9',
   userVideoModels,
+  characters = [],
+  locations = [],
   projectId,
   episodeId,
   runningVoiceLineIds = EMPTY_RUNNING_VOICE_LINE_IDS,
@@ -54,7 +63,82 @@ export function useVideoPanelActions({
   const t = useTranslations('video')
   const tCommon = useTranslations('common')
   const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
+  const hasGridSplitImages = panel.imageLayout === 'grid' && (panel.gridSplitImages?.length || 0) > 0
+  const [gridVideoSourceState, setGridVideoSourceState] = useState<{ value: GridVideoSource; touched: boolean }>({
+    value: hasGridSplitImages ? 'split' : 'original',
+    touched: false,
+  })
+
+  useEffect(() => {
+    if (!hasGridSplitImages || gridVideoSourceState.touched) return
+    setGridVideoSourceState({ value: 'split', touched: false })
+  }, [gridVideoSourceState.touched, hasGridSplitImages])
+
   const isFirstLastFrameOutput = panel.videoGenerationMode === 'firstlastframe' && !!panel.videoUrl
+  const [includeCharacterSheet, setIncludeCharacterSheet] = useState(false)
+  const referenceChoices = useMemo(() => buildVideoReferenceImageChoices({
+    panel,
+    nextPanel,
+    characters,
+    locations,
+    includeLastFrame: isLinked && !!nextPanel?.imageUrl,
+    includeCharacterSheet,
+  }), [characters, includeCharacterSheet, isLinked, locations, nextPanel, panel])
+  const defaultReferenceIds = useMemo(
+    () => getDefaultSelectedVideoReferenceImageIds(referenceChoices),
+    [referenceChoices],
+  )
+  const [manualReferenceIds, setManualReferenceIds] = useState<Set<string> | null>(null)
+  const selectedReferenceIds = manualReferenceIds ?? defaultReferenceIds
+
+  useEffect(() => {
+    setManualReferenceIds((previous) => {
+      if (!previous) return previous
+      const next = new Set<string>()
+      for (const choice of referenceChoices) {
+        if (choice.required || previous.has(choice.id)) next.add(choice.id)
+      }
+      if (next.size === previous.size && [...next].every((id) => previous.has(id))) return previous
+      return next
+    })
+  }, [referenceChoices])
+
+  const selectedReferenceImages = useMemo(
+    () => resolveSelectedVideoReferenceImages(referenceChoices, selectedReferenceIds),
+    [referenceChoices, selectedReferenceIds],
+  )
+
+  const toggleReferenceChoice = (choiceId: string) => {
+    setManualReferenceIds((previous) => {
+      const next = new Set(previous ?? defaultReferenceIds)
+      const choice = referenceChoices.find((item) => item.id === choiceId)
+      if (!choice || choice.required) return next
+      if (next.has(choiceId)) next.delete(choiceId)
+      else next.add(choiceId)
+      for (const requiredChoice of referenceChoices) {
+        if (requiredChoice.required) next.add(requiredChoice.id)
+      }
+      return next
+    })
+  }
+
+  const setCharacterSheetSelected = (selected: boolean) => {
+    setIncludeCharacterSheet(selected)
+    setManualReferenceIds((previous) => {
+      const next = new Set(previous ?? defaultReferenceIds)
+      for (const choice of referenceChoices) {
+        if (choice.required) {
+          next.add(choice.id)
+          continue
+        }
+        if (choice.kind !== 'characterSheet') continue
+        if (selected) next.add(choice.id)
+        else next.delete(choice.id)
+      }
+      return next
+    })
+  }
+
   const visibleBaseVideoUrl = (() => {
     if (isLinked) return isFirstLastFrameOutput ? panel.videoUrl : undefined
     if (isLastFrame) return undefined
@@ -129,6 +213,14 @@ export function useVideoPanelActions({
     },
     voiceManager,
     lipSync,
+    videoReference: {
+      choices: referenceChoices,
+      selectedIds: selectedReferenceIds,
+      selectedImages: selectedReferenceImages,
+      includeCharacterSheet,
+      setIncludeCharacterSheet: setCharacterSheetSelected,
+      toggleChoice: toggleReferenceChoice,
+    },
     layout: {
       isLinked,
       isLastFrame,
@@ -154,11 +246,14 @@ export function useVideoPanelActions({
       onResetFlPrompt,
       onGenerateFirstLastFrame,
       onOpenGridSplit,
+      onGridVideoSourceChange: (value: GridVideoSource) => setGridVideoSourceState({ value, touched: true }),
     },
     computed: {
       showLipSyncSection,
       canLipSync,
       hasVisibleBaseVideo,
+      gridVideoSource: gridVideoSourceState.value,
+      hasGridSplitImages,
     },
   }
 }

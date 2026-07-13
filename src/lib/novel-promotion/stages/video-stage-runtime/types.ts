@@ -4,11 +4,13 @@ import type {
   BatchVideoGenerationParams,
   Clip,
   FirstLastFrameParams,
+  GridVideoSource,
   VideoGenerationOptions,
   Storyboard,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
+import type { Character, Location } from '@/types/project'
 
 export interface VoiceLine {
   id: string
@@ -39,6 +41,8 @@ export interface VideoStageShellProps {
   episodeId: string
   storyboards: Storyboard[]
   clips: Clip[]
+  characters?: Character[]
+  locations?: Location[]
   defaultVideoModel: string
   capabilityOverrides: CapabilitySelections
   videoRatio?: string
@@ -52,6 +56,8 @@ export interface VideoStageShellProps {
     panelId?: string,
     imageLayout?: 'single' | 'grid',
     gridSize?: number,
+    gridVideoSource?: GridVideoSource,
+    videoReferenceImages?: string[],
   ) => Promise<void>
   onGenerateAllVideos: (options?: BatchVideoGenerationParams) => Promise<void>
   onBack: () => void

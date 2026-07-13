@@ -51,11 +51,14 @@ export async function generateVideoViaOpenAICompatTemplate(
   }
 
   const config = await resolveOpenAICompatClientConfig(request.userId, request.providerId)
+  const referenceImages = Array.isArray(request.options?.videoReferenceImages)
+    ? request.options.videoReferenceImages.filter((image): image is string => typeof image === 'string' && image.trim().length > 0)
+    : []
   const variables = buildTemplateVariables({
     model: request.modelId || '',
     prompt: request.prompt,
     image: request.imageUrl,
-    images: [request.imageUrl],
+    images: referenceImages.length > 0 ? referenceImages : [request.imageUrl],
     aspectRatio: typeof request.options?.aspectRatio === 'string' ? request.options.aspectRatio : undefined,
     resolution: typeof request.options?.resolution === 'string' ? request.options.resolution : undefined,
     size: typeof request.options?.size === 'string' ? request.options.size : undefined,

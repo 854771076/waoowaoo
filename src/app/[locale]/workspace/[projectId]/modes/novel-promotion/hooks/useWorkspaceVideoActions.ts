@@ -3,7 +3,7 @@
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
 import { useGenerateVideo, useBatchGenerateVideos } from '@/lib/query/hooks/useStoryboards'
 import { useUpdateProjectPanelVideoPrompt, useUpdateProjectClip, useUpdateProjectConfig } from '@/lib/query/hooks'
-import type { BatchVideoGenerationParams, VideoGenerationOptions } from '../components/video'
+import type { BatchVideoGenerationParams, GridVideoSource, VideoGenerationOptions } from '../components/video'
 
 interface UseWorkspaceVideoActionsParams {
   projectId: string
@@ -52,6 +52,8 @@ export function useWorkspaceVideoActions({
     panelId?: string,
     imageLayout?: 'single' | 'grid',
     gridSize?: number,
+    gridVideoSource?: GridVideoSource,
+    videoReferenceImages?: string[],
   ) => {
     const normalizedVideoModel = typeof videoModel === 'string' ? videoModel.trim() : ''
     if (!normalizedVideoModel) {
@@ -68,6 +70,8 @@ export function useWorkspaceVideoActions({
         generationOptions,
         imageLayout,
         gridSize,
+        gridVideoSource,
+        videoReferenceImages,
       })
     } catch (err: unknown) {
       if (isAbortError(err)) {

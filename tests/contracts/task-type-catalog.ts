@@ -20,6 +20,7 @@ const TASK_TYPE_OWNER_MAP = {
   [TASK_TYPE.REGENERATE_STORYBOARD_TEXT]: 'tests/unit/worker/script-to-storyboard.test.ts',
   [TASK_TYPE.INSERT_PANEL]: 'tests/unit/worker/script-to-storyboard.test.ts',
   [TASK_TYPE.PANEL_VARIANT]: 'tests/unit/worker/panel-variant-task-handler.test.ts',
+  [TASK_TYPE.GRID_SPLIT_ENHANCE]: 'tests/unit/storyboard-images/grid-split-service.test.ts',
   [TASK_TYPE.MODIFY_ASSET_IMAGE]: 'tests/unit/worker/image-task-handlers-core.test.ts',
   [TASK_TYPE.REGENERATE_GROUP]: 'tests/unit/worker/image-task-handlers-core.test.ts',
   [TASK_TYPE.ASSET_HUB_IMAGE]: 'tests/unit/worker/asset-hub-image-suffix.test.ts',

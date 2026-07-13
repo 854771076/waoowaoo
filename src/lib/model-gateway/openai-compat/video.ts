@@ -29,6 +29,7 @@ const OPENAI_COMPAT_VIDEO_OPTION_KEYS = new Set([
   'size',
   'generateAudio',
   'generationMode',
+  'videoReferenceImages',
 ])
 
 function assertAllowedOptions(options: Record<string, unknown>) {

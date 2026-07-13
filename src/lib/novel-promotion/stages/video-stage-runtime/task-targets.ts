@@ -8,7 +8,7 @@ interface VideoTaskTarget {
   targetType: string
   targetId: string
   types: string[]
-  resource: 'video'
+  resource: 'image' | 'video'
   hasOutput: boolean
 }
 
@@ -31,7 +31,7 @@ export function buildPanelVideoTargets(storyboards: Storyboard[]): VideoTaskTarg
         targetType: 'NovelPromotionPanel',
         targetId: panel.id,
         types: ['video_panel'],
-        resource: 'video',
+        resource: 'image',
         hasOutput: !!panel.videoUrl,
       })
     }
@@ -69,6 +69,24 @@ export function buildGridVideoPromptTargets(storyboards: Storyboard[]): VideoTas
         types: ['ai_grid_video_prompt'],
         resource: 'video',
         hasOutput: !!panel.gridVideoPromptAt,
+      })
+    }
+  }
+  return targets
+}
+
+export function buildGridSplitEnhanceTargets(storyboards: Storyboard[]): VideoTaskTarget[] {
+  const targets: VideoTaskTarget[] = []
+  for (const storyboard of storyboards) {
+    for (const panel of storyboard.panels || []) {
+      if (!panel.id) continue
+      targets.push({
+        key: `grid-split-enhance:${panel.id}`,
+        targetType: 'NovelPromotionPanel',
+        targetId: panel.id,
+        types: ['grid_split_enhance'],
+        resource: 'video',
+        hasOutput: !!panel.gridGenerationContext,
       })
     }
   }
