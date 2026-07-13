@@ -49,6 +49,7 @@ export function useVideoPanelActions({
   onResetFlPrompt,
   onGenerateFirstLastFrame,
   onPreviewImage,
+  onOpenGridSplit,
 }: VideoPanelCardShellProps) {
   const t = useTranslations('video')
   const tCommon = useTranslations('common')
@@ -152,6 +153,7 @@ export function useVideoPanelActions({
       onFlCustomPromptChange,
       onResetFlPrompt,
       onGenerateFirstLastFrame,
+      onOpenGridSplit,
     },
     computed: {
       showLipSyncSection,
