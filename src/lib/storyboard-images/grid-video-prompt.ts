@@ -1,5 +1,4 @@
-import { executeAiTextStep, executeAiVisionStep } from '@/lib/ai-runtime'
-import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
+import { executeAiTextStep } from '@/lib/ai-runtime'
 import { buildPromptAsync, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { buildStoryboardGridLayout } from './grid'
 
@@ -42,8 +41,6 @@ export interface RewriteGridVideoPromptParams {
   gridGenerationContextJson?: string
   srtSegment?: string
 }
-
-const VISION_TIMEOUT_MS = 45_000
 
 function estimateDuration(gridSize: number): number {
   return Math.max(3, Math.min(gridSize, 15))
@@ -124,9 +121,8 @@ function fallbackResult(basePrompt: string, gridSize: number, promptTokens = 0, 
 }
 
 /**
- * 用 LLM 把宫格分镜理解为同一连续镜头的关键帧序列，按 Seedance 规范重写成一条视频提示词。
- * Vision 优先（visionModel + imageUrl 同时存在时走视觉路径），失败回退到文本路径。
- * Vision 路径包 45s 超时：卡住的视觉调用会在 45s 后放弃，让文本路径快速接管。
+ * 用 LLM 把宫格分镜结构化上下文理解为同一连续镜头的关键帧序列，按 Seedance 规范重写成一条视频提示词。
+ * 视觉解析九宫格图的旧链路已移除：宫格图不再作为提示词解析来源，避免视觉误读分屏结构。
  * 返回 null 表示无需重写（gridSize <= 1）。
  */
 export async function rewriteGridVideoPrompt(
@@ -142,15 +138,12 @@ export async function rewriteGridVideoPrompt(
     userId,
     model,
     panelContext,
-    visionModel,
-    imageUrl,
     gridGenerationContextJson,
   } = params
   if (gridSize <= 1) return null
 
-  const effectiveVisionModel = visionModel || model
-  const textModel = model || effectiveVisionModel
-  if (!textModel && !effectiveVisionModel) return fallbackResult(basePrompt, gridSize)
+  const textModel = model || params.visionModel
+  if (!textModel) return fallbackResult(basePrompt, gridSize)
 
   const layout = buildStoryboardGridLayout('grid_auto', gridSize)
   const promptCommonVariables = {
@@ -162,55 +155,6 @@ export async function rewriteGridVideoPrompt(
     camera_move: cameraMove || (locale === 'zh' ? '平滑连贯运镜' : 'smooth continuous camera move'),
   }
 
-  // Vision path (preferred)
-  if (effectiveVisionModel && imageUrl) {
-    try {
-      const base64Image = await normalizeToBase64ForGeneration(imageUrl)
-      const filledPrompt = await buildPromptAsync({
-        promptId: PROMPT_IDS.NP_PANEL_GRID_VIDEO_VISION,
-        locale,
-        projectId,
-        variables: promptCommonVariables,
-      })
-
-      const completion = await Promise.race([
-        executeAiVisionStep({
-          userId,
-          model: effectiveVisionModel,
-          prompt: filledPrompt,
-          imageUrls: [base64Image],
-          temperature: 0.7,
-          projectId: projectId || undefined,
-          action: 'grid_video_prompt_rewrite',
-          meta: {
-            stepId: 'grid_video_prompt_rewrite',
-            stepTitle: locale === 'zh' ? '宫格视频提示词重写（视觉）' : 'Grid video prompt rewrite (vision)',
-            stepIndex: 1,
-            stepTotal: 1,
-          },
-        }),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`vision path timed out after ${VISION_TIMEOUT_MS}ms`)), VISION_TIMEOUT_MS)
-        }),
-      ])
-
-      const result = parseGridVideoResponse(completion.text || '')
-      const finalPrompt = result.prompt || basePrompt || ''
-      if (finalPrompt) {
-        return {
-          prompt: finalPrompt,
-          promptTokens: completion.usage?.promptTokens || 0,
-          completionTokens: completion.usage?.completionTokens || 0,
-          duration: result.duration,
-        }
-      }
-    } catch (error) {
-      console.warn('[rewriteGridVideoPrompt] vision path failed, falling back to text:', errMsg(error))
-    }
-  }
-
-  // Text path (fallback)
-  if (!textModel) return fallbackResult(basePrompt, gridSize)
   try {
     const filledPrompt = await buildPromptAsync({
       promptId: PROMPT_IDS.NP_PANEL_GRID_VIDEO,

@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const rewriteMock = vi.hoisted(() => ({ rewriteGridVideoPrompt: vi.fn() }))
+const resolverMock = vi.hoisted(() => ({ resolveGridVideoPrompt: vi.fn() }))
 const prismaMock = vi.hoisted(() => ({ update: vi.fn(), findFirst: vi.fn() }))
 const modelMock = vi.hoisted(() => ({ resolveAnalysisModel: vi.fn() }))
 
 vi.mock('@/lib/storyboard-images/grid-video-prompt', () => ({
   rewriteGridVideoPrompt: rewriteMock.rewriteGridVideoPrompt,
+}))
+vi.mock('@/lib/workers/grid-video-prompt-resolver', () => ({
+  resolveGridVideoPrompt: resolverMock.resolveGridVideoPrompt,
 }))
 vi.mock('@/lib/prisma', () => ({
   prisma: { novelPromotionPanel: { update: prismaMock.update, findFirst: prismaMock.findFirst } },
@@ -29,6 +33,7 @@ const job = {
 describe('handleGridVideoPromptRewriteTask', () => {
   beforeEach(() => {
     rewriteMock.rewriteGridVideoPrompt.mockReset()
+    resolverMock.resolveGridVideoPrompt.mockReset()
     prismaMock.update.mockReset()
     prismaMock.findFirst.mockReset()
     modelMock.resolveAnalysisModel.mockReset()
@@ -42,7 +47,12 @@ describe('handleGridVideoPromptRewriteTask', () => {
   })
 
   it('rewrites and persists videoPrompt + gridVideoPromptAt', async () => {
-    rewriteMock.rewriteGridVideoPrompt.mockResolvedValue({ prompt: '0-3秒：推门', promptTokens: 10, completionTokens: 5 })
+    resolverMock.resolveGridVideoPrompt.mockResolvedValue({
+      prompt: '0-3秒：推门',
+      rewritten: true,
+      usage: { promptTokens: 10, completionTokens: 5 },
+      duration: null,
+    })
     const result = await handleGridVideoPromptRewriteTask(job)
     expect(prismaMock.findFirst).toHaveBeenCalledWith({
       where: {
@@ -52,11 +62,12 @@ describe('handleGridVideoPromptRewriteTask', () => {
       include: { storyboard: { include: { episode: { include: { novelPromotionProject: true } } } } },
     })
     expect(modelMock.resolveAnalysisModel).toHaveBeenCalledWith({ userId: 'u1', inputModel: 'ark:doubao' })
-    expect(rewriteMock.rewriteGridVideoPrompt).toHaveBeenCalledWith(expect.objectContaining({
+    expect(resolverMock.resolveGridVideoPrompt).toHaveBeenCalledWith(expect.objectContaining({
       model: 'ark:doubao',
       visionModel: 'ark:vision',
       imageUrl: 'https://cdn/grid.png',
       gridGenerationContextJson: '{"a":1}',
+      alreadyRewritten: false,
     }))
     expect(prismaMock.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'panel-1' },
@@ -66,7 +77,12 @@ describe('handleGridVideoPromptRewriteTask', () => {
   })
 
   it('throws when rewrite returns null (no persist)', async () => {
-    rewriteMock.rewriteGridVideoPrompt.mockResolvedValue(null)
+    resolverMock.resolveGridVideoPrompt.mockResolvedValue({
+      prompt: '',
+      rewritten: false,
+      usage: null,
+      duration: null,
+    })
     await expect(handleGridVideoPromptRewriteTask(job)).rejects.toThrow()
     expect(prismaMock.update).not.toHaveBeenCalled()
   })

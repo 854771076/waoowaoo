@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import { ArtStyleEditor, type ArtStyleEditorValues } from '@/app/[locale]/profile/components/art-style-library/ArtStyleEditor'
 import { useToast } from '@/contexts/ToastContext'
+import WorkflowStatusStrip from '@/components/operations/WorkflowStatusStrip'
 
 export type ArtStyleScope = 'system' | 'user'
 export type FilterStatus = 'all' | 'enabled' | 'disabled'
@@ -36,16 +37,6 @@ function artStyleMatchesFilters(style: ArtStyle, statusFilter: FilterStatus, sea
     (style.description?.toLowerCase().includes(searchLower) ?? false)
 
   return statusMatches && searchMatches
-}
-
-function buildEditorValues(style: ArtStyle): ArtStyleEditorValues {
-  return {
-    name: style.name,
-    description: style.description || '',
-    prompt: style.prompt,
-    previewImageUrl: style.previewImageUrl || '',
-    sortOrder: style.sortOrder,
-  }
 }
 
 export default function ArtStyleLibraryPanel() {
@@ -90,6 +81,8 @@ export default function ArtStyleLibraryPanel() {
     () => artStyles.filter((style) => artStyleMatchesFilters(style, statusFilter, searchQuery)),
     [artStyles, statusFilter, searchQuery],
   )
+  const enabledCount = artStyles.filter((style) => style.enabled).length
+  const disabledCount = artStyles.length - enabledCount
 
   const handleToggleEnabled = useCallback(async (style: ArtStyle) => {
     setTogglingStyleId(style.id)
@@ -339,6 +332,16 @@ export default function ArtStyleLibraryPanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <WorkflowStatusStrip
+          title={t('statusStrip.title')}
+          className="mb-4"
+          items={[
+            { label: t('statusStrip.total'), value: artStyles.length },
+            { label: t('statusStrip.enabled'), value: enabledCount, tone: 'success' },
+            { label: t('statusStrip.disabled'), value: disabledCount, tone: disabledCount > 0 ? 'warning' : 'muted' },
+            { label: t('statusStrip.filtered'), value: filteredArtStyles.length },
+          ]}
+        />
         {filteredArtStyles.length === 0 ? (
           <div className="flex h-full items-center justify-center px-4 text-center text-sm text-[var(--glass-text-tertiary)]">
             {artStyles.length === 0 ? t('empty') : t('emptyFiltered')}
@@ -354,6 +357,8 @@ export default function ArtStyleLibraryPanel() {
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-base)]">
                     {style.previewImageUrl ? (
+                      // 管理后台预览图来源可能是已签名地址，保留原生 img 避免引入额外远端域名配置。
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={style.previewImageUrl}
                         alt={style.name}

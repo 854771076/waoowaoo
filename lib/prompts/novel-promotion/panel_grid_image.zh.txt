@@ -43,5 +43,11 @@
 镜头分镜 JSON：
 {storyboard_text_json_input}
 
+【前置宫格视频提示词约束】
+- 分镜 JSON 中的 preImageGridPrompt.gridCells 已为每个宫格预生成 imagePrompt/videoPrompt，请按 cellIndex 顺序严格执行，不要把每格理解为互不相关的独立镜头。
+- 每格是同一连续镜头的时间顺序关键帧：第 1 格是起始瞬间，最后 1 格是收束瞬间，中间格用于动作、表情、口型、走位和机位的连续过渡。
+- preImageGridPrompt.aggregateVideoPrompt 是后续视频生成会直接使用的连续镜头提示词；当前宫格图必须为该视频提示词提供清晰、一致、可拆分的关键帧依据。
+- 宫格图本身允许清晰分格，但每格内容必须服务于后续无宫格、无边框、无分屏的单一连续视频镜头。
+
 原文片段：
 {source_text}

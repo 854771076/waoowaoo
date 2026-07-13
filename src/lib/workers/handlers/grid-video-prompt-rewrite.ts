@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
-import { rewriteGridVideoPrompt } from '@/lib/storyboard-images/grid-video-prompt'
+import { resolveGridVideoPrompt } from '@/lib/workers/grid-video-prompt-resolver'
 import { resolveAnalysisModel } from './resolve-analysis-model'
 
 type AnyObj = Record<string, unknown>
@@ -70,7 +70,7 @@ export async function handleGridVideoPromptRewriteTask(
     text_segment: panel.srtSegment || '',
   }
 
-  const result = await rewriteGridVideoPrompt({
+  const result = await resolveGridVideoPrompt({
     panelContext: legacyPanelContext,
     basePrompt,
     gridSize,
@@ -84,9 +84,10 @@ export async function handleGridVideoPromptRewriteTask(
     imageUrl: panel.imageUrl || undefined,
     gridGenerationContextJson: panel.gridGenerationContext || undefined,
     srtSegment: panel.srtSegment || '',
+    alreadyRewritten: false,
   })
 
-  if (!result) throw new Error('AI_GRID_VIDEO_PROMPT: rewrite returned empty')
+  if (!result.prompt) throw new Error('AI_GRID_VIDEO_PROMPT: rewrite returned empty')
 
   await assertTaskActive(job, 'grid_video_prompt_rewrite_persist')
   await prisma.novelPromotionPanel.update({

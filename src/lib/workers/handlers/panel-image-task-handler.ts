@@ -16,7 +16,6 @@ import {
   AnyObj,
   clampCount,
   collectPanelReferenceImages,
-  findCharacterByName,
   parsePanelCharacterReferences,
   pickFirstString,
   resolveNovelData,
@@ -26,6 +25,8 @@ import {
   parseLocationAvailableSlots,
 } from '@/lib/location-available-slots'
 import { buildStoryboardGridLayout } from '@/lib/storyboard-images/grid'
+import { buildPreImageGridGenerationContext } from '@/lib/storyboard-images/grid-generation-context'
+import { buildCharacterConsistencyContext } from '@/lib/storyboard-images/character-consistency-context'
 import { buildGridInvalidationPatch } from './panel-image-grid-invalidate'
 import { parseDirectorProject } from '@/lib/director-desk/schema'
 import { archiveToHistory } from '@/lib/novel-promotion/panel-history'
@@ -96,34 +97,6 @@ function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   }
 }
 
-function parseDescriptionList(raw: string | null | undefined): string[] {
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-  } catch {
-    return []
-  }
-}
-
-function pickAppearanceDescription(appearance: {
-  descriptions?: string | null
-  description?: string | null
-  selectedIndex?: number | null
-}): string {
-  const descriptions = parseDescriptionList(appearance.descriptions || null)
-  if (descriptions.length > 0) {
-    const selectedIndex = typeof appearance.selectedIndex === 'number' ? appearance.selectedIndex : 0
-    const selected = descriptions[selectedIndex] || descriptions[0]
-    if (selected && selected.trim()) return selected.trim()
-  }
-  if (typeof appearance.description === 'string' && appearance.description.trim()) {
-    return appearance.description.trim()
-  }
-  return '无描述'
-}
-
 function buildPanelPromptContext(params: {
   panel: {
     id: string
@@ -144,29 +117,16 @@ function buildPanelPromptContext(params: {
   neighborPanels?: NeighborPanelContext[]
 }) {
   const panelCharacters = parsePanelCharacterReferences(params.panel.characters)
-  const characterContexts = panelCharacters.map((reference) => {
-    const character = findCharacterByName(params.projectData.characters || [], reference.name)
-    if (!character) {
-      return {
-        name: reference.name,
-        appearance: reference.appearance || null,
-        description: '无角色外貌数据',
-      }
-    }
-
-    const appearances = character.appearances || []
-    const matchedAppearance =
-      (reference.appearance
-        ? appearances.find((appearance) => (appearance.changeReason || '').toLowerCase() === reference.appearance!.toLowerCase())
-        : null) || appearances[0] || null
-
-    return {
-      name: character.name,
-      appearance: matchedAppearance?.changeReason || null,
-      description: matchedAppearance ? pickAppearanceDescription(matchedAppearance) : '无角色外貌数据',
-      slot: reference.slot || null,
-    }
+  const characterConsistency = buildCharacterConsistencyContext({
+    panelCharacters,
+    projectCharacters: params.projectData.characters || [],
   })
+  const characterContexts = characterConsistency.characters.map((character) => ({
+    name: character.name,
+    appearance: character.resolvedAppearance,
+    description: character.description,
+    slot: character.slot,
+  }))
 
   const locationContext = (() => {
     if (!params.panel.location) return null
@@ -235,6 +195,7 @@ function buildPanelPromptContext(params: {
     },
     context: {
       character_appearances: characterContexts,
+      character_consistency: characterConsistency,
       location_reference: locationContext,
       // 相邻镜头信息：仅用于保持镜头语言/动作连贯，不应被画进当前画面
       neighbor_panels: params.neighborPanels && params.neighborPanels.length > 0
@@ -349,7 +310,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       photographyRules: panel.photographyRules,
       actingNotes: panel.actingNotes,
       directorLayout: panel.directorLayout,
-      directorShots: panel.directorShots.map(s => ({
+      directorShots: (panel.directorShots || []).map(s => ({
         cameraId: s.cameraId, name: s.name, isActive: s.isActive,
         fov: s.fov, posX: s.posX, posY: s.posY, posZ: s.posZ,
         targetX: s.targetX, targetY: s.targetY, targetZ: s.targetZ,
@@ -360,23 +321,33 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     neighborPanels,
   })
   // 保存宫格生成元数据供后续视频重写使用
-  const contextWithGridMetadata = {
+  const baseContextWithGridMetadata = {
     ...promptContext,
     gridMetadata: {
       panelGridSize,
       generatedAt: new Date().toISOString(),
     },
   }
-  const contextJson = JSON.stringify(contextWithGridMetadata, null, 2)
+  let contextWithGridMetadata: Record<string, unknown> = baseContextWithGridMetadata
+  let contextJson = JSON.stringify(contextWithGridMetadata, null, 2)
   const prompt = await (async () => {
     if (panelGridSize > 1) {
       const layout = buildStoryboardGridLayout('grid_auto', panelGridSize)
-      return await buildPromptAsync({
+      const provisionalContext = buildPreImageGridGenerationContext({
+        panelGridSize,
+        imagePrompt: panel.imagePrompt || panel.description || '',
+        baseVideoPrompt: panel.videoPrompt || panel.description || '',
+        shotType: panel.shotType || '',
+        cameraMove: panel.cameraMove || '',
+        panelContext: baseContextWithGridMetadata,
+        generatedAt: baseContextWithGridMetadata.gridMetadata.generatedAt,
+      })
+      const gridImagePrompt = await buildPromptAsync({
         promptId: PROMPT_IDS.NP_PANEL_GRID_IMAGE,
         locale: job.data.locale,
         projectId: job.data.projectId,
         variables: {
-          storyboard_text_json_input: contextJson,
+          storyboard_text_json_input: JSON.stringify(provisionalContext, null, 2),
           source_text: panel.srtSegment || panel.description || '',
           aspect_ratio: aspectRatio,
           style: artStyle || '与参考图风格一致',
@@ -384,6 +355,17 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
           panel_grid_size: String(panelGridSize),
         },
       })
+      contextWithGridMetadata = buildPreImageGridGenerationContext({
+        panelGridSize,
+        imagePrompt: gridImagePrompt,
+        baseVideoPrompt: panel.videoPrompt || panel.description || '',
+        shotType: panel.shotType || '',
+        cameraMove: panel.cameraMove || '',
+        panelContext: baseContextWithGridMetadata,
+        generatedAt: baseContextWithGridMetadata.gridMetadata.generatedAt,
+      })
+      contextJson = JSON.stringify(contextWithGridMetadata, null, 2)
+      return gridImagePrompt
     }
     return await buildPanelPrompt({
       projectId: job.data.projectId,

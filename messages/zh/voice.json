@@ -10,6 +10,13 @@
     "intense": "强烈",
     "generating": "生成中...",
     "generateVoice": "生成语音",
+    "statusStrip": {
+        "title": "配音生成",
+        "lines": "台词",
+        "voiceBound": "已绑定音色",
+        "audioGenerated": "已生成音频",
+        "running": "运行中"
+    },
     "toolbar": {
         "back": "← 返回",
         "analyzeLines": "分析台词",

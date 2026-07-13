@@ -14,6 +14,25 @@ export interface VideoModelOption {
 }
 
 export type VideoGenerationMode = 'normal' | 'firstlastframe'
+export type GridVideoSource = 'split' | 'original'
+
+export interface GridSplitImage {
+  imageUrl: string
+  cellIndex: number
+  panelGridSize: number
+}
+
+export interface GridVideoFrame {
+  cellIndex: number
+  imageUrl: string
+  imagePrompt?: string
+  videoPrompt: string
+  action?: string
+  shotType?: string
+  cameraMove?: string
+  description?: string
+  location?: string
+}
 
 export interface TextPanel {
   panel_number: number
@@ -91,6 +110,9 @@ export interface VideoPanel {
   firstLastFramePrompt?: string
   imageUrl?: string
   imageLayout?: 'single' | 'grid'  // 图片布局：单镜头 | 宫格
+  gridGenerationContext?: string | null
+  gridSplitImages?: GridSplitImage[]
+  gridVideoFrames?: GridVideoFrame[]
   videoUrl?: string
   videoHistory?: string | null  // 历史视频 JSON 数组
   videoGenerationMode?: VideoGenerationMode

@@ -6,6 +6,13 @@
   },
   "loading": "加载提示词配置中...",
   "promptCount": "{count} 个提示词",
+  "statusStrip": {
+    "title": "提示词管理",
+    "prompts": "提示词",
+    "published": "已发布",
+    "draft": "草稿",
+    "disabled": "停用"
+  },
   "filters": {
     "locale": "语言",
     "status": "状态",
@@ -86,6 +93,13 @@
     "loading": "加载画风配置中...",
     "retry": "重试",
     "total": "共 {count} 个",
+    "statusStrip": {
+      "title": "画风库",
+      "total": "全部",
+      "enabled": "启用",
+      "disabled": "停用",
+      "filtered": "当前筛选"
+    },
     "filters": {
       "allStatuses": "全部状态",
       "enabled": "已启用",

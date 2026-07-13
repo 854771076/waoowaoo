@@ -6,6 +6,13 @@
   },
   "loading": "Loading prompt config...",
   "promptCount": "{count} prompts",
+  "statusStrip": {
+    "title": "Prompt Management",
+    "prompts": "Prompts",
+    "published": "Published",
+    "draft": "Draft",
+    "disabled": "Disabled"
+  },
   "filters": {
     "locale": "Locale",
     "status": "Status",
@@ -86,6 +93,13 @@
     "loading": "Loading art styles...",
     "retry": "Retry",
     "total": "{count} total",
+    "statusStrip": {
+      "title": "Art Styles",
+      "total": "Total",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "filtered": "Filtered"
+    },
     "filters": {
       "allStatuses": "All statuses",
       "enabled": "Enabled",

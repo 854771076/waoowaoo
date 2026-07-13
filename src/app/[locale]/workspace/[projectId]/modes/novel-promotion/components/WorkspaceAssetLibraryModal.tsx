@@ -1,9 +1,11 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import AssetsStage from './AssetsStage'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import type { TaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
+import WorkflowStatusStrip from '@/components/operations/WorkflowStatusStrip'
 
 interface WorkspaceAssetLibraryModalProps {
   isOpen: boolean
@@ -34,6 +36,8 @@ export default function WorkspaceAssetLibraryModal({
   triggerGlobalAnalyze,
   onGlobalAnalyzeComplete,
 }: WorkspaceAssetLibraryModalProps) {
+  const t = useTranslations('assetLibrary')
+
   if (!isOpen) return null
 
   return (
@@ -47,7 +51,7 @@ export default function WorkspaceAssetLibraryModal({
         <div className="flex items-center justify-between px-8 py-5 border-b border-[var(--glass-stroke-base)] flex-shrink-0">
           <h2 className="text-2xl font-bold text-[var(--glass-text-primary)] flex items-center gap-3">
             <AppIcon name="package" className="h-7 w-7 text-[var(--glass-text-secondary)]" />
-            资产库
+            {t('title')}
           </h2>
           <button
             onClick={onClose}
@@ -58,6 +62,15 @@ export default function WorkspaceAssetLibraryModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 app-scrollbar" data-asset-scroll-container="1">
+          <WorkflowStatusStrip
+            title={t('statusStrip.title')}
+            className="mb-4"
+            items={[
+              { label: t('statusStrip.characters'), value: hasCharacters ? t('statusStrip.ready') : t('statusStrip.pending'), tone: hasCharacters ? 'success' : 'warning' },
+              { label: t('statusStrip.locations'), value: hasLocations ? t('statusStrip.ready') : t('statusStrip.pending'), tone: hasLocations ? 'success' : 'warning' },
+              { label: t('statusStrip.analysis'), value: isAnalyzingAssets ? t('statusStrip.running') : t('statusStrip.idle'), tone: isAnalyzingAssets ? 'warning' : 'muted' },
+            ]}
+          />
           {assetsLoading && !hasCharacters && !hasLocations && (
             <div className="flex flex-col items-center justify-center h-64 text-[var(--glass-text-tertiary)] animate-pulse">
               <TaskStatusInline state={assetsLoadingState} className="text-base [&>span]:text-base" />

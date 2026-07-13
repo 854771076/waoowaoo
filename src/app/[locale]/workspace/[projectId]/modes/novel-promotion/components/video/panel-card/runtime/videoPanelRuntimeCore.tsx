@@ -1,9 +1,6 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { useQueryClient } from '@tanstack/react-query'
-import { useRegenerateGridVideoPrompt } from '@/lib/query/hooks'
-import { queryKeys } from '@/lib/query/keys'
 import type { VideoPanelCardShellProps } from '../types'
 import { EMPTY_RUNNING_VOICE_LINE_IDS } from './shared'
 import { usePanelTaskStatus } from './hooks/usePanelTaskStatus'
@@ -55,8 +52,6 @@ export function useVideoPanelActions({
 }: VideoPanelCardShellProps) {
   const t = useTranslations('video')
   const tCommon = useTranslations('common')
-  const queryClient = useQueryClient()
-  const regenerateGridVideoPromptMutation = useRegenerateGridVideoPrompt(projectId)
   const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
   const isFirstLastFrameOutput = panel.videoGenerationMode === 'firstlastframe' && !!panel.videoUrl
   const visibleBaseVideoUrl = (() => {
@@ -110,20 +105,6 @@ export function useVideoPanelActions({
   const showLipSyncSection = voiceManager.hasMatchedVoiceLines
   const canLipSync = hasVisibleBaseVideo && voiceManager.hasMatchedAudio && !taskStatus.isLipSyncTaskRunning
 
-  const handleRegenerateGridVideoPrompt = async () => {
-    if (!panel.panelId) return
-    await regenerateGridVideoPromptMutation.mutateAsync({
-      panelId: panel.panelId,
-      episodeId,
-    })
-    await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false })
-    if (episodeId) {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.episodeData(projectId, episodeId) })
-    } else {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.projectData(projectId) })
-    }
-  }
-
   return {
     t,
     tCommon,
@@ -171,16 +152,11 @@ export function useVideoPanelActions({
       onFlCustomPromptChange,
       onResetFlPrompt,
       onGenerateFirstLastFrame,
-      onRegenerateGridVideoPrompt: handleRegenerateGridVideoPrompt,
     },
     computed: {
       showLipSyncSection,
       canLipSync,
       hasVisibleBaseVideo,
-      isRegeneratingGridVideoPrompt:
-        regenerateGridVideoPromptMutation.isPending ||
-        panel.gridVideoPromptTaskRunning ||
-        false,
     },
   }
 }

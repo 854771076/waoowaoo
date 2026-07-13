@@ -10,6 +10,13 @@
     "intense": "Intense",
     "generating": "Generating...",
     "generateVoice": "Generate Voice",
+    "statusStrip": {
+        "title": "Voice Generation",
+        "lines": "Lines",
+        "voiceBound": "Voices Bound",
+        "audioGenerated": "Audio Generated",
+        "running": "Running"
+    },
     "toolbar": {
         "back": "← Back",
         "analyzeLines": "Analyze Lines",

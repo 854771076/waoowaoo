@@ -51,6 +51,25 @@ export interface StoryboardData {
 
 type VideoGenerationOptionValue = string | number | boolean
 type VideoGenerationOptions = Record<string, VideoGenerationOptionValue>
+type GridVideoSource = 'split' | 'original'
+
+export interface GridSplitImage {
+    imageUrl: string
+    cellIndex: number
+    panelGridSize: number
+}
+
+export interface GridVideoFrame {
+    cellIndex: number
+    imageUrl: string
+    imagePrompt?: string
+    videoPrompt: string
+    action?: string
+    shotType?: string
+    cameraMove?: string
+    description?: string
+    location?: string
+}
 
 interface BatchVideoGenerationParams {
     videoModel: string
@@ -168,6 +187,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             }
             imageLayout?: 'single' | 'grid'
             gridSize?: number
+            gridVideoSource?: GridVideoSource
         }) => {
             if (!projectId) throw new Error('Project ID is required')
 
@@ -185,6 +205,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
                 generationOptions?: VideoGenerationOptions
                 imageLayout?: 'single' | 'grid'
                 gridSize?: number
+                gridVideoSource?: GridVideoSource
             } = {
                 storyboardId: params.storyboardId,
                 panelIndex: params.panelIndex,
@@ -206,6 +227,10 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
 
             if (params.gridSize !== undefined && params.gridSize > 0) {
                 requestBody.gridSize = params.gridSize
+            }
+
+            if (params.gridVideoSource) {
+                requestBody.gridVideoSource = params.gridVideoSource
             }
 
             const res = await apiFetch(`/api/novel-promotion/${projectId}/generate-video`, {
@@ -240,6 +265,39 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             // 🔥 刷新缓存获取最新状态
             if (episodeId && projectId) {
                 queryClient.invalidateQueries({ queryKey: queryKeys.episodeData(projectId, episodeId) })
+            }
+        },
+    })
+}
+
+export function useSplitGridPanel(projectId: string | null, episodeId: string | null) {
+    const queryClient = useQueryClient()
+
+    return useMutation({
+        mutationFn: async (params: { panelId: string; force?: boolean; gridSize?: number }) => {
+            if (!projectId) throw new Error('Project ID is required')
+            const res = await apiFetch(`/api/novel-promotion/${projectId}/panel/${params.panelId}/split-grid`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...(params.force ? { force: true } : {}),
+                    ...(params.gridSize ? { gridSize: params.gridSize } : {}),
+                }),
+            })
+            await checkApiResponse(res)
+            return res.json() as Promise<{
+                images: GridSplitImage[]
+                frames: GridVideoFrame[]
+                reused: boolean
+            }>
+        },
+        onSettled: () => {
+            if (!projectId) return
+            if (episodeId) {
+                queryClient.invalidateQueries({ queryKey: queryKeys.episodeData(projectId, episodeId) })
+                queryClient.invalidateQueries({ queryKey: queryKeys.storyboards.all(episodeId) })
+            } else {
+                queryClient.invalidateQueries({ queryKey: queryKeys.projectData(projectId) })
             }
         },
     })

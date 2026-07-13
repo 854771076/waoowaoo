@@ -1,4 +1,5 @@
 import { rewriteGridVideoPrompt } from '@/lib/storyboard-images/grid-video-prompt'
+import { extractPreImageGridVideoPrompt } from '@/lib/storyboard-images/grid-generation-context'
 
 export interface ResolveGridVideoPromptParams {
   basePrompt: string
@@ -24,6 +25,7 @@ export interface ResolveGridVideoPromptResult {
   rewritten: boolean
   usage: { promptTokens: number; completionTokens: number } | null
   duration: number | null
+  source?: 'pre_image_grid_prompt'
 }
 
 /**
@@ -34,6 +36,16 @@ export async function resolveGridVideoPrompt(
 ): Promise<ResolveGridVideoPromptResult> {
   if (params.alreadyRewritten) {
     return { prompt: params.basePrompt, rewritten: false, usage: null, duration: null }
+  }
+  const preImagePrompt = extractPreImageGridVideoPrompt(params.gridGenerationContextJson)
+  if (preImagePrompt) {
+    return {
+      prompt: preImagePrompt.prompt,
+      rewritten: false,
+      usage: null,
+      duration: preImagePrompt.duration,
+      source: 'pre_image_grid_prompt',
+    }
   }
   const result = await rewriteGridVideoPrompt({
     panelContext: params.panelContext,

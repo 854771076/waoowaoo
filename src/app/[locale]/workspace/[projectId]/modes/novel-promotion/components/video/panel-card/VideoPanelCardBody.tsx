@@ -50,6 +50,16 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
   const showsOutgoingLinkBadge = layout.isLinked && !!layout.nextPanel
   const showsPromptEditor = !layout.isLastFrame || layout.isLinked
   const showsFirstLastFrameActions = layout.isLinked && !!layout.nextPanel
+  const isGridVideoPanel = panel.imageLayout === 'grid'
+  const generateVideoButtonLabel = taskStatus.isVideoTaskRunning
+    ? taskStatus.taskRunningVideoLabel
+    : isGridVideoPanel
+      ? panel.videoUrl
+        ? t('panelCard.regenerateGridSplitVideo')
+        : t('panelCard.generateGridSplitVideo')
+      : panel.videoUrl
+        ? t('stage.hasSynced')
+        : t('panelCard.generateVideo')
 
   return (
     <div className="p-4 space-y-2">
@@ -112,25 +122,6 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
             ) : (
               <div onClick={promptEditor.handleStartEdit} className="text-xs p-2 border border-[var(--glass-stroke-base)] rounded-lg bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] cursor-pointer">
                 {promptEditor.localPrompt || <span className="text-[var(--glass-text-tertiary)] italic">{t('panelCard.clickToEditPrompt')}</span>}
-              </div>
-            )}
-
-            {panel.imageLayout === 'grid' && (
-              <div className="mt-2 flex justify-end">
-                <button
-                  onClick={() => { void actions.onRegenerateGridVideoPrompt() }}
-                  disabled={computed.isRegeneratingGridVideoPrompt || !panel.panelId}
-                  className="px-2 py-1 text-[10px] bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                >
-                  {computed.isRegeneratingGridVideoPrompt ? (
-                    <>
-                      <AppIcon name="loader" className="animate-spin h-3 w-3" />
-                      {t('panelCard.regeneratingGridVideoPrompt')}
-                    </>
-                  ) : (
-                    t('panelCard.regenerateGridVideoPrompt')
-                  )}
-                </button>
               </div>
             )}
 
@@ -206,7 +197,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                     }
                     className="flex-shrink-0 min-w-[90px] py-2 px-3 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 bg-[var(--glass-accent-from)] text-white"
                   >
-                    {panel.videoUrl ? t('stage.hasSynced') : taskStatus.isVideoTaskRunning ? taskStatus.taskRunningVideoLabel : t('panelCard.generateVideo')}
+                    {generateVideoButtonLabel}
                   </button>
                   <div className="flex-1 min-w-0">
                     <ModelCapabilityDropdown
@@ -228,6 +219,13 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                     />
                   </div>
                 </div>
+
+                {isGridVideoPanel && (
+                  <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-2 py-1.5 text-[10px] leading-4 text-[var(--glass-text-tertiary)]">
+                    <AppIcon name="scissors" className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                    <span>{t('panelCard.gridSplitVideoHint')}</span>
+                  </div>
+                )}
 
                 {computed.showLipSyncSection && (
                   <div className="mt-2">

@@ -24,6 +24,11 @@ import {
   resolveNovelData,
 } from './image-task-handler-shared'
 import { buildPromptAsync, PROMPT_IDS } from '@/lib/prompt-i18n'
+import {
+  buildDirectorShotConstraintPrompt,
+  buildDirectorShotConstraintPromptFromLayout,
+  type DirectorShotRecord,
+} from '@/lib/storyboard-images/director-shot-constraints'
 
 // ── 构建变体提示词 ──────────────────────────────────────
 interface VariantPromptParams {
@@ -186,6 +191,20 @@ function buildVariantReferenceImages(params: {
   return refs
 }
 
+function parseJsonRecord(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+  } catch {
+    return {}
+  }
+}
+
+function appendPromptConstraint(prompt: string, constraint: string): string {
+  return [prompt, constraint].map((item) => item.trim()).filter(Boolean).join('\n')
+}
+
 interface PanelVariantPayload {
   shot_type?: string
   camera_move?: string
@@ -214,7 +233,10 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
   const newPanel = await prisma.novelPromotionPanel.findUnique({ where: { id: newPanelId } })
   if (!newPanel) throw new Error('New panel not found (should have been created by API route)')
 
-  const sourcePanel = await prisma.novelPromotionPanel.findUnique({ where: { id: sourcePanelId } })
+  const sourcePanel = await prisma.novelPromotionPanel.findUnique({
+    where: { id: sourcePanelId },
+    include: { directorShots: true },
+  })
   if (!sourcePanel) throw new Error('Source panel not found')
 
   const projectData = await resolveNovelData(job.data.projectId)
@@ -247,6 +269,12 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
     ? buildCharacterAssetsDescription(newPanel, projectData)
     : (job.data.locale === 'en' ? 'Character reference images disabled' : '未使用角色参考图')
   const locationName = newPanel.location || sourcePanel.location || ''
+  const directorShotConstraint = buildDirectorShotConstraintPrompt(parseJsonRecord(
+    (sourcePanel as { gridGenerationContext?: string | null }).gridGenerationContext || null,
+  )) || buildDirectorShotConstraintPromptFromLayout({
+    directorLayout: sourcePanel.directorLayout,
+    directorShots: sourcePanel.directorShots as DirectorShotRecord[],
+  })
 
   const prompt = await buildVariantPrompt({
     projectId: job.data.projectId,
@@ -260,7 +288,10 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
     variantDescription: variant.description || '',
     targetShotType: variant.shot_type || sourcePanel.shotType || '',
     targetCameraMove: variant.camera_move || sourcePanel.cameraMove || '',
-    videoPrompt: pickFirstString(variant.video_prompt, variant.description) || '',
+    videoPrompt: appendPromptConstraint(
+      pickFirstString(variant.video_prompt, variant.description) || '',
+      directorShotConstraint,
+    ),
     characterAssets: characterAssetsDesc,
     locationAsset: buildLocationAssetDescription({
       includeLocationAsset,

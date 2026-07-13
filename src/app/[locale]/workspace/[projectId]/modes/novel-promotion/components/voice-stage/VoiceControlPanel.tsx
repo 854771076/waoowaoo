@@ -6,6 +6,7 @@ import VoiceToolbar from '../voice/VoiceToolbar'
 import EmbeddedVoiceToolbar from '../voice/EmbeddedVoiceToolbar'
 import SpeakerVoiceStatus from '../voice/SpeakerVoiceStatus'
 import { AppIcon } from '@/components/ui/icons'
+import WorkflowStatusStrip from '@/components/operations/WorkflowStatusStrip'
 
 interface BindablePanelOption {
   id: string
@@ -130,6 +131,16 @@ export default function VoiceControlPanel({
           onGenerateAll={onGenerateAll}
         />
       )}
+
+      <WorkflowStatusStrip
+        title={t('statusStrip.title')}
+        items={[
+          { label: t('statusStrip.lines'), value: totalLines },
+          { label: t('statusStrip.voiceBound'), value: linesWithVoice, tone: allSpeakersHaveVoice ? 'success' : 'warning' },
+          { label: t('statusStrip.audioGenerated'), value: linesWithAudio, tone: linesWithAudio === totalLines && totalLines > 0 ? 'success' : 'default' },
+          { label: t('statusStrip.running'), value: runningLineCount, tone: runningLineCount > 0 ? 'warning' : 'muted' },
+        ]}
+      />
 
       {speakers.length > 0 && (
         <SpeakerVoiceStatus

@@ -98,6 +98,32 @@ function buildJob(
 }
 
 describe('worker panel-variant-task-handler behavior', () => {
+  const directorLayout = JSON.stringify({
+    version: 1,
+    scene: { unit: 'meter', width: 10, depth: 10, backdropImageUrl: null },
+    objects: [{
+      id: 'char-hero',
+      kind: 'character',
+      name: 'Hero',
+      refId: null,
+      visible: true,
+      locked: false,
+      color: '#38bdf8',
+      mode: 'mannequin',
+      transform: { position: [1, 0, 2], rotation: [0, 0, 0], scale: [1, 1, 1] },
+      facing: 1.57079632679,
+      posePresetId: 'stand',
+    }],
+    cameras: [{
+      id: 'camera-main',
+      name: '主机位',
+      fov: 35,
+      position: [0, 1.6, 6],
+      target: [1, 1.2, 2],
+    }],
+    activeCameraId: 'camera-main',
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
 
@@ -121,6 +147,20 @@ describe('worker panel-variant-task-handler behavior', () => {
           cameraMove: 'pan',
           location: 'Old Town',
           characters: JSON.stringify([{ name: 'Hero' }]),
+          directorLayout,
+          directorShots: [{
+            cameraId: 'camera-main',
+            name: '主机位',
+            isActive: true,
+            fov: 35,
+            posX: 0,
+            posY: 1.6,
+            posZ: 6,
+            targetX: 1,
+            targetY: 1.2,
+            targetZ: 2,
+            note: 'Hero 固定在画面左侧',
+          }],
         }
       }
       return null
@@ -254,6 +294,93 @@ describe('worker panel-variant-task-handler behavior', () => {
       projectId: 'project-1',
       variables: expect.objectContaining({
         location_asset: expect.not.stringContaining('可站位置：'),
+      }),
+    }))
+  })
+
+  it('carries source director shot constraints into variant prompt', async () => {
+    prismaMock.novelPromotionPanel.findUnique.mockImplementation(async (args: { where: { id: string } }) => {
+      if (args.where.id === 'panel-new') {
+        return {
+          id: 'panel-new',
+          storyboardId: 'storyboard-1',
+          imageUrl: null,
+          location: 'Old Town',
+          characters: JSON.stringify([{ name: 'Hero', appearance: 'default' }]),
+        }
+      }
+      if (args.where.id === 'panel-source') {
+        return {
+          id: 'panel-source',
+          storyboardId: 'storyboard-1',
+          imageUrl: 'cos/panel-source.png',
+          description: 'source description',
+          shotType: 'medium',
+          cameraMove: 'pan',
+          location: 'Old Town',
+          characters: JSON.stringify([{ name: 'Hero' }]),
+          gridGenerationContext: JSON.stringify({
+            panel: {
+              director_shot: {
+                active_camera: {
+                  camera_fov: 35,
+                  camera_position: { x: 1.2, y: 1.6, z: 4.8 },
+                  camera_target: { x: 0, y: 1.2, z: 0 },
+                },
+                characters: [
+                  { name: 'Hero', position: { x: -0.8, y: 0, z: 0.2 }, facing_deg: 35, posture: 'stand' },
+                ],
+              },
+            },
+          }),
+        }
+      }
+      return null
+    })
+
+    await handlePanelVariantTask(buildJob({
+      newPanelId: 'panel-new',
+      sourcePanelId: 'panel-source',
+      variant: {
+        title: '保持站位版本',
+        description: '保持源镜头人物站位',
+      },
+    }))
+
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
+      variables: expect.objectContaining({
+        video_prompt: expect.stringContaining('导演台站位约束'),
+      }),
+    }))
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
+      variables: expect.objectContaining({
+        video_prompt: expect.stringContaining('Hero：位置 x=-0.8, y=0, z=0.2'),
+      }),
+    }))
+  })
+
+  it('inherits director desk staging from a non-grid source panel', async () => {
+    const payload = {
+      newPanelId: 'panel-new',
+      sourcePanelId: 'panel-source',
+      variant: {
+        title: '站位保持版本',
+        description: '保持人物站位，只调整情绪',
+        video_prompt: '保持人物站位，只调整情绪',
+      },
+    }
+
+    await handlePanelVariantTask(buildJob(payload))
+
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1',
+      variables: expect.objectContaining({
+        video_prompt: expect.stringContaining('导演台站位约束'),
+      }),
+    }))
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
+      variables: expect.objectContaining({
+        video_prompt: expect.stringContaining('Hero：位置 x=1, y=0, z=2'),
       }),
     }))
   })

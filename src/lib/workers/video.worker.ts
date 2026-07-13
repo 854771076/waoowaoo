@@ -13,6 +13,7 @@ import {
   resolveLipSyncVideoSource,
   resolveVideoSourceFromGeneration,
   toSignedUrlIfCos,
+  uploadImageSourceToCos,
   uploadVideoSourceToCos,
 } from './utils'
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
@@ -21,6 +22,16 @@ import { resolveEffectiveVideoDurationSeconds } from '@/lib/model-capabilities/v
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
 import { isGridLayout } from '@/lib/storyboard-images/grid-video-prompt'
+import {
+  extractGridVideoFrames,
+  selectGridVideoFrameImages,
+  shouldUseGridFirstLastFrame,
+} from '@/lib/storyboard-images/grid-video-frames'
+import {
+  buildGridSplitImagesContext,
+  cropAllGridImageBuffersForVideo,
+  selectReusableGridSplitImages,
+} from '@/lib/storyboard-images/grid-split'
 import { resolveGridVideoPrompt } from '@/lib/workers/grid-video-prompt-resolver'
 import { resolveAnalysisModel } from './handlers/resolve-analysis-model'
 import { withTextBilling } from '@/lib/billing'
@@ -126,6 +137,8 @@ async function generateVideoForPanel(
 
   let prompt = basePrompt
   let usedGridPrompt = false
+  let gridFrameSelection: ReturnType<typeof selectGridVideoFrameImages> | null = null
+  let resolvedGridSize = defaultGridSize
   if (isGridImage && !firstLastFramePayload) {
     // 优先从 gridGenerationContext 中读取保存的实际宫格尺寸，兜底使用 payload 或项目默认值
     let contextGridSize = 4
@@ -143,9 +156,17 @@ async function generateVideoForPanel(
     const gridSize = payloadGridSize && payloadGridSize > 1
       ? payloadGridSize
       : contextGridSize
+    resolvedGridSize = gridSize
     const alreadyRewritten = panel.gridVideoPromptAt != null
 
-    if (alreadyRewritten) {
+    const existingFrames = extractGridVideoFrames(panel.gridGenerationContext)
+    if (existingFrames.length > 0) {
+      gridFrameSelection = selectGridVideoFrameImages(existingFrames)
+      if (gridFrameSelection.aggregatePrompt) {
+        prompt = gridFrameSelection.aggregatePrompt
+        usedGridPrompt = true
+      }
+    } else if (alreadyRewritten) {
       // 缓存命中：直接复用已持久化的宫格重写提示词，不调模型、不计费
       const cached = panel.videoPrompt || basePrompt
       prompt = cached
@@ -200,7 +221,7 @@ async function generateVideoForPanel(
         : await runResolve()
       prompt = resolved.prompt
       usedGridPrompt = resolved.prompt !== basePrompt
-      if (resolved.rewritten) {
+      if (resolved.rewritten || resolved.source === 'pre_image_grid_prompt') {
         await prisma.novelPromotionPanel.update({
           where: { id: panel.id },
           data: {
@@ -246,14 +267,75 @@ async function generateVideoForPanel(
     },
   })
 
-  const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
+  let sourceImageStorageKeyOrUrl = panel.imageUrl
+  if (isGridImage && !firstLastFramePayload) {
+    let gridVideoFrames = extractGridVideoFrames(panel.gridGenerationContext)
+    const splitImages = selectReusableGridSplitImages(panel.gridGenerationContext, {
+      panelGridSize: resolvedGridSize,
+      sourceGridImageUrl: panel.imageUrl,
+    })
+    const cachedGridVideoSource = splitImages.find((image) => image.cellIndex === 1)
+    if (!gridFrameSelection && gridVideoFrames.length > 0) {
+      gridFrameSelection = selectGridVideoFrameImages(gridVideoFrames)
+      if (gridFrameSelection.aggregatePrompt) {
+        prompt = gridFrameSelection.aggregatePrompt
+      }
+    }
+    if (cachedGridVideoSource) {
+      sourceImageStorageKeyOrUrl = gridFrameSelection?.firstImageUrl || cachedGridVideoSource.imageUrl
+    } else if (panel.imageUrl) {
+      const gridImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
+      if (!gridImageUrl) {
+        throw new Error(`Panel ${panel.id} grid image url invalid`)
+      }
+      const response = await fetch(gridImageUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to download grid image for split: ${response.status}`)
+      }
+      const gridImageBuffer = Buffer.from(await response.arrayBuffer())
+      const splitBuffers = await cropAllGridImageBuffersForVideo({
+        imageBuffer: gridImageBuffer,
+        panelGridSize: resolvedGridSize,
+        minOutputWidth: 768,
+      })
+      const uploadedSplitImages = []
+      for (const split of splitBuffers) {
+        const imageUrl = await uploadImageSourceToCos(split.buffer, 'grid-video-source', `${panel.id}-${split.cellIndex}`)
+        uploadedSplitImages.push({
+          imageUrl,
+          cellIndex: split.cellIndex,
+          panelGridSize: resolvedGridSize,
+        })
+      }
+      const firstSplitImage = uploadedSplitImages.find((image) => image.cellIndex === 1) || uploadedSplitImages[0]
+      sourceImageStorageKeyOrUrl = firstSplitImage?.imageUrl || panel.imageUrl
+      const nextGridContext = buildGridSplitImagesContext(panel.gridGenerationContext, {
+        panelGridSize: resolvedGridSize,
+        sourceGridImageUrl: panel.imageUrl,
+        images: uploadedSplitImages,
+      })
+      await prisma.novelPromotionPanel.update({
+        where: { id: panel.id },
+        data: {
+          gridGenerationContext: nextGridContext,
+        },
+      })
+      gridVideoFrames = extractGridVideoFrames(nextGridContext)
+      gridFrameSelection = selectGridVideoFrameImages(gridVideoFrames)
+      if (gridFrameSelection.aggregatePrompt) {
+        prompt = gridFrameSelection.aggregatePrompt
+      }
+    }
+  }
+
+  const sourceImageUrl = toSignedUrlIfCos(sourceImageStorageKeyOrUrl, 3600)
   if (!sourceImageUrl) {
     throw new Error(`Panel ${panel.id} image url invalid`)
   }
   const sourceImageBase64 = await normalizeToBase64ForGeneration(sourceImageUrl)
 
   let lastFrameImageBase64: string | undefined
-  const generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
+  let generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
   const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
     : undefined
@@ -282,6 +364,18 @@ async function generateVideoForPanel(
         if (lastFrameUrl) {
           lastFrameImageBase64 = await normalizeToBase64ForGeneration(lastFrameUrl)
         }
+      }
+    }
+  } else if (isGridImage && gridFrameSelection) {
+    const gridFirstLastFrameCapabilities = resolveBuiltinCapabilitiesByModelKey('video', model)
+    if (shouldUseGridFirstLastFrame({
+      supportsFirstLastFrame: gridFirstLastFrameCapabilities?.video?.firstlastframe === true,
+      selection: gridFrameSelection,
+    })) {
+      const lastFrameUrl = toSignedUrlIfCos(gridFrameSelection.lastImageUrl, 3600)
+      if (lastFrameUrl) {
+        lastFrameImageBase64 = await normalizeToBase64ForGeneration(lastFrameUrl)
+        generationMode = 'firstlastframe'
       }
     }
   }

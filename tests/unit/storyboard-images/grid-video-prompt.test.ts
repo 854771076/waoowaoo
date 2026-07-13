@@ -18,7 +18,6 @@ vi.mock('@/lib/prompt-i18n', () => ({
   buildPromptAsync: promptMock.buildPromptAsync,
   PROMPT_IDS: {
     NP_PANEL_GRID_VIDEO: 'np_panel_grid_video',
-    NP_PANEL_GRID_VIDEO_VISION: 'np_panel_grid_video_vision',
   },
 }))
 
@@ -217,7 +216,7 @@ describe('rewriteGridVideoPrompt', () => {
   })
 })
 
-describe('rewriteGridVideoPrompt: vision path', () => {
+describe('rewriteGridVideoPrompt: text-only path', () => {
   const baseParams = {
     basePrompt: 'character walking',
     gridSize: 4,
@@ -232,25 +231,28 @@ describe('rewriteGridVideoPrompt: vision path', () => {
     vi.clearAllMocks()
   })
 
-  it('should use vision path when both visionModel and imageUrl provided', async () => {
-    vi.mocked(executeAiVisionStep).mockResolvedValue({
-      text: JSON.stringify({ prompt: 'vision rewritten prompt', duration: 10 }),
-      reasoning: '',
+  it('does not use vision parsing even when both visionModel and imageUrl are provided', async () => {
+    promptMock.buildPromptAsync.mockResolvedValue('FILLED_TEMPLATE')
+    vi.mocked(executeAiTextStep).mockResolvedValue({
+      text: JSON.stringify({ prompt: 'text rewritten prompt', duration: 8 }),
       usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      completion: {} as any,
-    })
+    } as AiStepExecutionResult)
 
     const result = await rewriteGridVideoPrompt({
       ...baseParams,
+      model: 'openai:gpt-4',
       visionModel: 'openai:gpt-4o',
       imageUrl: 'cos://panel-image.jpg',
       gridGenerationContextJson: JSON.stringify({ panel: {}, context: {} }),
     })
 
-    expect(executeAiVisionStep).toHaveBeenCalled()
-    expect(executeAiTextStep).not.toHaveBeenCalled()
-    expect(result?.prompt).toBe('vision rewritten prompt')
-    expect(result?.duration).toBe(10)
+    expect(executeAiVisionStep).not.toHaveBeenCalled()
+    expect(executeAiTextStep).toHaveBeenCalled()
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
+      promptId: 'np_panel_grid_video',
+    }))
+    expect(result?.prompt).toBe('text rewritten prompt')
+    expect(result?.duration).toBe(8)
   })
 
   it('should fall back to text path when visionModel not provided', async () => {
@@ -273,8 +275,9 @@ describe('rewriteGridVideoPrompt: vision path', () => {
     expect(result?.duration).toBe(8)
   })
 
-  it('should fall back to text path when vision call fails', async () => {
+  it('ignores vision call failures because the vision path is not invoked', async () => {
     vi.mocked(executeAiVisionStep).mockRejectedValue(new Error('vision failed'))
+    promptMock.buildPromptAsync.mockResolvedValue('FILLED_TEMPLATE')
     vi.mocked(executeAiTextStep).mockResolvedValue({
       text: JSON.stringify({ prompt: 'fallback prompt', duration: 6 }),
       reasoning: '',
@@ -291,6 +294,7 @@ describe('rewriteGridVideoPrompt: vision path', () => {
 
     expect(result?.prompt).toBe('fallback prompt')
     expect(result?.duration).toBe(6)
+    expect(executeAiVisionStep).not.toHaveBeenCalled()
   })
 
   it('should use old panelContext format when gridGenerationContextJson not provided (backward compat)', async () => {
@@ -344,21 +348,24 @@ describe('rewriteGridVideoPrompt: srtSegment handling', () => {
     expect(result?.prompt).not.toContain('[角色台词]')
   })
 
-  it('should NOT add dialogue markers in vision path either', async () => {
-    vi.mocked(executeAiVisionStep).mockResolvedValue({
-      text: JSON.stringify({ prompt: 'vision rewritten prompt', duration: 10 }),
+  it('should NOT add dialogue markers when vision inputs are present because text path owns rewrite', async () => {
+    promptMock.buildPromptAsync.mockResolvedValue('FILLED_TEMPLATE')
+    vi.mocked(executeAiTextStep).mockResolvedValue({
+      text: JSON.stringify({ prompt: 'text rewritten prompt', duration: 10 }),
       usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-    } as any)
+    } as AiStepExecutionResult)
 
     const result = await rewriteGridVideoPrompt({
       ...baseParams,
+      model: 'openai:gpt-4',
       visionModel: 'openai:gpt-4o',
       imageUrl: 'cos://panel-image.jpg',
       srtSegment: '00:00:01,000 --> 00:00:03,000\n你好，世界',
     })
 
-    expect(result?.prompt).toBe('vision rewritten prompt')
+    expect(result?.prompt).toBe('text rewritten prompt')
     expect(result?.prompt).not.toContain('[角色台词]')
+    expect(executeAiVisionStep).not.toHaveBeenCalled()
   })
 
   it('should NOT add dialogue markers when no model provided - returns raw basePrompt', async () => {

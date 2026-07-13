@@ -13,5 +13,15 @@
   "generateImage": "Generate Image",
   "regenerateImage": "Regenerate",
   "analyzeAssets": "Analyze Assets",
-  "analyzing": "Analyzing..."
+  "analyzing": "Analyzing...",
+  "statusStrip": {
+    "title": "Asset Library",
+    "characters": "Characters",
+    "locations": "Locations",
+    "analysis": "Analysis",
+    "ready": "Ready",
+    "pending": "Missing",
+    "running": "Running",
+    "idle": "Idle"
+  }
 }

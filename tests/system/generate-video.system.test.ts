@@ -15,17 +15,31 @@ type PollState = {
 const videoState = vi.hoisted(() => ({
   pollResponses: new Map<string, PollState[]>(),
   uploadedCosKey: 'video/system-video.mp4',
+  generateVideoCalls: [] as Array<{
+    userId: string
+    modelKey: string
+    imageUrl: string
+    options?: Record<string, unknown>
+  }>,
 }))
 
 vi.mock('@/lib/generator-api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/generator-api')>('@/lib/generator-api')
   return {
     ...actual,
-    generateVideo: vi.fn(async () => ({
-      success: true,
-      async: true,
-      externalId: 'video-ext-1',
-    })),
+    generateVideo: vi.fn(async (
+      userId: string,
+      modelKey: string,
+      imageUrl: string,
+      options?: Record<string, unknown>,
+    ) => {
+      videoState.generateVideoCalls.push({ userId, modelKey, imageUrl, options })
+      return {
+        success: true,
+        async: true,
+        externalId: 'video-ext-1',
+      }
+    }),
   }
 })
 
@@ -69,6 +83,7 @@ describe('system - generate video', () => {
     vi.clearAllMocks()
     videoState.uploadedCosKey = 'video/system-video.mp4'
     videoState.pollResponses.clear()
+    videoState.generateVideoCalls = []
     videoState.pollResponses.set('video-ext-1', [
       { status: 'processing' },
       { status: 'completed', resultUrl: 'https://provider.example/video-final.mp4' },
@@ -117,5 +132,39 @@ describe('system - generate video', () => {
 
     const eventTypes = await listTaskEventTypes(json.taskId)
     expectLifecycleEvents(eventTypes, 'completed')
+  })
+
+  it('passes selected videoReferenceImages to the generator', async () => {
+    const seeded = await seedMinimalDomainState()
+    mockAuthenticated(seeded.user.id)
+    workers = await startSystemWorkers(['video'])
+
+    const mod = await import('@/app/api/novel-promotion/[projectId]/generate-video/route')
+    const response = await callRoute(
+      mod.POST,
+      'POST',
+      {
+        locale: 'zh',
+        storyboardId: seeded.storyboard.id,
+        panelIndex: 0,
+        videoModel: 'fal::seedance/video',
+        videoReferenceImages: [
+          seeded.panel.imageUrl,
+          'images/character-reference.png',
+          'images/location-reference.png',
+        ],
+      },
+      { params: { projectId: seeded.project.id } },
+    )
+
+    expect(response.status).toBe(200)
+    const json = await response.json() as { taskId: string }
+    await waitForTaskTerminalState(json.taskId)
+
+    expect(videoState.generateVideoCalls[0]?.options?.videoReferenceImages).toEqual([
+      seeded.panel.imageUrl,
+      'images/character-reference.png',
+      'images/location-reference.png',
+    ])
   })
 })

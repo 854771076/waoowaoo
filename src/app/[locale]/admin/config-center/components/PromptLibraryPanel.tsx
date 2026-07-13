@@ -7,6 +7,7 @@ import { AppIcon } from '@/components/ui/icons'
 import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import PromptVersionEditor from './PromptVersionEditor'
+import WorkflowStatusStrip from '@/components/operations/WorkflowStatusStrip'
 
 export type PromptVersionStatus = 'draft' | 'published' | 'disabled'
 export type PromptLocale = 'zh' | 'en'
@@ -124,6 +125,15 @@ export default function PromptLibraryPanel() {
   const selectedPrompt = useMemo(() => {
     return filteredPrompts.find((prompt) => prompt.promptId === selectedPromptId) ?? filteredPrompts[0] ?? null
   }, [filteredPrompts, selectedPromptId])
+  const versionCounts = useMemo(() => {
+    return prompts.flatMap((prompt) => prompt.versions).reduce(
+      (counts, version) => {
+        counts[version.status] += 1
+        return counts
+      },
+      { draft: 0, published: 0, disabled: 0 },
+    )
+  }, [prompts])
 
   if (loading) {
     return (
@@ -213,6 +223,16 @@ export default function PromptLibraryPanel() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <WorkflowStatusStrip
+            title={t('statusStrip.title')}
+            className="mb-3"
+            items={[
+              { label: t('statusStrip.prompts'), value: prompts.length },
+              { label: t('statusStrip.published'), value: versionCounts.published, tone: 'success' },
+              { label: t('statusStrip.draft'), value: versionCounts.draft, tone: versionCounts.draft > 0 ? 'warning' : 'muted' },
+              { label: t('statusStrip.disabled'), value: versionCounts.disabled, tone: 'muted' },
+            ]}
+          />
           {filteredPrompts.length === 0 ? (
             <div className="flex h-full items-center justify-center px-4 text-center text-sm text-[var(--glass-text-tertiary)]">
               {t('empty.filtered')}

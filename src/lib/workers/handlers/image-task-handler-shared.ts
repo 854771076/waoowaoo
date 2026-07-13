@@ -8,6 +8,7 @@ import {
   uploadImageSourceToCos,
   withLabelBar,
 } from '../utils'
+import { buildCharacterConsistencyContext } from '@/lib/storyboard-images/character-consistency-context'
 
 export type AnyObj = Record<string, unknown>
 
@@ -43,10 +44,6 @@ interface NovelProjectData {
   videoRatio?: string | null
   characters?: CharacterLike[]
   locations?: LocationLike[]
-}
-
-interface DirectorShotLike {
-  imageMedia?: { storageKey?: string | null } | null
 }
 
 interface PanelLike {
@@ -246,24 +243,12 @@ export async function collectPanelReferenceImages(projectData: NovelProjectData,
   if (sketch) refs.push(sketch)
 
   const panelCharacters = parsePanelCharacterReferences(panel.characters)
-  for (const item of panelCharacters) {
-    const character = findCharacterByName(projectData.characters || [], item.name)
-    if (!character) continue
-
-    const appearances = character.appearances || []
-    let appearance = appearances[0]
-    if (item.appearance) {
-      const matched = appearances.find((a) => (a.changeReason || '').toLowerCase() === item.appearance!.toLowerCase())
-      if (matched) appearance = matched
-    }
-
-    if (!appearance) continue
-
-    const imageUrls = parseImageUrls(appearance.imageUrls, 'characterAppearance.imageUrls')
-    const selectedIndex = appearance.selectedIndex
-    const selectedUrl = selectedIndex !== null && selectedIndex !== undefined ? imageUrls[selectedIndex] : null
-    const key = selectedUrl || imageUrls[0] || appearance.imageUrl
-    const signed = toSignedUrlIfCos(key, 3600)
+  const characterConsistency = buildCharacterConsistencyContext({
+    panelCharacters,
+    projectCharacters: projectData.characters || [],
+  })
+  for (const character of characterConsistency.characters) {
+    const signed = toSignedUrlIfCos(character.referenceImageUrl, 3600)
     if (signed) refs.push(signed)
   }
 

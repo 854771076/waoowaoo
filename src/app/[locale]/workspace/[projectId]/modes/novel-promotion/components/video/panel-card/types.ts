@@ -1,4 +1,4 @@
-import type { VideoPanel, MatchedVoiceLine, VideoModelOption, FirstLastFrameParams, VideoGenerationOptions } from '../types'
+import type { GridVideoSource, VideoPanel, MatchedVoiceLine, VideoModelOption, FirstLastFrameParams, VideoGenerationOptions } from '../types'
 import type { CapabilitySelections, CapabilityValue } from '@/lib/model-config-contract'
 
 export interface VideoPanelCardShellProps {
@@ -46,6 +46,7 @@ export interface VideoPanelCardShellProps {
     panelId?: string,
     imageLayout?: 'single' | 'grid',
     gridSize?: number,
+    gridVideoSource?: GridVideoSource,
   ) => void
   onUpdatePanelVideoModel: (storyboardId: string, panelIndex: number, model: string) => void
   onToggleLink: (panelKey: string, storyboardId: string, panelIndex: number) => void
@@ -63,4 +64,5 @@ export interface VideoPanelCardShellProps {
     firstPanelId?: string,
   ) => void
   onPreviewImage?: (imageUrl: string) => void
+  onOpenGridSplit?: () => void
 }

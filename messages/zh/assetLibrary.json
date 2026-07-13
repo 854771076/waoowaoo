@@ -13,5 +13,15 @@
   "generateImage": "生成图片",
   "regenerateImage": "重新生成",
   "analyzeAssets": "分析资产",
-  "analyzing": "分析中..."
+  "analyzing": "分析中...",
+  "statusStrip": {
+    "title": "资产库",
+    "characters": "角色",
+    "locations": "场景",
+    "analysis": "分析",
+    "ready": "已就绪",
+    "pending": "待补充",
+    "running": "进行中",
+    "idle": "空闲"
+  }
 }

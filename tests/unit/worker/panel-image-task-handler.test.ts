@@ -238,11 +238,11 @@ describe('worker panel-image-task-handler behavior', () => {
 
     expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
       where: { id: 'panel-1' },
-      data: {
+      data: expect.objectContaining({
         previousImageUrl: 'cos/panel-old.png',
         candidateImages: JSON.stringify(['cos/panel-regenerated.png']),
         imageLayout: 'single',
-      },
+      }),
     })
   })
 

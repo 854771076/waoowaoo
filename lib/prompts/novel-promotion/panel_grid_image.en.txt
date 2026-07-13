@@ -43,5 +43,11 @@ Requirements:
 Panel JSON:
 {storyboard_text_json_input}
 
+[Pre-generated grid video prompt constraints]
+- `preImageGridPrompt.gridCells` in the panel JSON already contains per-cell imagePrompt/videoPrompt values. Follow them strictly by `cellIndex`; do not treat the cells as unrelated independent shots.
+- Each cell is a time-ordered keyframe of the same continuous shot: cell 1 is the starting moment, the final cell is the ending moment, and middle cells bridge action, expression, lip movement, blocking, and camera motion.
+- `preImageGridPrompt.aggregateVideoPrompt` is the continuous-shot prompt that will be used later for video generation. This grid image must provide clear, consistent, splittable keyframes for that video prompt.
+- The grid image itself may have visible cell borders, but all cell content must serve a later full-frame single continuous shot with no grid, no borders, and no split-screen.
+
 Source text:
 {source_text}

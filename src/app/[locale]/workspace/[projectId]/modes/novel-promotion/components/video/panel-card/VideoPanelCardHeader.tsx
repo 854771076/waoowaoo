@@ -144,6 +144,7 @@ export default function VideoPanelCardHeader({ runtime, onOpenHistory, historyCo
               undefined,
               videoModel.generationOptions,
               panel.panelId,
+              panel.imageLayout,
             )}
           disabled={
             taskStatus.isVideoTaskRunning
