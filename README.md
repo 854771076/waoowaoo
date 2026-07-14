@@ -18,7 +18,10 @@
 
 ## 🚀 快速开始
 
-**前提条件**：安装 [Docker Desktop](https://docs.docker.com/get-docker/)
+**前提条件**：
+
+- [Node.js](https://nodejs.org/) ≥ 18.18（推荐 22 LTS，仓库 `.nvmrc` 指定为 22.14.0）
+- [Docker Desktop](https://docs.docker.com/get-docker/)（用于启动 MySQL/Redis/MinIO）
 
 ### 方式一：预构建镜像（最简单）
 
@@ -61,20 +64,50 @@ docker compose down && docker compose up -d --build
 git clone https://github.com/saturndec/vvicat.git
 cd vvicat
 
-# 复制环境变量（必须在 npm install 之前）
+# 1. 复制环境变量（必须在 npm install 之前，postinstall 会读取 .env）
 cp .env.example .env
-# 编辑 .env，填入 AI API Key；NEXTAUTH_URL 默认 http://localhost:3000 即可
+#    编辑 .env：
+#    - NEXTAUTH_SECRET / CRON_SECRET / INTERNAL_TASK_TOKEN：建议改成随机字符串
+#    - 其余（数据库、Redis、MinIO 端口）已与 docker-compose.yml 对齐，默认即可
+#    - AI 服务的 API Key 可启动后在设置中心填写，不必提前写进 .env
 
+# 2. 安装依赖（postinstall 会自动执行 prisma generate）
 npm install
 
-# 启动基础设施（MySQL:13306 / Redis:16379 / MinIO:19000）
+# 3. 启动基础设施（MySQL:13306 / Redis:16379 / MinIO:19000 控制台:19001）
 docker compose up mysql redis minio -d
 
-# 初始化数据库（首次必须执行，否则启动后报表不存在）
+# 4. 初始化数据库表结构（首次必须执行；schema 变更后也需执行）
 npx prisma db push
 
-# 启动开发服务器
+# 5.（可选）导入内置提示词配置（艺术风格、系统 Prompt 等）
+npm run seed:prompts
+
+# 6.（可选）创建管理员账号（用于 /admin 配置中心）
+# npm run admin:create
+
+# 7. 启动开发服务（Next.js + Worker + Watchdog + Bull Board 一并启动）
 npm run dev
+```
+
+`npm run dev` 会同时启动 4 个进程：
+
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| Next.js Web | http://localhost:3000 | 主应用 |
+| Bull Board | http://localhost:3010/admin/queues | 后台任务队列面板 |
+| Worker | — | 图像/视频/语音/文本任务消费者 |
+| Watchdog | — | 卡死任务巡检与自动重试 |
+
+如需单独启动某一个，可使用 `npm run dev:next` / `dev:worker` / `dev:watchdog` / `dev:board`。
+
+### 常用开发命令
+
+```bash
+npm run typecheck        # TS 类型检查
+npm run lint:all         # ESLint
+npm run test:unit:all    # 单元测试
+npm run prisma studio    # 可视化数据库浏览器（http://localhost:5555）
 ```
 
 ---
