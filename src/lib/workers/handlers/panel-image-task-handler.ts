@@ -25,7 +25,10 @@ import {
   parseLocationAvailableSlots,
 } from '@/lib/location-available-slots'
 import { buildStoryboardGridLayout } from '@/lib/storyboard-images/grid'
-import { buildPreImageGridGenerationContext } from '@/lib/storyboard-images/grid-generation-context'
+import {
+  buildPreImageGridGenerationContext,
+  serializeGridGenerationContextForStorage,
+} from '@/lib/storyboard-images/grid-generation-context'
 import { buildCharacterConsistencyContext } from '@/lib/storyboard-images/character-consistency-context'
 import { buildGridInvalidationPatch } from './panel-image-grid-invalidate'
 import { parseDirectorProject, type DirectorProject } from '@/lib/director-desk/schema'
@@ -511,7 +514,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         imageLayout,
         ...buildGridInvalidationPatch(imageLayout),
         ...(panelGridSize > 1
-          ? { gridGenerationContext: JSON.stringify(contextWithGridMetadata, null, 2) }
+          ? { gridGenerationContext: serializeGridGenerationContextForStorage(contextWithGridMetadata) }
           : {}),
       },
     })
@@ -525,7 +528,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         imageLayout,
         ...buildGridInvalidationPatch(imageLayout),
         ...(panelGridSize > 1
-          ? { gridGenerationContext: JSON.stringify(contextWithGridMetadata, null, 2) }
+          ? { gridGenerationContext: serializeGridGenerationContextForStorage(contextWithGridMetadata) }
           : {}),
       },
     })

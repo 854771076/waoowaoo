@@ -29,6 +29,41 @@ export interface PreImageGridGenerationContext extends Record<string, unknown> {
   }
 }
 
+const STORAGE_STRING_LIMIT = 4_000
+
+function redactLargeStringForStorage(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.startsWith('data:')) {
+    return `[已省略 data-url，原始长度 ${value.length}]`
+  }
+  const withoutEmbeddedDataUrls = value.replace(
+    /data:[^"'\s,]+(?:,[A-Za-z0-9+/=_-]+)/g,
+    (match) => `[已省略 data-url，原始长度 ${match.length}]`,
+  )
+  if (withoutEmbeddedDataUrls.length <= STORAGE_STRING_LIMIT) return withoutEmbeddedDataUrls
+  return `${withoutEmbeddedDataUrls.slice(0, STORAGE_STRING_LIMIT)}\n[已截断，原始长度 ${withoutEmbeddedDataUrls.length}]`
+}
+
+function compactForStorage(value: unknown): unknown {
+  if (typeof value === 'string') return redactLargeStringForStorage(value)
+  if (Array.isArray(value)) return value.map(compactForStorage)
+  if (!value || typeof value !== 'object') return value
+
+  const input = value as Record<string, unknown>
+  const output: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(input)) {
+    if (key === 'imagePrompt' && typeof child === 'string') {
+      // 生图提示词可能包含完整上下文 JSON；落库只需要可追踪摘要，视频重写依赖 aggregateVideoPrompt。
+      output[key] = child.length <= STORAGE_STRING_LIMIT
+        ? redactLargeStringForStorage(child)
+        : `[已省略完整宫格生图提示词，原始长度 ${child.length}]`
+      continue
+    }
+    output[key] = compactForStorage(child)
+  }
+  return output
+}
+
 interface BuildPreImageGridGenerationContextParams {
   panelGridSize: number
   imagePrompt: string
@@ -208,4 +243,8 @@ export function extractPreImageGridVideoPrompt(
 
 export function hasPreImageGridPromptContext(gridGenerationContextJson: string | null | undefined): boolean {
   return extractPreImageGridVideoPrompt(gridGenerationContextJson) !== null
+}
+
+export function serializeGridGenerationContextForStorage(context: Record<string, unknown>): string {
+  return JSON.stringify(compactForStorage(context), null, 2)
 }

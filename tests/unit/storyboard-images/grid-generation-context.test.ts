@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildPreImageGridGenerationContext,
   extractPreImageGridVideoPrompt,
+  serializeGridGenerationContextForStorage,
 } from '@/lib/storyboard-images/grid-generation-context'
 
 describe('grid generation context', () => {
@@ -168,5 +169,45 @@ describe('grid generation context', () => {
   it('returns null for invalid or non-pre-image contexts', () => {
     expect(extractPreImageGridVideoPrompt('{bad json')).toBeNull()
     expect(extractPreImageGridVideoPrompt(JSON.stringify({ gridMetadata: { panelGridSize: 3 } }))).toBeNull()
+  })
+
+  it('serializes a compact storage context without nested prompts or data URLs', () => {
+    const hugeDataUrl = `data:image/jpeg;base64,${'a'.repeat(120_000)}`
+    const context = buildPreImageGridGenerationContext({
+      panelGridSize: 4,
+      imagePrompt: `宫格提示词\n${JSON.stringify({ referenceImages: [hugeDataUrl] })}`,
+      baseVideoPrompt: '主角穿过街道后回头',
+      shotType: '中景',
+      cameraMove: '跟拍',
+      panelContext: {
+        panel: {
+          description: '主角穿过街道',
+          characters: [{ name: '主角' }],
+        },
+        context: {
+          character_consistency: {
+            source: 'character_consistency_context',
+            characters: [
+              {
+                name: '主角',
+                referenceImageUrl: hugeDataUrl,
+                consistencyPrompt: '主角外貌保持一致',
+              },
+            ],
+          },
+        },
+      },
+    })
+
+    const serialized = serializeGridGenerationContextForStorage(context)
+    const parsed = JSON.parse(serialized) as Record<string, unknown>
+    const extracted = extractPreImageGridVideoPrompt(serialized)
+
+    expect(serialized.length).toBeLessThan(20_000)
+    expect(serialized).not.toContain(hugeDataUrl)
+    expect(serialized).not.toContain('data:image/jpeg;base64')
+    expect(parsed.gridMetadata).toMatchObject({ panelGridSize: 4 })
+    expect(extracted?.prompt).toContain('单一连续镜头')
+    expect(extracted?.duration).toBe(4)
   })
 })

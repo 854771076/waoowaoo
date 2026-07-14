@@ -4,6 +4,8 @@ import type { DirectorSnapshot } from '@/lib/director-desk/schema'
 import { useDirectorStore } from '../store/directorStore'
 import { captureCameraScreenshot } from '../io/screenshot'
 
+const EMPTY_DIRECTOR_SNAPSHOTS: DirectorSnapshot[] = []
+
 function formatSnapshotTime(value: number) {
   try {
     return new Date(value).toLocaleString()
@@ -13,7 +15,7 @@ function formatSnapshotTime(value: number) {
 }
 
 export function SnapshotPanel() {
-  const snapshots = useDirectorStore((s) => s.project.directorSnapshots ?? [])
+  const snapshots = useDirectorStore((s) => s.project.directorSnapshots ?? EMPTY_DIRECTOR_SNAPSHOTS)
   const videoRatio = useDirectorStore((s) => s.videoRatio)
   const projectId = useDirectorStore((s) => s.projectId)
   const panelId = useDirectorStore((s) => s.panelId)

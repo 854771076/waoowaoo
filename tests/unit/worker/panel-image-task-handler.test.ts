@@ -6,7 +6,7 @@ const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
     findUnique: vi.fn(),
     findMany: vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
-    update: vi.fn(async () => ({})),
+    update: vi.fn<(_args?: unknown) => Promise<Record<string, never>>>(async () => ({})),
   },
 }))
 
@@ -49,7 +49,7 @@ const outboundMock = vi.hoisted(() => ({
 
 const promptMock = vi.hoisted(() => ({
   buildPrompt: vi.fn(() => 'panel-image-prompt'),
-  buildPromptAsync: vi.fn(async () => 'panel-image-prompt'),
+  buildPromptAsync: vi.fn<(_args?: unknown) => Promise<string>>(async () => 'panel-image-prompt'),
 }))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
@@ -382,6 +382,26 @@ describe('worker panel-image-task-handler behavior', () => {
         }),
       }),
     )
+  })
+
+  it('stores compact gridGenerationContext without the full nested grid image prompt', async () => {
+    const largePrompt = `grid prompt ${'x'.repeat(90_000)} data:image/jpeg;base64,${'a'.repeat(20_000)}`
+    promptMock.buildPromptAsync.mockImplementation(async (args: unknown) => {
+      const input = args as { promptId?: string }
+      return input.promptId === 'np_panel_grid_image' ? largePrompt : 'panel-image-prompt'
+    })
+
+    await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 4 }))
+
+    const updateArg = prismaMock.novelPromotionPanel.update.mock.calls[0]?.[0] as unknown as {
+      data?: { gridGenerationContext?: string }
+    }
+    const gridGenerationContext = updateArg.data?.gridGenerationContext || ''
+    expect(gridGenerationContext.length).toBeLessThan(20_000)
+    expect(gridGenerationContext).not.toContain(largePrompt)
+    expect(gridGenerationContext).not.toContain('data:image/jpeg;base64')
+    expect(gridGenerationContext).toContain('"panelGridSize": 4')
+    expect(gridGenerationContext).toContain('"aggregateVideoPrompt"')
   })
 
   it('sets imageLayout to grid when panelGridSize > 1', async () => {
