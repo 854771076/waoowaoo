@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import { toDisplayImageUrl } from '@/lib/media/image-url'
@@ -20,6 +20,10 @@ function getPromptForFrame(frame: GridVideoFrame | undefined): string {
   return frame?.videoPrompt || frame?.action || frame?.description || ''
 }
 
+function isEnhancedGridSplitImage(image: { imageUrl?: string | null; originalImageUrl?: string | null }): boolean {
+  return Boolean(image.imageUrl && image.originalImageUrl && image.imageUrl !== image.originalImageUrl)
+}
+
 export default function GridSplitDialog({
   open,
   onOpenChange,
@@ -29,6 +33,8 @@ export default function GridSplitDialog({
   t,
 }: GridSplitDialogProps) {
   const splitMutation = useSplitGridPanel(projectId, episodeId || null)
+  const [optimisticEnhanceCellIndexes, setOptimisticEnhanceCellIndexes] = useState<Set<number>>(() => new Set<number>())
+  const images = panel.gridSplitImages || []
   const framesByIndex = useMemo(() => {
     const map = new Map<number, GridVideoFrame>()
     for (const frame of panel.gridVideoFrames || []) {
@@ -36,30 +42,80 @@ export default function GridSplitDialog({
     }
     return map
   }, [panel.gridVideoFrames])
+  const enhancedCellIndexes = useMemo(() => {
+    const indexes = new Set<number>()
+    for (const image of images) {
+      if (isEnhancedGridSplitImage(image)) {
+        indexes.add(image.cellIndex)
+      }
+    }
+    return indexes
+  }, [images])
+  useEffect(() => {
+    if (enhancedCellIndexes.size === 0) return
+    setOptimisticEnhanceCellIndexes((current) => {
+      const next = new Set<number>()
+      for (const cellIndex of current) {
+        if (!enhancedCellIndexes.has(cellIndex)) {
+          next.add(cellIndex)
+        }
+      }
+      return next.size === current.size ? current : next
+    })
+  }, [enhancedCellIndexes])
 
-  if (!open) return null
-
-  const images = panel.gridSplitImages || []
-  const hasSplitImages = images.length > 0
-  const originalGridImageUrl = toDisplayImageUrl(panel.imageUrl)
   const pendingEnhance = splitMutation.isPending && splitMutation.variables?.enhance === true
   const pendingEnhanceCellIndex = pendingEnhance ? splitMutation.variables?.cellIndex ?? null : undefined
   const runningEnhanceCellIndex = panel.gridSplitEnhanceTaskRunning
     ? panel.gridSplitEnhanceRunningCellIndex ?? null
     : undefined
-  const activeEnhanceCellIndex = pendingEnhanceCellIndex !== undefined ? pendingEnhanceCellIndex : runningEnhanceCellIndex
-  const hasEnhanceTask = pendingEnhance || !!panel.gridSplitEnhanceTaskRunning
-  const isBatchEnhancing = hasEnhanceTask && activeEnhanceCellIndex === null
+  const activeEnhanceCellIndexes = useMemo(() => {
+    const indexes = new Set<number>(optimisticEnhanceCellIndexes)
+    if (typeof pendingEnhanceCellIndex === 'number') {
+      indexes.add(pendingEnhanceCellIndex)
+    }
+    if (typeof runningEnhanceCellIndex === 'number') {
+      indexes.add(runningEnhanceCellIndex)
+    }
+    return indexes
+  }, [optimisticEnhanceCellIndexes, pendingEnhanceCellIndex, runningEnhanceCellIndex])
+  const isBatchEnhancing =
+    (pendingEnhance && pendingEnhanceCellIndex === null)
+    || (!!panel.gridSplitEnhanceTaskRunning && runningEnhanceCellIndex === null)
+  const hasEnhanceTask = isBatchEnhancing || pendingEnhance || !!panel.gridSplitEnhanceTaskRunning || activeEnhanceCellIndexes.size > 0
   const isSplitSubmitting = splitMutation.isPending && splitMutation.variables?.enhance !== true
   const isCellEnhancing = (cellIndex: number) =>
-    hasEnhanceTask && (isBatchEnhancing || activeEnhanceCellIndex === cellIndex)
+    isBatchEnhancing || activeEnhanceCellIndexes.has(cellIndex)
+
+  if (!open) return null
+
+  const hasSplitImages = images.length > 0
+  const originalGridImageUrl = toDisplayImageUrl(panel.imageUrl)
   const handleSplit = (force: boolean) => {
     if (!panel.panelId) return
     void splitMutation.mutateAsync({ panelId: panel.panelId, force })
   }
   const handleEnhance = (cellIndex?: number) => {
     if (!panel.panelId) return
-    void splitMutation.mutateAsync({ panelId: panel.panelId, enhance: true, ...(cellIndex ? { cellIndex } : {}) })
+    if (typeof cellIndex === 'number') {
+      setOptimisticEnhanceCellIndexes((current) => {
+        if (current.has(cellIndex)) return current
+        const next = new Set<number>(current)
+        next.add(cellIndex)
+        return next
+      })
+    }
+    void splitMutation
+      .mutateAsync({ panelId: panel.panelId, enhance: true, ...(typeof cellIndex === 'number' ? { cellIndex } : {}) })
+      .catch(() => {
+        if (typeof cellIndex !== 'number') return
+        setOptimisticEnhanceCellIndexes((current) => {
+          if (!current.has(cellIndex)) return current
+          const next = new Set<number>(current)
+          next.delete(cellIndex)
+          return next
+        })
+      })
   }
 
   return (

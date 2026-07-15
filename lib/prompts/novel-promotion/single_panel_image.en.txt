@@ -40,6 +40,7 @@ Every single element in the frame MUST be rendered in ONE unified art style. Sty
 
 Style requirement (treat as the authoritative style directive):
 {style}
+- Use `{style}` for art style, line work, color, lighting, and texture. If it contains concrete scene/location terms that conflict with the storyboard panel or source text, follow the panel/source location instead of changing the scene.
 
 Execution rules:
 1. Respect panel composition, character placement, and action logic.
@@ -49,5 +50,5 @@ Execution rules:
 5. Use reference images for identity AND style/consistency.
 6. Repaint the background according to shot type and angle.
 7. If storyboard conflicts with source text, keep narrative logic from source text.
-8. Keep final visual style consistent with provided references AND with the `{style}` directive — the two must agree; when they differ, the reference images win on character identity, `{style}` wins on overall aesthetic.
-9. `context.neighbor_panels` may contain the previous/next shots' info. Use it ONLY to keep cinematographic continuity (avoid duplicate framing, respect the 180-degree rule, make character motion flow naturally). NEVER paint the neighbor panels' content, actions, or scene elements into the current frame — only render what the `panel` fields describe.
+8. Keep final visual style consistent with provided references AND with the `{style}` directive — the two must agree; when they differ, the reference images win on character identity, `{style}` wins on overall aesthetic, and panel/source text win on concrete location and action.
+9. `context.neighbor_panel_continuity` may contain lightweight previous/next shot info. Use it ONLY to keep cinematographic continuity (avoid duplicate framing, respect the 180-degree rule, make character motion flow naturally). NEVER paint adjacent-shot content, actions, or scene elements into the current frame — only render what the `panel` fields describe.

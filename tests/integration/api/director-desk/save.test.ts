@@ -34,6 +34,7 @@ import { installAuthMocks, mockAuthenticated, resetAuthMockState } from '../../.
 import { resetSystemState } from '../../../helpers/db-reset'
 import { prisma } from '../../../helpers/prisma'
 import { seedMinimalDomainState } from '../../../system/helpers/seed'
+import { parseDirectorProject } from '@/lib/director-desk/schema'
 
 let TINY_JPEG_DATA_URL = ''
 
@@ -124,6 +125,50 @@ describe('director-desk save route', () => {
     expect(shots).toHaveLength(1)
     expect(shots[0].isActive).toBe(true)
     expect(shots[0].cameraId).toBe('cam-1')
+
+    resetAuthMockState()
+  })
+
+  it('uploads low-poly director snapshot images and persists them as snapshot imageUrl', async () => {
+    const seeded = await seedMinimalDomainState()
+    mockAuthenticated(seeded.user.id)
+
+    const snapshotId = 'snap-lowpoly-1'
+    const project = {
+      ...defaultProject(),
+      directorSnapshots: [{
+        id: snapshotId,
+        name: '低模快照',
+        capturedAt: 1700000000000,
+        cameraId: 'cam-1',
+        camera: {
+          fov: 50,
+          position: [0, 1.55, 5.4],
+          target: [0, 1.05, 0],
+        },
+        project: defaultProject(),
+      }],
+    }
+
+    const mod = await import('@/app/api/novel-promotion/[projectId]/director-desk/save/route')
+    const response = await callRoute(
+      mod.POST,
+      'POST',
+      {
+        panelId: seeded.panel.id,
+        project,
+        shots: [],
+        snapshotImages: [{ snapshotId, imageDataUrl: TINY_JPEG_DATA_URL }],
+      },
+      { params: { projectId: seeded.project.id } },
+    )
+
+    expect(response.status).toBe(200)
+    const panel = await prisma.novelPromotionPanel.findUnique({ where: { id: seeded.panel.id } })
+    const parsed = parseDirectorProject(JSON.parse(panel?.directorLayout || 'null'))
+    expect(parsed?.directorSnapshots?.[0]?.id).toBe(snapshotId)
+    expect(parsed?.directorSnapshots?.[0]?.imageUrl).toContain(`director-snapshot-${seeded.panel.id}`)
+    expect(parsed?.directorSnapshots?.[0]?.imageDataUrl).toBeUndefined()
 
     resetAuthMockState()
   })

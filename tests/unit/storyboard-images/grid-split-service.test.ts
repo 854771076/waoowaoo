@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const updatePanelMock = vi.fn()
+const updateManyPanelMock = vi.fn()
+const findUniquePanelMock = vi.fn()
 const uploadImageSourceToCosMock = vi.fn()
 const cropAllGridImageBuffersForVideoMock = vi.fn()
 const generateImageMock = vi.fn()
@@ -15,7 +17,9 @@ const toFetchableUrlMock = vi.fn((value: string) =>
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     novelPromotionPanel: {
+      findUnique: findUniquePanelMock,
       update: updatePanelMock,
+      updateMany: updateManyPanelMock,
     },
   },
 }))
@@ -61,12 +65,16 @@ const {
 describe('ensureGridSplitImagesForPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    findUniquePanelMock.mockReset()
+    updateManyPanelMock.mockReset()
     global.fetch = vi.fn(async () => ({
       ok: true,
       arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
     })) as unknown as typeof fetch
     uploadImageSourceToCosMock.mockImplementation(async (_buffer, _prefix, targetId: string) => `images/${targetId}.jpg`)
     generateImageMock.mockResolvedValue({ success: true, imageUrl: 'https://generated.example/enhanced.jpg' })
+    findUniquePanelMock.mockResolvedValue(null)
+    updateManyPanelMock.mockResolvedValue({ count: 1 })
     cropAllGridImageBuffersForVideoMock.mockResolvedValue([
       { cellIndex: 1, buffer: Buffer.from('one') },
       { cellIndex: 2, buffer: Buffer.from('two') },
@@ -203,8 +211,8 @@ describe('ensureGridSplitImagesForPanel', () => {
       'images/panel-3-2.jpg',
     ])
     expect(result.gridGenerationContext).toContain('gridEnhanceMetadata')
-    expect(updatePanelMock).toHaveBeenLastCalledWith({
-      where: { id: 'panel-3' },
+    expect(updateManyPanelMock).toHaveBeenLastCalledWith({
+      where: { id: 'panel-3', gridGenerationContext: context },
       data: { gridGenerationContext: expect.stringContaining('grid_split_image_enhance') },
     })
   })
@@ -256,6 +264,124 @@ describe('ensureGridSplitImagesForPanel', () => {
       'images/panel-4-2.jpg',
     ])
     expect(onProgress).toHaveBeenCalledWith({ completed: 1, total: 1, cellIndex: 2 })
+  })
+
+  it('merges single-cell enhance into the latest grid context before persisting', async () => {
+    const staleContext = JSON.stringify({
+      gridSplitMetadata: { panelGridSize: 2, sourceGridImageUrl: 'images/grid.jpg' },
+      gridSplitImages: [
+        { cellIndex: 1, imageUrl: 'images/cell-1.jpg', panelGridSize: 2 },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', panelGridSize: 2 },
+      ],
+      gridVideoFrames: [
+        { cellIndex: 1, imageUrl: 'images/cell-1.jpg', videoPrompt: '镜头一' },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', videoPrompt: '镜头二' },
+      ],
+    })
+    const latestContext = JSON.stringify({
+      gridSplitMetadata: { panelGridSize: 2, sourceGridImageUrl: 'images/grid.jpg' },
+      gridSplitImages: [
+        {
+          cellIndex: 1,
+          imageUrl: 'images/enhanced-cell-1.jpg',
+          originalImageUrl: 'images/cell-1.jpg',
+          panelGridSize: 2,
+        },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', panelGridSize: 2 },
+      ],
+      gridVideoFrames: [
+        { cellIndex: 1, imageUrl: 'images/enhanced-cell-1.jpg', videoPrompt: '镜头一' },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', videoPrompt: '镜头二' },
+      ],
+    })
+    findUniquePanelMock.mockResolvedValueOnce({ gridGenerationContext: latestContext })
+
+    const result = await enhanceGridSplitImagesForPanel({
+      panel: {
+        id: 'panel-merge',
+        imageUrl: 'images/grid.jpg',
+        gridGenerationContext: staleContext,
+        characters: null,
+        location: null,
+      },
+      projectData: { videoRatio: '16:9', characters: [], locations: [] },
+      panelGridSize: 2,
+      userId: 'user-1',
+      modelId: 'edit-model',
+      cellIndex: 2,
+    })
+
+    const persisted = JSON.parse(updateManyPanelMock.mock.calls.at(-1)?.[0].data.gridGenerationContext)
+    expect(persisted.gridSplitImages.map((image: { imageUrl: string }) => image.imageUrl)).toEqual([
+      'images/enhanced-cell-1.jpg',
+      'images/panel-merge-2.jpg',
+    ])
+    expect(persisted.gridVideoFrames.map((frame: { imageUrl: string }) => frame.imageUrl)).toEqual([
+      'images/enhanced-cell-1.jpg',
+      'images/panel-merge-2.jpg',
+    ])
+    expect(result.images.map((image) => image.imageUrl)).toEqual([
+      'images/enhanced-cell-1.jpg',
+      'images/panel-merge-2.jpg',
+    ])
+  })
+
+  it('retries latest-context merge when another cell writes first', async () => {
+    const staleContext = JSON.stringify({
+      gridSplitMetadata: { panelGridSize: 2, sourceGridImageUrl: 'images/grid.jpg' },
+      gridSplitImages: [
+        { cellIndex: 1, imageUrl: 'images/cell-1.jpg', panelGridSize: 2 },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', panelGridSize: 2 },
+      ],
+      gridVideoFrames: [
+        { cellIndex: 1, imageUrl: 'images/cell-1.jpg', videoPrompt: '镜头一' },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', videoPrompt: '镜头二' },
+      ],
+    })
+    const concurrentContext = JSON.stringify({
+      gridSplitMetadata: { panelGridSize: 2, sourceGridImageUrl: 'images/grid.jpg' },
+      gridSplitImages: [
+        {
+          cellIndex: 1,
+          imageUrl: 'images/enhanced-cell-1.jpg',
+          originalImageUrl: 'images/cell-1.jpg',
+          panelGridSize: 2,
+        },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', panelGridSize: 2 },
+      ],
+      gridVideoFrames: [
+        { cellIndex: 1, imageUrl: 'images/enhanced-cell-1.jpg', videoPrompt: '镜头一' },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', videoPrompt: '镜头二' },
+      ],
+    })
+    findUniquePanelMock
+      .mockResolvedValueOnce({ gridGenerationContext: staleContext })
+      .mockResolvedValueOnce({ gridGenerationContext: concurrentContext })
+    updateManyPanelMock
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 })
+
+    await enhanceGridSplitImagesForPanel({
+      panel: {
+        id: 'panel-retry',
+        imageUrl: 'images/grid.jpg',
+        gridGenerationContext: staleContext,
+        characters: null,
+        location: null,
+      },
+      projectData: { videoRatio: '16:9', characters: [], locations: [] },
+      panelGridSize: 2,
+      userId: 'user-1',
+      modelId: 'edit-model',
+      cellIndex: 2,
+    })
+
+    expect(updateManyPanelMock).toHaveBeenCalledTimes(2)
+    const persisted = JSON.parse(updateManyPanelMock.mock.calls.at(-1)?.[0].data.gridGenerationContext)
+    expect(persisted.gridSplitImages.map((image: { imageUrl: string }) => image.imageUrl)).toEqual([
+      'images/enhanced-cell-1.jpg',
+      'images/panel-retry-2.jpg',
+    ])
   })
 
   it('skips already enhanced cells when enhancing all split images', async () => {

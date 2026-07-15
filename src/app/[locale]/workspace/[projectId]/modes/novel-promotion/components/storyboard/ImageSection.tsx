@@ -1,5 +1,5 @@
 'use client'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import './ImageSection.css'
@@ -69,6 +69,7 @@ export default function ImageSection({
   onPreviewImage,
 }: ImageSectionProps) {
   const t = useTranslations('storyboard')
+  const locale = useLocale()
   const params = useParams()
   const projectId = (params?.projectId as string) || ''
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -85,6 +86,12 @@ export default function ImageSection({
   const triggerPulse = () => {
     setIsTaskPulseAnimating(true)
     setTimeout(() => setIsTaskPulseAnimating(false), 600)
+  }
+
+  const openDirectorDesk = () => {
+    if (!projectId) return
+    const url = `/${locale}/workspace/${projectId}/director-desk?panelId=${panelId}`
+    window.open(url, '_blank', 'width=1400,height=900')
   }
 
   const renderLoadingState = (
@@ -119,16 +126,19 @@ export default function ImageSection({
   }
 
   const renderFailedState = () => (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[var(--glass-danger-ring)] text-[var(--glass-tone-danger-fg)] p-2">
+    <div className="relative flex h-full w-full flex-col items-center justify-center gap-1 bg-[var(--glass-danger-ring)] text-[var(--glass-tone-danger-fg)] p-2">
+      <button
+        type="button"
+        onClick={onClearError}
+        className="absolute right-2 top-2 z-40 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--glass-tone-danger-fg)] text-white shadow-md transition-transform hover:scale-105 active:scale-95"
+        title={t('variant.close')}
+        aria-label={t('variant.close')}
+      >
+        <AppIcon name="closeMd" className="h-3.5 w-3.5" />
+      </button>
       <AppIcon name="alert" className="w-6 h-6 mb-1" />
       <span className="text-xs text-center font-medium">{t('image.failed')}</span>
       <span className="text-[10px] text-center mt-1 line-clamp-2 px-1">{failedError}</span>
-      <button
-        onClick={onClearError}
-        className="glass-btn-base glass-btn-tone-danger mt-1 px-2 py-1 text-[10px] rounded-md"
-      >
-        {t('variant.close')}
-      </button>
     </div>
   )
 
@@ -136,16 +146,30 @@ export default function ImageSection({
     <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[var(--glass-bg-surface-strong)] text-[var(--glass-text-tertiary)] p-3">
       <AppIcon name="imagePreview" className="w-8 h-8" />
       <span className="text-xs">{t('video.toolbar.showPending')}</span>
-      <GlassButton
-        variant="primary"
-        size="sm"
-        onClick={() => {
-          triggerPulse()
-          onRegeneratePanelImage(panelId, candidateCount, false, panelGridSize)
-        }}
-      >
-        {t('panel.generateImage')}
-      </GlassButton>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <GlassButton
+          variant="primary"
+          size="sm"
+          onClick={() => {
+            triggerPulse()
+            onRegeneratePanelImage(panelId, candidateCount, false, panelGridSize)
+          }}
+        >
+          {t('panel.generateImage')}
+        </GlassButton>
+        {projectId ? (
+          <GlassButton
+            variant="secondary"
+            size="sm"
+            onClick={openDirectorDesk}
+          >
+            <span className="inline-flex items-center gap-1">
+              <AppIcon name="clapperboard" className="h-3.5 w-3.5" />
+              {t('directorDesk.button')}
+            </span>
+          </GlassButton>
+        ) : null}
+      </div>
       <div className="flex items-center gap-2 mt-1 text-[10px] text-[var(--glass-text-tertiary)]">
         <label className="flex items-center gap-1">
           <span>{t('image.panelGridSize')}</span>
@@ -224,7 +248,7 @@ export default function ImageSection({
         <span className="glass-chip glass-chip-info px-2 py-0.5 text-xs">{shotType}</span>
       </div>
 
-      {!candidateData && imageUrl && (
+      {!candidateData && !failedError && imageUrl && (
         <ImageSectionActionButtons
           panelId={panelId}
           imageUrl={imageUrl}

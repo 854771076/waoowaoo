@@ -27,6 +27,11 @@ interface IncomingShot {
   existingShotId?: string
 }
 
+interface IncomingSnapshotImage {
+  snapshotId: string
+  imageDataUrl: string
+}
+
 const MAX_SHOTS = 8
 const MAX_DATAURL_BYTES = 5 * 1024 * 1024
 
@@ -76,6 +81,17 @@ function validateShot(raw: unknown): IncomingShot | null {
   }
 }
 
+function validateSnapshotImage(raw: unknown): IncomingSnapshotImage | null {
+  if (!raw || typeof raw !== 'object') return null
+  const input = raw as Record<string, unknown>
+  if (typeof input.snapshotId !== 'string' || !input.snapshotId) return null
+  if (typeof input.imageDataUrl !== 'string' || !input.imageDataUrl) return null
+  return {
+    snapshotId: input.snapshotId,
+    imageDataUrl: input.imageDataUrl,
+  }
+}
+
 /**
  * POST /api/novel-promotion/[projectId]/director-desk/save
  * 保存 Director Desk 编辑器的 layout + 快照，并反向同步 photographyRules
@@ -89,11 +105,12 @@ export const POST = apiHandler(async (
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
 
-  const body = await request.json().catch(() => null) as {
-    panelId?: unknown
-    project?: unknown
-    shots?: unknown
-  } | null
+	  const body = await request.json().catch(() => null) as {
+	    panelId?: unknown
+	    project?: unknown
+	    shots?: unknown
+	    snapshotImages?: unknown
+	  } | null
 
   if (!body || typeof body.panelId !== 'string' || !body.panelId) {
     throw new ApiError('INVALID_PARAMS')
@@ -106,12 +123,20 @@ export const POST = apiHandler(async (
   if (!Array.isArray(body.shots)) throw new ApiError('INVALID_PARAMS')
   if (body.shots.length > MAX_SHOTS) throw new ApiError('INVALID_PARAMS')
 
-  const shots: IncomingShot[] = []
+	  const shots: IncomingShot[] = []
   for (const raw of body.shots) {
     const s = validateShot(raw)
     if (!s) throw new ApiError('INVALID_PARAMS')
     shots.push(s)
-  }
+	  }
+	  const snapshotImages: IncomingSnapshotImage[] = []
+	  if (Array.isArray(body.snapshotImages)) {
+	    for (const raw of body.snapshotImages) {
+	      const image = validateSnapshotImage(raw)
+	      if (!image) throw new ApiError('INVALID_PARAMS')
+	      snapshotImages.push(image)
+	    }
+	  }
 
   // 归一化 isActive：仅允许一个 active（先到先得），若无则默认第一个
   let sawActive = false
@@ -139,10 +164,44 @@ export const POST = apiHandler(async (
   }
   const videoRatio = panel.storyboard.episode.novelPromotionProject.videoRatio ?? '9:16'
 
-  const serializedLayout = serializeDirectorProject(parsedProject)
-  if (!validateDirectorProjectSize(serializedLayout)) {
-    throw new ApiError('INVALID_PARAMS', { message: 'director project too large' })
-  }
+	  const uploadedSnapshotImages: Array<{ snapshotId: string; imageUrl: string }> = []
+	  let snapshotImageFailed = 0
+	  const snapshotImageById = new Map(snapshotImages.map((item) => [item.snapshotId, item.imageDataUrl]))
+	  const projectWithSnapshotImages: DirectorProject = parsedProject.directorSnapshots?.length
+	    ? {
+	        ...parsedProject,
+	        directorSnapshots: await Promise.all(parsedProject.directorSnapshots.map(async (snapshot) => {
+	          if (snapshot.imageUrl) return snapshot
+	          const imageDataUrl = snapshotImageById.get(snapshot.id)
+	          if (!imageDataUrl) return snapshot
+	          try {
+	            const parsed = parseDataUrl(imageDataUrl)
+	            if (!parsed || parsed.buffer.length > MAX_DATAURL_BYTES) {
+	              snapshotImageFailed++
+	              return snapshot
+	            }
+	            const jpeg = await sharp(parsed.buffer).jpeg({ quality: 82, mozjpeg: true }).toBuffer()
+	            const key = generateUniqueKey(`director-snapshot-${panelId}`, 'jpg')
+	            await uploadObject(jpeg, key, undefined, 'image/jpeg')
+	            await ensureMediaObjectFromStorageKey(key, {
+	              mimeType: 'image/jpeg',
+	              sizeBytes: jpeg.length,
+	            })
+	            uploadedSnapshotImages.push({ snapshotId: snapshot.id, imageUrl: key })
+	            return { ...snapshot, imageUrl: key }
+	          } catch (error) {
+	            console.error('[director-desk] snapshot image upload failed:', error)
+	            snapshotImageFailed++
+	            return snapshot
+	          }
+	        })),
+	      }
+	    : parsedProject
+	
+	  const serializedLayout = serializeDirectorProject(projectWithSnapshotImages)
+	  if (!validateDirectorProjectSize(serializedLayout)) {
+	    throw new ApiError('INVALID_PARAMS', { message: 'director project too large' })
+	  }
 
   // Upload new captures and build rows to create + list of existing shot IDs to retain.
   const toCreate: Array<{
@@ -226,12 +285,12 @@ export const POST = apiHandler(async (
   }
 
   // Compute photographyRules patch using the effective active camera (prefer DB shot).
-  let projectForPatch: DirectorProject = parsedProject
+	  let projectForPatch: DirectorProject = projectWithSnapshotImages
   const activeUpdate = existingUpdates.find(u => u.isActive)
   const activeCreate = toCreate.find(c => c.isActive)
   const active = activeUpdate ?? activeCreate ?? existingUpdates[0] ?? toCreate[0] ?? null
   if (active) {
-    const patchedCameras = parsedProject.cameras.map((cam) => {
+	    const patchedCameras = projectWithSnapshotImages.cameras.map((cam) => {
       if (cam.id !== (active as { cameraId?: string }).cameraId) return cam
       return {
         ...cam,
@@ -241,10 +300,10 @@ export const POST = apiHandler(async (
       }
     })
     const camId = (active as { cameraId?: string; id?: string }).cameraId
-    if (camId && !parsedProject.cameras.some(c => c.id === camId)) {
-      patchedCameras.push({ id: camId, name: active.name, fov: active.fov, position: [active.posX, active.posY, active.posZ], target: [active.targetX, active.targetY, active.targetZ], visible: true })
-    }
-    projectForPatch = { ...parsedProject, cameras: patchedCameras, activeCameraId: camId ?? parsedProject.activeCameraId }
+	    if (camId && !projectWithSnapshotImages.cameras.some(c => c.id === camId)) {
+	      patchedCameras.push({ id: camId, name: active.name, fov: active.fov, position: [active.posX, active.posY, active.posZ], target: [active.targetX, active.targetY, active.targetZ], visible: true })
+	    }
+	    projectForPatch = { ...projectWithSnapshotImages, cameras: patchedCameras, activeCameraId: camId ?? projectWithSnapshotImages.activeCameraId }
   }
 
   const patch = computePhotographyRulesPatch({ project: projectForPatch, videoRatio })
@@ -320,13 +379,15 @@ export const POST = apiHandler(async (
     })
   }, { maxWait: 15000, timeout: 30000 })
 
-  let warning: string | undefined
-  const totalNew = shots.filter(s => !s.existingShotId).length
-  if (totalNew > 0 && newSucceeded === 0) warning = 'all_screenshots_failed'
-  else if (newFailed > 0) warning = 'some_screenshots_failed'
-
-  return NextResponse.json({
-    success: true,
-    ...(warning ? { warning } : {}),
-  })
+	  let warning: string | undefined
+	  const totalNew = shots.filter(s => !s.existingShotId).length
+	  if (totalNew > 0 && newSucceeded === 0) warning = 'all_screenshots_failed'
+	  else if (newFailed > 0) warning = 'some_screenshots_failed'
+	  if (!warning && snapshotImageFailed > 0) warning = 'some_snapshot_images_failed'
+	
+	  return NextResponse.json({
+	    success: true,
+	    ...(warning ? { warning } : {}),
+	    ...(uploadedSnapshotImages.length > 0 ? { snapshotImages: uploadedSnapshotImages } : {}),
+	  })
 })

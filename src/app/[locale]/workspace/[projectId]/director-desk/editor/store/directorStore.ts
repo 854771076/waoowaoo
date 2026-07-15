@@ -3,7 +3,7 @@
  * In-memory only: persists via save API; undo/redo capped at 50.
  */
 import { create } from 'zustand'
-import type { DirectorProject, DirectorObject, DirectorCamera, DirectorSceneSettings, DirectorSnapshot, DirectorStoryboardBoard } from '@/lib/director-desk/schema'
+import type { DirectorProject, DirectorObject, DirectorCamera, DirectorSceneSettings, DirectorSnapshot, DirectorStoryboardAsset, DirectorStoryboardBoard } from '@/lib/director-desk/schema'
 import { createDefaultDirectorProject } from '@/lib/director-desk/schema'
 
 interface LoadedPanel {
@@ -82,6 +82,8 @@ interface DirectorState {
   setDirectorSnapshotNote: (snapshotId: string, note: string) => void
   removeDirectorSnapshot: (snapshotId: string) => void
   createDirectorStoryboardBoard: (input?: { name?: string; assetIds?: string[] }) => string | null
+  saveDirectorStoryboardBoard: (input: { boardId?: string; name?: string; assetIds: string[] }) => string | null
+  removeDirectorStoryboardBoard: (boardId: string) => void
   toggleCaptureBound: (cameraId: string, captureId: string) => void
   toggleCaptureActive: (cameraId: string, captureId: string) => void
   setCaptureName: (cameraId: string, captureId: string, name: string) => void
@@ -113,6 +115,37 @@ function createSnapshotProject(project: DirectorProject): DirectorProject {
   const snapshotProject = clone(project)
   delete snapshotProject.directorSnapshots
   return snapshotProject
+}
+
+function buildDirectorStoryboardBoard(
+  assets: DirectorStoryboardAsset[],
+  boards: DirectorStoryboardBoard[],
+  input: { boardId?: string; name?: string; assetIds: string[] },
+): DirectorStoryboardBoard | null {
+  const requestedIds = input.assetIds.length ? new Set(input.assetIds) : null
+  if (!requestedIds) return null
+  const selectedAssets = input.assetIds
+    .map((assetId) => assets.find((asset) => asset.id === assetId))
+    .filter((asset): asset is DirectorStoryboardAsset => !!asset)
+  if (selectedAssets.length === 0) return null
+  const existing = input.boardId ? boards.find((board) => board.id === input.boardId) : null
+  const boardId = existing?.id ?? uid('director-board')
+  return {
+    id: boardId,
+    name: input.name?.trim() || existing?.name || `导演台分镜板 ${boards.length + 1}`,
+    createdAt: existing?.createdAt ?? Date.now(),
+    coverImageUrl: selectedAssets[0].imageUrl,
+    assetIds: selectedAssets.map((asset) => asset.id),
+    items: selectedAssets.map((asset, index) => ({
+      assetId: asset.id,
+      x: asset.layout.x,
+      y: asset.layout.y + index * 0.08,
+      width: asset.layout.width,
+      height: asset.layout.height,
+      rotation: asset.layout.rotation,
+    })),
+    note: existing?.note,
+  }
 }
 
 export const useDirectorStore = create<DirectorState>((set, get) => ({
@@ -436,6 +469,8 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
               visible: true,
             },
           ],
+      directorStoryboardAssets: project.directorStoryboardAssets,
+      directorStoryboardBoards: project.directorStoryboardBoards,
     }
     set({ ...pushHistory(get(), next), selectedId: null, viewMode: 'director' })
   },
@@ -465,31 +500,38 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   createDirectorStoryboardBoard(input) {
     const { project } = get()
     const assets = project.directorStoryboardAssets ?? []
-    const requestedIds = input?.assetIds?.length ? new Set(input.assetIds) : null
-    const selectedAssets = requestedIds ? assets.filter(asset => requestedIds.has(asset.id)) : assets
-    if (selectedAssets.length === 0) return null
+    return get().saveDirectorStoryboardBoard({
+      name: input?.name,
+      assetIds: input?.assetIds?.length ? input.assetIds : assets.map((asset) => asset.id),
+    })
+  },
+
+  saveDirectorStoryboardBoard(input) {
+    const { project } = get()
+    const assets = project.directorStoryboardAssets ?? []
     const boards = project.directorStoryboardBoards ?? []
-    const boardId = uid('director-board')
-    const board: DirectorStoryboardBoard = {
-      id: boardId,
-      name: input?.name?.trim() || `导演台分镜板 ${boards.length + 1}`,
-      createdAt: Date.now(),
-      coverImageUrl: selectedAssets[0].imageUrl,
-      assetIds: selectedAssets.map(asset => asset.id),
-      items: selectedAssets.map((asset, index) => ({
-        assetId: asset.id,
-        x: asset.layout.x,
-        y: asset.layout.y + index * 0.08,
-        width: asset.layout.width,
-        height: asset.layout.height,
-        rotation: asset.layout.rotation,
-      })),
+    const board = buildDirectorStoryboardBoard(assets, boards, input)
+    if (!board) return null
+    const nextBoards = input.boardId
+      ? boards.map((item) => item.id === input.boardId ? board : item)
+      : [board, ...boards]
+    if (input.boardId && !boards.some((item) => item.id === input.boardId)) {
+      nextBoards.unshift(board)
     }
     set(pushHistory(get(), {
       ...project,
-      directorStoryboardBoards: [board, ...boards].slice(0, 24),
+      directorStoryboardBoards: nextBoards.slice(0, 24),
     }))
-    return boardId
+    return board.id
+  },
+
+  removeDirectorStoryboardBoard(boardId) {
+    const { project } = get()
+    const boards = (project.directorStoryboardBoards ?? []).filter((board) => board.id !== boardId)
+    set(pushHistory(get(), {
+      ...project,
+      directorStoryboardBoards: boards,
+    }))
   },
 
   toggleCaptureBound(cameraId, captureId) {

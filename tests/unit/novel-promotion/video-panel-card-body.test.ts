@@ -1,4 +1,7 @@
+// @vitest-environment jsdom
+
 import React from 'react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import VideoPanelCardBody from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/panel-card/VideoPanelCardBody'
@@ -73,7 +76,7 @@ function createRuntime(overrides: Partial<VideoPanelRuntime> = {}): VideoPanelRu
       selectedModel: 'veo-3.1',
       setSelectedModel: () => undefined,
       capabilityFields: [],
-      generationOptions: {},
+      generationOptions: { motion: 'smooth' },
       setCapabilityValue: () => undefined,
       missingCapabilityFields: [],
       videoModelOptions: [],
@@ -104,6 +107,13 @@ function createRuntime(overrides: Partial<VideoPanelRuntime> = {}): VideoPanelRu
     lipSync: {
       handleStartLipSync: () => undefined,
       executingLipSync: false,
+    },
+    duration: {
+      generatedDuration: 3,
+      durationText: '3',
+      setDurationText: () => undefined,
+      effectiveDuration: 3,
+      withDuration: (options = {}) => ({ ...options, duration: 3 }),
     },
     layout: {
       isLinked: true,
@@ -137,11 +147,18 @@ function createRuntime(overrides: Partial<VideoPanelRuntime> = {}): VideoPanelRu
       onFlCustomPromptChange: () => undefined,
       onResetFlPrompt: () => undefined,
       onGenerateFirstLastFrame: () => undefined,
+      onOpenGridSplit: () => undefined,
+      onGridVideoSourceChange: () => undefined,
+      onDirectorStoryboardBoardChange: () => undefined,
     },
     computed: {
       showLipSyncSection: false,
       canLipSync: false,
       hasVisibleBaseVideo: false,
+      gridVideoSource: 'original',
+      hasGridSplitImages: false,
+      directorStoryboardBoards: [],
+      directorStoryboardBoardId: '',
     },
   }
 
@@ -163,5 +180,87 @@ describe('VideoPanelCardBody', () => {
     expect(markup).toContain('作为镜头 4 的首帧')
     expect(markup).toContain('视频提示词')
     expect(markup).toContain('生成首尾帧视频')
+  })
+
+  it('renders generated duration as an editable field', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(VideoPanelCardBody, {
+        runtime: createRuntime(),
+      }),
+    )
+
+    expect(markup).toContain('type="number"')
+    expect(markup).toContain('value="3"')
+    expect(markup).toContain('秒')
+  })
+
+  it('constrains long video prompt display with scrolling', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(VideoPanelCardBody, {
+        runtime: createRuntime({
+          promptEditor: {
+            isEditing: false,
+            editingPrompt: '',
+            setEditingPrompt: () => undefined,
+            handleStartEdit: () => undefined,
+            handleSave: async () => undefined,
+            handleCancelEdit: () => undefined,
+            isSavingPrompt: false,
+            localPrompt: '长提示词'.repeat(200),
+          },
+        }),
+      }),
+    )
+
+    expect(markup).toContain('max-h-36')
+    expect(markup).toContain('overflow-y-auto')
+  })
+
+  it('passes configured duration when generating a normal video', () => {
+    const onGenerateVideo = vi.fn()
+    const runtime = createRuntime({
+      layout: {
+        isLinked: false,
+        isLastFrame: false,
+        nextPanel: null,
+        prevPanel: null,
+        hasNext: false,
+        flModel: 'veo-3.1',
+        flModelOptions: [],
+        flGenerationOptions: {},
+        flCapabilityFields: [],
+        flMissingCapabilityFields: [],
+        flCustomPrompt: '',
+        defaultFlPrompt: '',
+        videoRatio: '9:16',
+      },
+      actions: {
+        onGenerateVideo,
+        onUpdatePanelVideoModel: () => undefined,
+        onToggleLink: () => undefined,
+        onFlModelChange: () => undefined,
+        onFlCapabilityChange: () => undefined,
+        onFlCustomPromptChange: () => undefined,
+        onResetFlPrompt: () => undefined,
+        onGenerateFirstLastFrame: () => undefined,
+        onOpenGridSplit: () => undefined,
+        onGridVideoSourceChange: () => undefined,
+        onDirectorStoryboardBoardChange: () => undefined,
+      },
+      duration: {
+        generatedDuration: 3,
+        durationText: '7',
+        setDurationText: () => undefined,
+        effectiveDuration: 7,
+        withDuration: (options = {}) => ({ ...options, duration: 7 }),
+      },
+    })
+
+    render(React.createElement(VideoPanelCardBody, { runtime }))
+
+    fireEvent.click(screen.getByRole('button', { name: '生成视频' }))
+
+    expect(onGenerateVideo).toHaveBeenCalledTimes(1)
+    expect(onGenerateVideo.mock.calls[0][4]).toEqual({ motion: 'smooth', duration: 7 })
   })
 })

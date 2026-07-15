@@ -102,9 +102,70 @@ describe('generateStarRouterVideo', () => {
     const imageItem = content.find(c => c.type === 'image_url')
     expect(imageItem).toBeDefined()
     expect(imageItem?.image_url).toEqual({ url: 'https://example.com/frame.png' })
+    expect(imageItem?.role).toBe('first_frame')
 
     // Verify endpoint changed to the new Volcengine Doubao API
     const endpoint = fetchMock.mock.calls[0]?.[0] as string
     expect(endpoint).toBe('https://starrouter.io/volcengine/doubao/contents/generations/tasks')
+  })
+
+  it('omits additional reference images because StarRouter disallows mixing first frame and references', async () => {
+    await generateStarRouterVideo({
+      userId: 'user-1',
+      imageUrl: 'https://example.com/frame.png',
+      prompt: 'a cat running',
+      options: {
+        provider: 'starrouter',
+        modelId: 'dreamina-seedance-2-0-fast-260128',
+        modelKey: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        duration: 5,
+        videoReferenceImages: [
+          'https://example.com/frame.png',
+          'https://example.com/character.png',
+        ],
+      },
+    })
+
+    const fetchMock = vi.mocked(fetch)
+    const request = fetchMock.mock.calls[0]?.[1]
+    const body = JSON.parse(String(request?.body)) as Record<string, unknown>
+    const imageItems = (body.content as Array<Record<string, unknown>>).filter(c => c.type === 'image_url')
+
+    expect(imageItems).toHaveLength(1)
+    expect(imageItems[0]?.role).toBe('first_frame')
+    expect(imageItems[0]?.image_url).toEqual({ url: 'https://example.com/frame.png' })
+  })
+
+  it('rejects data url image inputs before submitting to StarRouter', async () => {
+    await expect(generateStarRouterVideo({
+      userId: 'user-1',
+      imageUrl: 'data:image/png;base64,AAAA',
+      prompt: 'a cat running',
+      options: {
+        provider: 'starrouter',
+        modelId: 'dreamina-seedance-2-0-fast-260128',
+        modelKey: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        duration: 5,
+      },
+    })).rejects.toThrow('STARSTONE_VIDEO_IMAGE_URL_FETCHABLE_REQUIRED')
+
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('rejects data url video reference images before submitting to StarRouter', async () => {
+    await expect(generateStarRouterVideo({
+      userId: 'user-1',
+      imageUrl: 'https://example.com/frame.png',
+      prompt: 'a cat running',
+      options: {
+        provider: 'starrouter',
+        modelId: 'dreamina-seedance-2-0-fast-260128',
+        modelKey: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        duration: 5,
+        videoReferenceImages: ['data:image/png;base64,AAAA'],
+      },
+    })).rejects.toThrow('STARSTONE_VIDEO_IMAGE_URL_FETCHABLE_REQUIRED')
+
+    expect(fetch).not.toHaveBeenCalled()
   })
 })

@@ -27,7 +27,7 @@ Requirements:
 6. No Chinese/English text, watermarks, numbering, dialogue bubbles, or UI elements.
 7. Clear borders between sub-cells but the border should not overpower the subjects.
 8. Character appearance, costume, location, and props must remain consistent across sub-cells, and must follow the reference images.
-9. `context.neighbor_panels` contains adjacent shots' info; use it only to keep cinematographic continuity — never paint neighbor panels' content into this grid image.
+9. `context.neighbor_panel_continuity` is only for cinematographic continuity — never paint adjacent-shot story content into this grid image.
 10. If the "Source text" contains dialogue content, render character lip movements and expression changes in corresponding cells based on the grid's temporal order:
     - Start of speech: mouth slightly open, initial expression state
     - Mid-speech: mouth opening/closing variations, expression progressing with emotion
@@ -40,14 +40,17 @@ Requirements:
 - `director_shot.bound_shots` lists other camera angles bound to this panel (close-ups, over-shoulder, etc.). The first N reference images correspond to these shots (active first). Maintain character identity/lighting/style consistency; compose the frame to match the active camera.
 - Coordinate system: meters, y up, -z toward camera, x right.
 
-Panel JSON:
+[Style and location conflict handling]
+- "{style}" is a visual style directive for art style, line work, color, lighting, and texture. If it contains concrete scene/location terms that conflict with the panel location, follow `panel.description` and `panel.location`.
+- Do not change the panel into an unrelated location just because the style directive mentions another place.
+
+Compact panel JSON:
 {storyboard_text_json_input}
 
-[Pre-generated grid video prompt constraints]
-- `preImageGridPrompt.gridCells` in the panel JSON already contains per-cell imagePrompt/videoPrompt values. Follow them strictly by `cellIndex`; do not treat the cells as unrelated independent shots.
-- Each cell is a time-ordered keyframe of the same continuous shot: cell 1 is the starting moment, the final cell is the ending moment, and middle cells bridge action, expression, lip movement, blocking, and camera motion.
-- `preImageGridPrompt.aggregateVideoPrompt` is the continuous-shot prompt that will be used later for video generation. This grid image must provide clear, consistent, splittable keyframes for that video prompt.
-- The grid image itself may have visible cell borders, but all cell content must serve a later full-frame single continuous shot with no grid, no borders, and no split-screen.
+[Grid keyframe execution]
+- `grid_plan.cells` in the panel JSON gives each cell's temporal order and keyframe intent. Draw them strictly in `cellIndex` order.
+- Cell 1 is the starting moment, the final cell is the ending moment, and middle cells bridge action, expression, lip movement, blocking, and camera motion.
+- Every cell must serve the same continuous shot; do not turn the grid into unrelated storyboard shots.
 
 Source text:
 {source_text}

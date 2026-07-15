@@ -25,6 +25,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
     promptEditor,
     voiceManager,
     lipSync,
+    duration,
     videoReference,
     computed,
   } = runtime
@@ -86,7 +87,19 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
     <div className="p-4 space-y-2">
       <div className="flex items-center justify-between text-xs">
         <span className="px-2 py-0.5 bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)] rounded font-medium">{panel.textPanel?.shot_type || t('panelCard.unknownShotType')}</span>
-        {panel.textPanel?.duration && <span className="text-[var(--glass-text-tertiary)]">{panel.textPanel.duration}{t('promptModal.duration')}</span>}
+        <label className="inline-flex items-center gap-1 text-[var(--glass-text-tertiary)]">
+          <AppIcon name="clock" className="h-3 w-3" />
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={duration.durationText}
+            onChange={(event) => duration.setDurationText(event.target.value)}
+            placeholder={duration.generatedDuration ? String(duration.generatedDuration) : ''}
+            className="h-6 w-14 rounded-md border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-1.5 text-right text-xs text-[var(--glass-text-secondary)] focus:border-[var(--glass-stroke-focus)] focus:outline-none"
+          />
+          <span>{t('promptModal.duration')}</span>
+        </label>
       </div>
 
       <p className="text-sm text-[var(--glass-text-secondary)] line-clamp-2">{panel.textPanel?.description}</p>
@@ -141,7 +154,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                 </div>
               </div>
             ) : (
-              <div onClick={promptEditor.handleStartEdit} className="text-xs p-2 border border-[var(--glass-stroke-base)] rounded-lg bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] cursor-pointer">
+              <div onClick={promptEditor.handleStartEdit} className="max-h-36 overflow-y-auto text-xs p-2 border border-[var(--glass-stroke-base)] rounded-lg bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)] cursor-pointer">
                 {promptEditor.localPrompt || <span className="text-[var(--glass-text-tertiary)] italic">{t('panelCard.clickToEditPrompt')}</span>}
               </div>
             )}
@@ -212,10 +225,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                       linkedNextPanel.storyboardId,
                       linkedNextPanel.panelIndex,
                       panelKey,
-                      {
-                        ...layout.flGenerationOptions,
-                        ...(typeof panel.textPanel?.duration === 'number' ? { duration: panel.textPanel.duration } : {}),
-                      },
+                      duration.withDuration(layout.flGenerationOptions),
                       panel.panelId,
                       resolvedVideoReference.selectedImages,
                     )}
@@ -259,10 +269,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                         panel.panelIndex,
                         videoModel.selectedModel,
                         undefined,
-                        {
-                          ...videoModel.generationOptions,
-                          ...(typeof panel.textPanel?.duration === 'number' ? { duration: panel.textPanel.duration } : {}),
-                        },
+                        duration.withDuration(videoModel.generationOptions),
                         panel.panelId,
                         panel.imageLayout,
                         undefined,
@@ -345,8 +352,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                       <button
                         type="button"
                         onClick={() => actions.onGridVideoSourceChange('director_storyboard')}
-                        disabled={computed.directorStoryboardBoards.length === 0}
-                        className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${computed.gridVideoSource === 'director_storyboard'
+                        className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${computed.gridVideoSource === 'director_storyboard'
                             ? 'bg-[var(--glass-accent-from)] text-white'
                             : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
                           }`}

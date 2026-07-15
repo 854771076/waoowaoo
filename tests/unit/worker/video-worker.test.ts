@@ -39,6 +39,13 @@ const configServiceMock = vi.hoisted(() => ({
     video: 5,
   })),
 }))
+const modelConfigMock = vi.hoisted(() => ({
+  parseModelKeyStrict: vi.fn(() => ({ provider: 'fal' })),
+}))
+const outboundImageMock = vi.hoisted(() => ({
+  normalizeToBase64ForGeneration: vi.fn(async (input: string) => input),
+  normalizeToOriginalMediaUrl: vi.fn(async (input: string) => input),
+}))
 const concurrencyGateMock = vi.hoisted(() => ({
   withUserConcurrencyGate: vi.fn(async <T>(input: {
     run: () => Promise<T>
@@ -86,14 +93,13 @@ vi.mock('@/lib/workers/shared', () => ({
 vi.mock('@/lib/workers/utils', () => utilsMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/media/outbound-image', () => ({
-  normalizeToBase64ForGeneration: vi.fn(async (input: string) => input),
+  normalizeToBase64ForGeneration: outboundImageMock.normalizeToBase64ForGeneration,
+  normalizeToOriginalMediaUrl: outboundImageMock.normalizeToOriginalMediaUrl,
 }))
 vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
 }))
-vi.mock('@/lib/model-config-contract', () => ({
-  parseModelKeyStrict: vi.fn(() => ({ provider: 'fal' })),
-}))
+vi.mock('@/lib/model-config-contract', () => modelConfigMock)
 vi.mock('@/lib/api-config', () => ({
   getProviderConfig: vi.fn(async () => ({ apiKey: 'api-key' })),
 }))
@@ -139,6 +145,9 @@ describe('worker video processor behavior', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     workerState.processor = null
+    modelConfigMock.parseModelKeyStrict.mockReturnValue({ provider: 'fal' })
+    outboundImageMock.normalizeToBase64ForGeneration.mockImplementation(async (input: string) => input)
+    outboundImageMock.normalizeToOriginalMediaUrl.mockImplementation(async (input: string) => input)
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue(buildPanel())
     prismaMock.novelPromotionPanel.findFirst.mockResolvedValue(buildPanel())
@@ -296,6 +305,36 @@ describe('worker video processor behavior', () => {
         videoGenerationMode: 'director_storyboard',
       }),
     }))
+  })
+
+  it('VIDEO_PANEL: StarRouter 视频使用可抓取 URL 而不是 base64 data URL', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelConfigMock.parseModelKeyStrict.mockReturnValue({ provider: 'starrouter' })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        videoReferenceImages: ['cos/source.png', 'cos/character.png'],
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        imageUrl: 'https://signed.example/cos/panel-image.png',
+        options: expect.objectContaining({
+          videoReferenceImages: [
+            'https://signed.example/cos/source.png',
+            'https://signed.example/cos/character.png',
+          ],
+        }),
+      }),
+    )
+    expect(outboundImageMock.normalizeToBase64ForGeneration).not.toHaveBeenCalled()
   })
 
   it('LIP_SYNC: 缺少 panel 时显式失败', async () => {

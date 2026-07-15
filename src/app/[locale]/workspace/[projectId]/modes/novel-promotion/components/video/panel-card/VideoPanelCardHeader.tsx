@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import TaskStatusOverlay from '@/components/task/TaskStatusOverlay'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 
@@ -142,7 +142,7 @@ export default function VideoPanelCardHeader({ runtime, onOpenHistory, historyCo
               panel.panelIndex,
               videoModel.selectedModel,
               undefined,
-              videoModel.generationOptions,
+              runtime.duration.withDuration(videoModel.generationOptions),
               panel.panelId,
               panel.imageLayout,
               undefined,

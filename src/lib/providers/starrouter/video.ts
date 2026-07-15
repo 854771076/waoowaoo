@@ -53,7 +53,7 @@ function readTaskIdFromResponse(data: StarRouterVideoSubmitResponse): string {
 
 interface StarRouterVideoSubmitBody {
   model: string
-  content: Array<{ type: string; text?: string; image_url?: { url: string } }>
+  content: Array<{ type: string; text?: string; image_url?: { url: string }; role?: 'first_frame' | 'reference_image' }>
   resolution?: string
   ratio?: string
   duration?: number
@@ -97,6 +97,12 @@ function readOptionalStringArray(value: unknown): string[] {
   return result
 }
 
+function assertFetchableImageUrl(value: string): void {
+  if (value.startsWith('data:')) {
+    throw new Error('STARSTONE_VIDEO_IMAGE_URL_FETCHABLE_REQUIRED')
+  }
+}
+
 function readOptionalRecord(value: unknown, fieldName: string): Record<string, unknown> | undefined {
   if (value === undefined) return undefined
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -135,15 +141,6 @@ function assertNoUnsupportedOptions(options: StarRouterGenerateRequestOptions): 
   }
 }
 
-// 常见 aspect ratio 映射（保留供将来参考，新接口直接传 resolution 和 ratio 字符串）
-const _ASPECT_RATIO_TO_DIMENSIONS: Record<string, { width: number; height: number }> = {
-  '16:9': { width: 1280, height: 720 },
-  '9:16': { width: 720, height: 1280 },
-  '1:1': { width: 720, height: 720 },
-  '3:2': { width: 1080, height: 720 },
-  '2:3': { width: 720, height: 1080 },
-}
-
 function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
   endpoint: string
   body: StarRouterVideoSubmitBody
@@ -152,6 +149,7 @@ function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
   if (!imageUrl) {
     throw new Error('STARSTONE_VIDEO_IMAGE_URL_REQUIRED')
   }
+  assertFetchableImageUrl(imageUrl)
   const modelId = readTrimmedString(params.options.modelId)
   if (!modelId) {
     throw new Error('STARSTONE_VIDEO_MODEL_ID_REQUIRED')
@@ -179,15 +177,19 @@ function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
 
   const videoReferenceImages = readOptionalStringArray(params.options.videoReferenceImages)
 
-  // 构建 content 数组：text + image_url；多图参考按调用方选择顺序传递。
+  // StarRouter 当前接口不允许 first_frame 与 reference_image 混用；
+  // 视频阶段传入的多张参考图只取第一张作为起始帧，其余由提示词承担一致性约束。
   const content: StarRouterVideoSubmitBody['content'] = []
   if (prompt) {
     content.push({ type: 'text', text: prompt })
   }
-  const contentImageUrls = videoReferenceImages.length > 0 ? videoReferenceImages : [imageUrl]
-  for (const contentImageUrl of contentImageUrls) {
-    content.push({ type: 'image_url', image_url: { url: contentImageUrl } })
-  }
+  const contentImageUrl = videoReferenceImages[0] || imageUrl
+  assertFetchableImageUrl(contentImageUrl)
+  content.push({
+    type: 'image_url',
+    image_url: { url: contentImageUrl },
+    role: 'first_frame',
+  })
 
   const submitBody: StarRouterVideoSubmitBody = {
     model: modelId,

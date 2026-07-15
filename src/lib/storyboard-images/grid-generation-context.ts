@@ -29,7 +29,28 @@ export interface PreImageGridGenerationContext extends Record<string, unknown> {
   }
 }
 
+export interface PanelGridImagePromptContext extends Record<string, unknown> {
+  panel: Record<string, unknown>
+  context: Record<string, unknown>
+  grid_plan: {
+    panelGridSize: number
+    duration: number
+    cells: Array<{
+      cellIndex: number
+      timeRange: string
+      keyframe: string
+    }>
+  }
+}
+
+export interface PanelImagePromptContext extends Record<string, unknown> {
+  panel: Record<string, unknown>
+  context: Record<string, unknown>
+  director_snapshot?: unknown
+}
+
 const STORAGE_STRING_LIMIT = 4_000
+const GRID_CONTEXT_STORAGE_BYTE_LIMIT = 48_000
 
 function redactLargeStringForStorage(value: string): string {
   const trimmed = value.trim()
@@ -62,6 +83,144 @@ function compactForStorage(value: unknown): unknown {
     output[key] = compactForStorage(child)
   }
   return output
+}
+
+function compactGridCellForStorage(cell: unknown): Record<string, unknown> {
+  const record = asRecord(cell)
+  const cellIndex = typeof record.cellIndex === 'number' ? Math.floor(record.cellIndex) : 0
+  const timeRange = pickText(record.timeRange)
+  const shotType = pickText(record.shotType)
+  const cameraMove = pickText(record.cameraMove)
+  const description = pickText(record.description)
+  const location = pickText(record.location)
+  const action = pickText(record.action)
+  const videoPrompt = [
+    timeRange && cellIndex > 0 ? `${timeRange}（格 ${cellIndex}关键帧）` : '',
+    shotType ? `镜头：${shotType}` : '',
+    cameraMove ? `运镜：${cameraMove}` : '',
+    location ? `场景：${location}` : '',
+    description ? `画面：${description}` : '',
+    action ? `动作：${action}` : '',
+  ].filter(Boolean).join('；')
+
+  return {
+    ...(cellIndex > 0 ? { cellIndex } : {}),
+    ...(timeRange ? { timeRange } : {}),
+    ...(videoPrompt ? { videoPrompt } : {}),
+    ...(action ? { action } : {}),
+    ...(shotType ? { shotType } : {}),
+    ...(cameraMove ? { cameraMove } : {}),
+    ...(description ? { description } : {}),
+    ...(location ? { location } : {}),
+  }
+}
+
+function limitText(value: string, maxChars: number): string {
+  const trimmed = value.trim()
+  if (trimmed.length <= maxChars) return trimmed
+  return `${trimmed.slice(0, maxChars)}…`
+}
+
+function buildCompactCharacterConsistencyLine(context: Record<string, unknown>): string {
+  const characterConsistency = asRecord(asRecord(context.context).character_consistency)
+  const characters = asArray(characterConsistency.characters)
+    .map((item) => {
+      const character = asRecord(item)
+      const name = pickText(character.name)
+      const appearance = pickText(character.resolvedAppearance) || pickText(character.requestedAppearance)
+      const description = limitText(pickText(character.description), 180)
+      if (!name && !appearance && !description) return ''
+      return [
+        name,
+        appearance ? `外貌版本：${appearance}` : '',
+        description ? `视觉特征：${description}` : '',
+      ].filter(Boolean).join('，')
+    })
+    .filter(Boolean)
+  return characters.length > 0 ? `角色一致性：${characters.join('；')}` : ''
+}
+
+function buildAggregateVideoPromptForStorage(
+  context: Record<string, unknown>,
+  gridCells: Record<string, unknown>[],
+): string {
+  const preImageGridPrompt = asRecord(context.preImageGridPrompt)
+  const panel = asRecord(context.panel)
+  const gridMetadata = asRecord(context.gridMetadata)
+  const panelGridSize = typeof gridMetadata.panelGridSize === 'number'
+    ? Math.floor(gridMetadata.panelGridSize)
+    : gridCells.length
+  const duration = typeof preImageGridPrompt.duration === 'number' && Number.isFinite(preImageGridPrompt.duration)
+    ? Math.round(preImageGridPrompt.duration)
+    : estimateDuration(panelGridSize || gridCells.length || 2)
+  const baseVideoPrompt = pickText(preImageGridPrompt.baseVideoPrompt)
+    || pickText(panel.video_prompt)
+    || pickText(panel.description)
+  const directorShotConstraintPrompt = buildDirectorShotConstraintPrompt(context)
+
+  return [
+    '电影级画质，高清锐利，细节清晰，4K 质感，专业电影摄影感，光影统一，动作连贯。',
+    baseVideoPrompt,
+    buildCompactCharacterConsistencyLine(context),
+    directorShotConstraintPrompt,
+    `将 ${panelGridSize} 个宫格作为同一连续镜头的关键帧序列处理，视频时长约 ${duration} 秒。成片必须是铺满全屏的单一连续镜头。`,
+    '绝对不要出现宫格、分格、拼贴、分屏、边框、编号、字幕、水印或 UI 元素；宫格只代表时间顺序关键帧，不是视频画面形式。',
+    '按以下时间段补全关键帧之间的中间动作、表情、口型、走位和运镜，使画面从第 1 格自然演变到最后 1 格。',
+    ...gridCells.map((cell) => pickText(cell.videoPrompt)),
+  ].filter(Boolean).join('\n')
+}
+
+function compactGridContextForStorage(context: Record<string, unknown>): Record<string, unknown> {
+  const preImageGridPrompt = asRecord(context.preImageGridPrompt)
+  const gridCells = asArray(preImageGridPrompt.gridCells).map(compactGridCellForStorage)
+  const duration = typeof preImageGridPrompt.duration === 'number' && Number.isFinite(preImageGridPrompt.duration)
+    ? Math.round(preImageGridPrompt.duration)
+    : null
+
+  return {
+    source: context.source,
+    gridMetadata: compactForStorage(context.gridMetadata),
+    ...buildPanelImagePromptContext({ panelContext: context }),
+    preImageGridPrompt: {
+      imagePrompt: '[已省略宫格生图提示词，运行时视频链路不依赖该字段]',
+      baseVideoPrompt: redactLargeStringForStorage(pickText(preImageGridPrompt.baseVideoPrompt)),
+      aggregateVideoPrompt: buildAggregateVideoPromptForStorage(context, gridCells),
+      ...(duration ? { duration } : {}),
+      gridCells,
+    },
+  }
+}
+
+function stripContextForStorageFallback(context: Record<string, unknown>): Record<string, unknown> {
+  const preImageGridPrompt = asRecord(context.preImageGridPrompt)
+  const duration = typeof preImageGridPrompt.duration === 'number' && Number.isFinite(preImageGridPrompt.duration)
+    ? Math.round(preImageGridPrompt.duration)
+    : null
+
+  return {
+    source: context.source,
+    gridMetadata: compactForStorage(context.gridMetadata),
+    panel: {
+      description: pickText(asRecord(context.panel).description),
+      location: pickText(asRecord(context.panel).location),
+      shot_type: pickText(asRecord(context.panel).shot_type),
+      camera_move: pickText(asRecord(context.panel).camera_move),
+    },
+    preImageGridPrompt: {
+      imagePrompt: '[已省略宫格生图提示词，运行时视频链路不依赖该字段]',
+      baseVideoPrompt: redactLargeStringForStorage(pickText(preImageGridPrompt.baseVideoPrompt)),
+      aggregateVideoPrompt: buildAggregateVideoPromptForStorage(context, asArray(preImageGridPrompt.gridCells).map(compactGridCellForStorage)),
+      ...(duration ? { duration } : {}),
+      gridCells: asArray(preImageGridPrompt.gridCells).map((cell) => {
+        const record = compactGridCellForStorage(cell)
+        return {
+          cellIndex: record.cellIndex,
+          timeRange: record.timeRange,
+          videoPrompt: record.videoPrompt,
+        }
+      }),
+    },
+  }
 }
 
 interface BuildPreImageGridGenerationContextParams {
@@ -129,6 +288,56 @@ function buildCharacterConsistencyPrompt(panelContext: Record<string, unknown>):
   return lines.length > 0 ? `角色一致性：${lines.join('；')}` : ''
 }
 
+function compactCharacterConsistency(panelContext: Record<string, unknown>): Record<string, unknown> | undefined {
+  const context = asRecord(panelContext.context)
+  const characterConsistency = asRecord(context.character_consistency)
+  const characters = asArray(characterConsistency.characters)
+    .map((item) => {
+      const character = asRecord(item)
+      const name = pickText(character.name)
+      const appearance = pickText(character.resolvedAppearance) || pickText(character.requestedAppearance)
+      const description = pickText(character.description)
+      const forbiddenChanges = asArray(character.forbiddenChanges)
+        .map(pickText)
+        .filter(Boolean)
+      if (!name && !appearance && !description && forbiddenChanges.length === 0) return null
+      return {
+        ...(name ? { name } : {}),
+        ...(appearance ? { appearance } : {}),
+        ...(description ? { visual_identity: description } : {}),
+        ...(forbiddenChanges.length > 0 ? { forbidden_changes: forbiddenChanges } : {}),
+      }
+    })
+    .filter((item): item is Record<string, unknown> => item !== null)
+
+  return characters.length > 0
+    ? {
+        source: 'character_consistency_context',
+        characters,
+      }
+    : undefined
+}
+
+function compactNeighborContinuity(panelContext: Record<string, unknown>): unknown[] | undefined {
+  const context = asRecord(panelContext.context)
+  const neighborPanels = asArray(context.neighbor_panels)
+    .map((item) => {
+      const neighbor = asRecord(item)
+      const position = pickText(neighbor.position)
+      const shotType = pickText(neighbor.shot_type)
+      const cameraMove = pickText(neighbor.camera_move)
+      if (!position && !shotType && !cameraMove) return null
+      return {
+        ...(position ? { position } : {}),
+        ...(shotType ? { shot_type: shotType } : {}),
+        ...(cameraMove ? { camera_move: cameraMove } : {}),
+      }
+    })
+    .filter((item): item is Record<string, unknown> => item !== null)
+
+  return neighborPanels.length > 0 ? neighborPanels : undefined
+}
+
 function formatCellVideoPrompt(cell: PreImageGridCellPrompt): string {
   return [
     `${cell.timeRange}（格 ${cell.cellIndex}关键帧）`,
@@ -138,6 +347,83 @@ function formatCellVideoPrompt(cell: PreImageGridCellPrompt): string {
     cell.description ? `画面：${cell.description}` : '',
     cell.action ? `动作：${cell.action}` : '',
   ].filter(Boolean).join('；')
+}
+
+export function buildPanelGridImagePromptContext(params: {
+  panelGridSize: number
+  baseVideoPrompt: string
+  shotType: string
+  cameraMove: string
+  panelContext: Record<string, unknown>
+}): PanelGridImagePromptContext {
+  const panelGridSize = normalizeGridSize(params.panelGridSize)
+  const panelContext = asRecord(params.panelContext)
+  const panel = asRecord(panelContext.panel)
+  const description = pickText(panel.description) || params.baseVideoPrompt
+  const location = pickText(panel.location)
+  const shotType = params.shotType || pickText(panel.shot_type)
+  const cameraMove = params.cameraMove || pickText(panel.camera_move)
+  const layout = buildStoryboardGridLayout('grid_auto', panelGridSize)
+  const duration = estimateDuration(panelGridSize)
+  const imageContext = buildPanelImagePromptContext({ panelContext })
+
+  return {
+    ...imageContext,
+    panel: {
+      ...imageContext.panel,
+      shot_type: shotType,
+      camera_move: cameraMove,
+      description,
+      location,
+    },
+    grid_plan: {
+      panelGridSize,
+      duration,
+      cells: Array.from({ length: layout.panelCount }, (_, index) => {
+        const cellIndex = index + 1
+        return {
+          cellIndex,
+          timeRange: buildTimeRange(cellIndex, layout.panelCount, duration),
+          keyframe: buildCellAction(cellIndex, layout.panelCount, params.baseVideoPrompt || description),
+        }
+      }),
+    },
+  }
+}
+
+export function buildPanelImagePromptContext(params: {
+  panelContext: Record<string, unknown>
+}): PanelImagePromptContext {
+  const panelContext = asRecord(params.panelContext)
+  const panel = asRecord(panelContext.panel)
+  const context = asRecord(panelContext.context)
+  const compactConsistency = compactCharacterConsistency(panelContext)
+  const compactNeighbors = compactNeighborContinuity(panelContext)
+  const locationReference = context.location_reference ?? null
+
+  return {
+    panel: {
+      image_prompt: pickText(panel.image_prompt),
+      shot_type: pickText(panel.shot_type),
+      camera_move: pickText(panel.camera_move),
+      description: pickText(panel.description),
+      location: pickText(panel.location),
+      characters: panel.characters ?? [],
+      source_text: pickText(panel.source_text),
+      photography_rules: panel.photography_rules ?? null,
+      acting_notes: panel.acting_notes ?? null,
+      ...(panel.director_shot ? { director_shot: panel.director_shot } : {}),
+    },
+    context: {
+      ...(compactConsistency ? { character_consistency: compactConsistency } : {}),
+      ...(locationReference ? { location_reference: locationReference } : {}),
+      ...(compactNeighbors ? {
+        neighbor_panel_continuity: compactNeighbors,
+        neighbor_panel_instruction: '仅用于镜头语言衔接，不要绘制相邻镜头的剧情内容。',
+      } : {}),
+    },
+    ...(panelContext.director_snapshot ? { director_snapshot: panelContext.director_snapshot } : {}),
+  }
 }
 
 export function buildPreImageGridGenerationContext(
@@ -246,5 +532,29 @@ export function hasPreImageGridPromptContext(gridGenerationContextJson: string |
 }
 
 export function serializeGridGenerationContextForStorage(context: Record<string, unknown>): string {
-  return JSON.stringify(compactForStorage(context), null, 2)
+  const compact = compactGridContextForStorage(context)
+  const serialized = JSON.stringify(compact, null, 2)
+  if (Buffer.byteLength(serialized, 'utf8') <= GRID_CONTEXT_STORAGE_BYTE_LIMIT) {
+    return serialized
+  }
+
+  const fallback = JSON.stringify(stripContextForStorageFallback(context), null, 2)
+  if (Buffer.byteLength(fallback, 'utf8') <= GRID_CONTEXT_STORAGE_BYTE_LIMIT) {
+    return fallback
+  }
+
+  const preImageGridPrompt = asRecord(context.preImageGridPrompt)
+  const duration = typeof preImageGridPrompt.duration === 'number' && Number.isFinite(preImageGridPrompt.duration)
+    ? Math.round(preImageGridPrompt.duration)
+    : null
+  return JSON.stringify({
+    source: context.source,
+    gridMetadata: compactForStorage(context.gridMetadata),
+    preImageGridPrompt: {
+      imagePrompt: '[已省略宫格生图提示词，运行时视频链路不依赖该字段]',
+      baseVideoPrompt: redactLargeStringForStorage(pickText(preImageGridPrompt.baseVideoPrompt)),
+      aggregateVideoPrompt: buildAggregateVideoPromptForStorage(context, asArray(preImageGridPrompt.gridCells).map(compactGridCellForStorage)),
+      ...(duration ? { duration } : {}),
+    },
+  }, null, 2)
 }

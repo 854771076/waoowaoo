@@ -15,7 +15,7 @@ import {
   toSignedUrlIfCos,
   uploadVideoSourceToCos,
 } from './utils'
-import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
+import { normalizeToBase64ForGeneration, normalizeToOriginalMediaUrl } from '@/lib/media/outbound-image'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { resolveEffectiveVideoDurationSeconds } from '@/lib/model-capabilities/video-duration'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
@@ -74,6 +74,11 @@ function extractVideoReferenceImages(payload: AnyObj): string[] {
     images.push(image)
   }
   return images
+}
+
+function shouldUseFetchableImageUrlsForVideoModel(modelKey: string): boolean {
+  const parsed = parseModelKeyStrict(modelKey)
+  return parsed?.provider === 'starrouter'
 }
 
 function resolveDirectorStoryboardBoardImage(panel: PanelRecord, boardId: unknown): string | null {
@@ -328,17 +333,7 @@ async function generateVideoForPanel(
   if (!sourceImageUrl) {
     throw new Error(`Panel ${panel.id} image url invalid`)
   }
-  const sourceImageBase64 = await normalizeToBase64ForGeneration(sourceImageUrl)
-  const videoReferenceImages = await Promise.all(
-    extractVideoReferenceImages(payload).map(async (image) => {
-      const signedUrl = toSignedUrlIfCos(image, 3600)
-      if (!signedUrl) return null
-      return normalizeToBase64ForGeneration(signedUrl)
-    }),
-  )
-  const normalizedVideoReferenceImages = videoReferenceImages.filter((image): image is string => !!image)
-
-  let lastFrameImageBase64: string | undefined
+  let lastFrameImageStorageKeyOrUrl: string | undefined
   let generationMode: VideoGenerationMode = directorStoryboardImageUrl
     ? 'director_storyboard'
     : firstLastFramePayload
@@ -368,10 +363,7 @@ async function generateVideoForPanel(
         Number(firstLastFramePayload.lastFramePanelIndex),
       )
       if (lastPanel?.imageUrl) {
-        const lastFrameUrl = toSignedUrlIfCos(lastPanel.imageUrl, 3600)
-        if (lastFrameUrl) {
-          lastFrameImageBase64 = await normalizeToBase64ForGeneration(lastFrameUrl)
-        }
+        lastFrameImageStorageKeyOrUrl = lastPanel.imageUrl
       }
     }
   } else if (isGridImage && !isDirectorStoryboardVideo && gridVideoSource === 'split' && gridFrameSelection) {
@@ -380,13 +372,28 @@ async function generateVideoForPanel(
       supportsFirstLastFrame: gridFirstLastFrameCapabilities?.video?.firstlastframe === true,
       selection: gridFrameSelection,
     })) {
-      const lastFrameUrl = toSignedUrlIfCos(gridFrameSelection.lastImageUrl, 3600)
-      if (lastFrameUrl) {
-        lastFrameImageBase64 = await normalizeToBase64ForGeneration(lastFrameUrl)
+      if (gridFrameSelection.lastImageUrl) {
+        lastFrameImageStorageKeyOrUrl = gridFrameSelection.lastImageUrl
         generationMode = 'firstlastframe'
       }
     }
   }
+
+  const useFetchableImageUrls = shouldUseFetchableImageUrlsForVideoModel(model)
+  const normalizeVideoImage = useFetchableImageUrls
+    ? normalizeToOriginalMediaUrl
+    : normalizeToBase64ForGeneration
+  const sourceImageInput = await normalizeVideoImage(sourceImageUrl)
+  const videoReferenceImages = await Promise.all(
+    extractVideoReferenceImages(payload).map(async (image) => {
+      const signedUrl = toSignedUrlIfCos(image, 3600)
+      if (!signedUrl) return null
+      return normalizeVideoImage(signedUrl)
+    }),
+  )
+  const normalizedVideoReferenceImages = videoReferenceImages.filter((image): image is string => !!image)
+  const lastFrameImageUrl = toSignedUrlIfCos(lastFrameImageStorageKeyOrUrl, 3600)
+  const lastFrameImageInput = lastFrameImageUrl ? await normalizeVideoImage(lastFrameImageUrl) : undefined
 
   // 面板上持久化的时长（LLM 分析 / 用户手动编辑 / 宫格重写产出）优先于
   // UI 全局默认值；按实际使用的模型（首/尾帧模式下取 flModel）做合法值对齐。
@@ -395,7 +402,7 @@ async function generateVideoForPanel(
   const generatedVideo = await resolveVideoSourceFromGeneration(job, {
     userId: job.data.userId,
     modelId: model,
-    imageUrl: sourceImageBase64,
+    imageUrl: sourceImageInput,
     options: {
       prompt,
       ...(projectVideoRatio ? { aspectRatio: projectVideoRatio } : {}),
@@ -405,7 +412,7 @@ async function generateVideoForPanel(
       // UI 全局默认值；UI 下拉若未来要支持逐片覆盖，可在 payload 中加 _panelDurationOverride。
       ...(typeof panelDurationSeconds === 'number' ? { duration: panelDurationSeconds } : {}),
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
-      ...(lastFrameImageBase64 ? { lastFrameImageUrl: lastFrameImageBase64 } : {}),
+      ...(lastFrameImageInput ? { lastFrameImageUrl: lastFrameImageInput } : {}),
       ...(normalizedVideoReferenceImages.length > 0 ? { videoReferenceImages: normalizedVideoReferenceImages } : {}),
     },
   })

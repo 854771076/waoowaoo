@@ -26,7 +26,10 @@ import {
 } from '@/lib/location-available-slots'
 import { buildStoryboardGridLayout } from '@/lib/storyboard-images/grid'
 import {
+  buildPanelImagePromptContext,
+  buildPanelGridImagePromptContext,
   buildPreImageGridGenerationContext,
+  extractPreImageGridVideoPrompt,
   serializeGridGenerationContextForStorage,
 } from '@/lib/storyboard-images/grid-generation-context'
 import { buildCharacterConsistencyContext } from '@/lib/storyboard-images/character-consistency-context'
@@ -239,6 +242,7 @@ function buildPanelPromptContext(params: {
   return {
     panel: {
       panel_id: params.panel.id,
+      image_prompt: params.panel.imagePrompt || '',
       shot_type: params.panel.shotType || '',
       camera_move: params.panel.cameraMove || '',
       description: params.panel.description || '',
@@ -443,25 +447,22 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     },
   }
   let contextWithGridMetadata: Record<string, unknown> = baseContextWithGridMetadata
-  let contextJson = JSON.stringify(contextWithGridMetadata, null, 2)
   const prompt = await (async () => {
     if (panelGridSize > 1) {
       const layout = buildStoryboardGridLayout('grid_auto', panelGridSize)
-      const provisionalContext = buildPreImageGridGenerationContext({
+      const gridPromptContext = buildPanelGridImagePromptContext({
         panelGridSize,
-        imagePrompt: panel.imagePrompt || panel.description || '',
         baseVideoPrompt: panel.videoPrompt || panel.description || '',
         shotType: panel.shotType || '',
         cameraMove: panel.cameraMove || '',
         panelContext: baseContextWithGridMetadata,
-        generatedAt: baseContextWithGridMetadata.gridMetadata.generatedAt,
       })
       const gridImagePrompt = await buildPromptAsync({
         promptId: PROMPT_IDS.NP_PANEL_GRID_IMAGE,
         locale: job.data.locale,
         projectId: job.data.projectId,
         variables: {
-          storyboard_text_json_input: JSON.stringify(provisionalContext, null, 2),
+          storyboard_text_json_input: JSON.stringify(gridPromptContext, null, 2),
           source_text: panel.srtSegment || panel.description || '',
           aspect_ratio: aspectRatio,
           style: artStyle || '与参考图风格一致',
@@ -478,16 +479,18 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         panelContext: baseContextWithGridMetadata,
         generatedAt: baseContextWithGridMetadata.gridMetadata.generatedAt,
       })
-      contextJson = JSON.stringify(contextWithGridMetadata, null, 2)
       return gridImagePrompt
     }
+    const imagePromptContext = buildPanelImagePromptContext({
+      panelContext: baseContextWithGridMetadata,
+    })
     return await buildPanelPrompt({
       projectId: job.data.projectId,
       locale: job.data.locale,
       aspectRatio,
       styleText: artStyle || '与参考图风格一致',
       sourceText: panel.srtSegment || panel.description || '',
-      contextJson,
+      contextJson: JSON.stringify(imagePromptContext, null, 2),
       promptId: directorSnapshot ? PROMPT_IDS.NP_DIRECTOR_SNAPSHOT_RENDER : PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
     })
   })()
@@ -527,6 +530,9 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
 
   const isFirstGeneration = !panel.imageUrl
   const imageLayout = panelGridSize > 1 ? 'grid' : 'single'
+  const gridDuration = panelGridSize > 1
+    ? extractPreImageGridVideoPrompt(JSON.stringify(contextWithGridMetadata))?.duration
+    : null
 
   await assertTaskActive(job, 'persist_panel_image')
   if (directorSnapshot) {
@@ -566,7 +572,10 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         imageLayout,
         ...buildGridInvalidationPatch(imageLayout),
         ...(panelGridSize > 1
-          ? { gridGenerationContext: serializeGridGenerationContextForStorage(contextWithGridMetadata) }
+          ? {
+              gridGenerationContext: serializeGridGenerationContextForStorage(contextWithGridMetadata),
+              ...(gridDuration ? { duration: gridDuration } : {}),
+            }
           : {}),
       },
     })
@@ -580,7 +589,10 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         imageLayout,
         ...buildGridInvalidationPatch(imageLayout),
         ...(panelGridSize > 1
-          ? { gridGenerationContext: serializeGridGenerationContextForStorage(contextWithGridMetadata) }
+          ? {
+              gridGenerationContext: serializeGridGenerationContextForStorage(contextWithGridMetadata),
+              ...(gridDuration ? { duration: gridDuration } : {}),
+            }
           : {}),
       },
     })

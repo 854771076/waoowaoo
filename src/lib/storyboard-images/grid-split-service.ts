@@ -14,6 +14,7 @@ import {
 import {
   buildGridSplitImagesContext,
   cropAllGridImageBuffersForVideo,
+  extractGridSplitImages,
   selectReusableGridSplitImages,
   type GridVideoSourceImage,
 } from './grid-split'
@@ -198,6 +199,75 @@ function updateGridContextWithEnhancedImages(params: {
   }, null, 2)
 }
 
+async function resolveLatestGridGenerationContext(panelId: string, fallback: string): Promise<string> {
+  const latest = await prisma.novelPromotionPanel.findUnique({
+    where: { id: panelId },
+    select: { gridGenerationContext: true },
+  })
+  return latest?.gridGenerationContext || fallback
+}
+
+function mergeEnhancedImagesIntoGridContext(params: {
+  gridGenerationContextJson: string
+  fallbackImages: GridVideoSourceImage[]
+  fallbackFrames: GridVideoFrame[]
+  enhancedByIndex: Map<number, GridVideoSourceImage>
+  modelId: string
+}) {
+  const latestImages = extractGridSplitImages(params.gridGenerationContextJson)
+  const baseImages = latestImages.length > 0 ? latestImages : params.fallbackImages
+  const latestFrames = extractGridVideoFrames(params.gridGenerationContextJson)
+  const baseFrames = latestFrames.length > 0 ? latestFrames : params.fallbackFrames
+  const enhancedImages = baseImages.map((image) => params.enhancedByIndex.get(image.cellIndex) || image)
+  const enhancedFrames = baseFrames.map((frame) => {
+    const enhancedImage = enhancedImages.find((image) => image.cellIndex === frame.cellIndex)
+    return enhancedImage ? { ...frame, imageUrl: enhancedImage.imageUrl } : frame
+  })
+  const gridGenerationContext = updateGridContextWithEnhancedImages({
+    gridGenerationContextJson: params.gridGenerationContextJson,
+    enhancedImages,
+    frames: enhancedFrames,
+    modelId: params.modelId,
+  })
+  return { enhancedImages, enhancedFrames, gridGenerationContext }
+}
+
+async function persistMergedGridContextWithRetry(params: {
+  panelId: string
+  fallbackGridGenerationContext: string
+  fallbackImages: GridVideoSourceImage[]
+  fallbackFrames: GridVideoFrame[]
+  enhancedByIndex: Map<number, GridVideoSourceImage>
+  modelId: string
+}) {
+  let latestGridGenerationContext = params.fallbackGridGenerationContext
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    latestGridGenerationContext = await resolveLatestGridGenerationContext(
+      params.panelId,
+      latestGridGenerationContext,
+    )
+    const merged = mergeEnhancedImagesIntoGridContext({
+      gridGenerationContextJson: latestGridGenerationContext,
+      fallbackImages: params.fallbackImages,
+      fallbackFrames: params.fallbackFrames,
+      enhancedByIndex: params.enhancedByIndex,
+      modelId: params.modelId,
+    })
+    // 多个单格高清化可能并行完成；只在读取后的上下文未变化时写入，失败则重新读取并合并，避免覆盖其他 cell 的结果。
+    const updateResult = await prisma.novelPromotionPanel.updateMany({
+      where: {
+        id: params.panelId,
+        gridGenerationContext: latestGridGenerationContext,
+      },
+      data: { gridGenerationContext: merged.gridGenerationContext },
+    })
+    if (updateResult.count > 0) return merged
+  }
+
+  throw new Error('GRID_SPLIT_ENHANCE_CONTEXT_CONFLICT')
+}
+
 export async function ensureGridSplitImagesForPanel(
   params: EnsureGridSplitImagesForPanelParams,
 ): Promise<EnsureGridSplitImagesForPanelResult> {
@@ -362,21 +432,17 @@ export async function enhanceGridSplitImagesForPanel(
     await params.onProgress?.({ completed, total: targetImages.length, cellIndex: image.cellIndex })
   }
 
-  const enhancedImages = splitResult.images.map((image) => enhancedByIndex.get(image.cellIndex) || image)
-  const enhancedFrames = splitResult.frames.map((frame) => {
-    const enhancedImage = enhancedImages.find((image) => image.cellIndex === frame.cellIndex)
-    return enhancedImage ? { ...frame, imageUrl: enhancedImage.imageUrl } : frame
-  })
-  const gridGenerationContext = updateGridContextWithEnhancedImages({
-    gridGenerationContextJson: splitResult.gridGenerationContext,
+  const {
     enhancedImages,
-    frames: enhancedFrames,
+    enhancedFrames,
+    gridGenerationContext,
+  } = await persistMergedGridContextWithRetry({
+    panelId: params.panel.id,
+    fallbackGridGenerationContext: splitResult.gridGenerationContext,
+    fallbackImages: splitResult.images,
+    fallbackFrames: splitResult.frames,
+    enhancedByIndex,
     modelId: params.modelId,
-  })
-
-  await prisma.novelPromotionPanel.update({
-    where: { id: params.panel.id },
-    data: { gridGenerationContext },
   })
 
   return {

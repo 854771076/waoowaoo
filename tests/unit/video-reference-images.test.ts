@@ -122,6 +122,41 @@ describe('video reference image selection', () => {
     ])
   })
 
+  it('uses the selected director storyboard board as the required source when the panel image is missing', () => {
+    const choices = buildVideoReferenceImageChoices({
+      panel: {
+        imageUrl: '',
+        directorStoryboardBoards: [
+          {
+            id: 'board-1',
+            name: '导演分镜图',
+            createdAt: 1,
+            coverImageUrl: 'images/director-board.png',
+            assetIds: [],
+            items: [],
+          },
+        ],
+        textPanel: {
+          panel_number: 3,
+          shot_type: '近景',
+          description: '阿青回头',
+          characters: [],
+        },
+      },
+      characters: [],
+      locations: [],
+    })
+
+    expect(choices[0]).toMatchObject({
+      id: 'source:director-storyboard:board-1',
+      kind: 'source',
+      url: 'images/director-board.png',
+      label: '导演分镜图',
+      required: true,
+      selectedByDefault: true,
+    })
+  })
+
   it('returns only required and user-selected images in stable order', () => {
     const choices = buildVideoReferenceImageChoices({
       panel: {

@@ -1,11 +1,123 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildPanelImagePromptContext,
+  buildPanelGridImagePromptContext,
   buildPreImageGridGenerationContext,
   extractPreImageGridVideoPrompt,
   serializeGridGenerationContextForStorage,
 } from '@/lib/storyboard-images/grid-generation-context'
 
 describe('grid generation context', () => {
+  it('builds compact single-panel image prompt context', () => {
+    const context = buildPanelImagePromptContext({
+      panelContext: {
+        panel: {
+          image_prompt: '主角站在雨夜街道左侧，近景',
+          shot_type: '近景',
+          camera_move: '固定',
+          description: '主角雨夜回头',
+          location: 'Old Town',
+          characters: [{ name: 'Hero', slot: '街道左侧靠墙的留白位置' }],
+          source_text: '主角回头。',
+        },
+        context: {
+          character_appearances: [{ name: 'Hero', description: '不应重复传入图片模型' }],
+          character_consistency: {
+            characters: [
+              {
+                name: 'Hero',
+                resolvedAppearance: 'default',
+                description: '黑色风衣，短发',
+                consistencyPrompt: '冗长一致性提示词不应整段进入图片模型',
+              },
+            ],
+          },
+          location_reference: {
+            name: 'Old Town',
+            available_slots: ['街道左侧靠墙的留白位置'],
+          },
+          neighbor_panels: [
+            {
+              position: 'next',
+              shot_type: '中景',
+              camera_move: '推近',
+              description: '下一镜有人冲出巷口',
+            },
+          ],
+        },
+      },
+    })
+
+    const serialized = JSON.stringify(context)
+    expect(context.panel.image_prompt).toBe('主角站在雨夜街道左侧，近景')
+    expect(serialized).toContain('街道左侧靠墙的留白位置')
+    expect(serialized).toContain('neighbor_panel_continuity')
+    expect(serialized).not.toContain('character_appearances')
+    expect(serialized).not.toContain('冗长一致性提示词')
+    expect(serialized).not.toContain('下一镜有人冲出巷口')
+  })
+
+  it('builds compact grid image prompt context without video-stage prompt payloads', () => {
+    const context = buildPanelGridImagePromptContext({
+      panelGridSize: 9,
+      baseVideoPrompt: '三人站在广场左侧，镜头缓缓升起',
+      shotType: '俯拍大远景',
+      cameraMove: '缓缓升起',
+      panelContext: {
+        panel: {
+          panel_id: 'panel-1',
+          shot_type: '俯拍大远景',
+          camera_move: '缓缓升起',
+          description: '紫霄宫殿广场上三人并肩站立，众仙交谈',
+          location: '紫霄宫_白天/紫霄宫殿广场',
+          characters: [{ name: '帝俊', appearance: '初始形象' }],
+          source_text: '众仙互相攀谈着。',
+        },
+        context: {
+          character_appearances: [
+            {
+              name: '帝俊',
+              description: '这一套字段不应在宫格生图上下文里重复出现',
+            },
+          ],
+          character_consistency: {
+            characters: [
+              {
+                name: '帝俊',
+                resolvedAppearance: '初始形象',
+                description: '黑金冕服，赤金冠，眉间金乌胎记',
+                consistencyPrompt: '冗长的一致性提示词不应整段进入宫格生图上下文',
+                forbiddenChanges: ['不要改变服装主色'],
+              },
+            ],
+          },
+          neighbor_panels: [
+            {
+              position: 'next',
+              shot_type: '平视中景',
+              camera_move: '缓缓推近',
+              description: '众仙突然停下交谈，齐齐抬头',
+            },
+          ],
+        },
+        preImageGridPrompt: {
+          aggregateVideoPrompt: '后续视频提示词不应进入当前生图 JSON',
+          gridCells: [{ imagePrompt: '重复每格生图提示词' }],
+        },
+      },
+    })
+
+    const serialized = JSON.stringify(context)
+    expect(context.grid_plan.cells).toHaveLength(9)
+    expect(context.context.character_consistency).toBeTruthy()
+    expect(serialized).toContain('黑金冕服')
+    expect(serialized).not.toContain('preImageGridPrompt')
+    expect(serialized).not.toContain('aggregateVideoPrompt')
+    expect(serialized).not.toContain('character_appearances')
+    expect(serialized).not.toContain('冗长的一致性提示词')
+    expect(serialized).not.toContain('众仙突然停下交谈')
+  })
+
   it('builds pre-image grid prompt context with traceable cells and an aggregate video prompt', () => {
     const context = buildPreImageGridGenerationContext({
       panelGridSize: 3,
@@ -209,5 +321,61 @@ describe('grid generation context', () => {
     expect(parsed.gridMetadata).toMatchObject({ panelGridSize: 4 })
     expect(extracted?.prompt).toContain('单一连续镜头')
     expect(extracted?.duration).toBe(4)
+  })
+
+  it('keeps stored gridGenerationContext below database TEXT byte budget for long character prompts', () => {
+    const longDescription = '轮廓分明，服装纹样复杂，必须保持角色一致。'.repeat(160)
+    const context = buildPreImageGridGenerationContext({
+      panelGridSize: 9,
+      imagePrompt: `宫格提示词 ${'x'.repeat(80_000)}`,
+      baseVideoPrompt: '广场上的中年男子们突然停下交谈动作，齐齐抬头望向广场入口方向，三名中年男子随之转脸看向入口，镜头缓缓推近制造压迫感',
+      shotType: '平视中景',
+      cameraMove: '缓缓推近',
+      panelContext: {
+        panel: {
+          description: '广场上的众仙突然停下交谈动作，齐齐抬头望向广场入口方向',
+          location: '紫霄宫_白天/紫霄宫殿广场',
+          characters: [{ name: '帝俊' }, { name: '白泽' }, { name: '伏羲' }],
+        },
+        context: {
+          character_consistency: {
+            source: 'character_consistency_context',
+            characters: [
+              {
+                name: '帝俊',
+                resolvedAppearance: '初始形象',
+                description: longDescription,
+                consistencyPrompt: `帝俊 需要保持同一角色身份和外貌连续性。固定外貌描述：${longDescription}`,
+                forbiddenChanges: ['不要改变角色年龄、脸型、发型、服装主色和标志性配饰'],
+              },
+              {
+                name: '白泽',
+                resolvedAppearance: '初始形象',
+                description: longDescription,
+                consistencyPrompt: `白泽 需要保持同一角色身份和外貌连续性。固定外貌描述：${longDescription}`,
+                forbiddenChanges: ['不要改变角色年龄、脸型、发型、服装主色和标志性配饰'],
+              },
+              {
+                name: '伏羲',
+                resolvedAppearance: '初始形象',
+                description: longDescription,
+                consistencyPrompt: `伏羲 需要保持同一角色身份和外貌连续性。固定外貌描述：${longDescription}`,
+                forbiddenChanges: ['不要改变角色年龄、脸型、发型、服装主色和标志性配饰'],
+              },
+            ],
+          },
+        },
+      },
+    })
+
+    const serialized = serializeGridGenerationContextForStorage(context)
+    const extracted = extractPreImageGridVideoPrompt(serialized)
+
+    expect(Buffer.byteLength(serialized, 'utf8')).toBeLessThanOrEqual(48_000)
+    expect(serialized).not.toContain('宫格提示词 xxxxx')
+    expect(serialized).not.toContain('"imagePrompt":"宫格提示词')
+    expect(serialized).not.toContain('"characters":[{"name":"帝俊"')
+    expect(extracted?.prompt).toContain('单一连续镜头')
+    expect(extracted?.duration).toBe(9)
   })
 })

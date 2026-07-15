@@ -60,4 +60,34 @@ describe('logging core suppression', () => {
     expect(payload.action).toBe('worker.progress')
     expect(payload.message).toBe('worker progress update')
   })
+
+  it('summarizes data url strings before writing logs', async () => {
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const { createScopedLogger } = await import('@/lib/logging/core')
+    const logger = createScopedLogger({ module: 'worker.vvicat-video' })
+    const dataUrl = `data:image/jpeg;base64,${'A'.repeat(2048)}`
+
+    logger.info({
+      action: 'worker.payload',
+      message: 'payload with image',
+      details: {
+        image_url: {
+          url: dataUrl,
+        },
+      },
+    })
+
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1)
+    const line = String(consoleLogSpy.mock.calls[0]?.[0])
+    expect(line).not.toContain(dataUrl)
+    expect(line).not.toContain('A'.repeat(256))
+
+    const payload = JSON.parse(line) as {
+      details?: { image_url?: { url?: Record<string, unknown> } }
+    }
+    expect(payload.details?.image_url?.url).toMatchObject({
+      kind: 'data-url',
+      length: dataUrl.length,
+    })
+  })
 })

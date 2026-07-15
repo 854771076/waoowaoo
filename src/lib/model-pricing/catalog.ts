@@ -219,10 +219,10 @@ export function listBuiltinPricingCatalog(): BuiltinPricingCatalogEntry[] {
  * e.g. gemini-compatible uses the same models and pricing as google.
  * Defined here so ALL callers automatically benefit — no need to add alias logic per call site.
  */
-const PROVIDER_ALIASES: Readonly<Record<string, string>> = {
-  'gemini-compatible': 'google',
-  // starrouter 是 Gemini/Google 模型的中转渠道,复用 google 官方定价。
-  starrouter: 'google',
+const PROVIDER_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  'gemini-compatible': ['google'],
+  // starrouter 同时中转 Google 与火山 Doubao；按 modelId 先匹配 Google，找不到再匹配 Ark。
+  starrouter: ['google', 'ark'],
 }
 
 export function findBuiltinPricingCatalogEntry(
@@ -245,8 +245,8 @@ export function findBuiltinPricingCatalogEntry(
   }
 
   // Alias fallback: look up the canonical provider
-  const aliasTarget = PROVIDER_ALIASES[providerKey]
-  if (aliasTarget) {
+  const aliasTargets = PROVIDER_ALIASES[providerKey] || []
+  for (const aliasTarget of aliasTargets) {
     const aliasKey = `${apiType}::${aliasTarget}::${modelId}`
     const aliasEntry = loaded.exact.get(aliasKey)
     if (aliasEntry) return cloneEntry(aliasEntry)

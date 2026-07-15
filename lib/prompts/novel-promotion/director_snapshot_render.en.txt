@@ -11,6 +11,7 @@ Storyboard and director snapshot JSON:
 
 Hard requirements:
 - `director_snapshot` and `panel.director_shot` are the highest-priority composition constraints. Follow the snapshot camera FOV, camera position, target point, character blocking, pose, facing direction, and depth layering.
+- Visual style controls art style, line work, color, lighting, and texture only. If it contains concrete scene/location terms that conflict with the JSON/source text, follow the JSON/source location and action.
 - Mannequins in the snapshot represent blocking, body type, pose, and direction only. The final image must render real characters, not gray mannequins, toys, viewport captures, or 3D editor screenshots.
 - If a snapshot reference image is provided, use it to lock composition and spatial relationships. Character identity, costume, hairstyle, props, and scene details still come from project references and the JSON description.
 - Do not change the camera angle, rearrange characters, or include cameras, transform controls, grids, axes, UI, or text labels in the image.

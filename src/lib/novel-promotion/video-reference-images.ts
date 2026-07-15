@@ -14,12 +14,13 @@ export interface VideoReferenceImageChoice {
 }
 
 interface BuildVideoReferenceImageChoicesParams {
-  panel: Pick<VideoPanel, 'imageUrl' | 'textPanel'>
+  panel: Pick<VideoPanel, 'imageUrl' | 'textPanel' | 'directorStoryboardBoards'>
   nextPanel?: Pick<VideoPanel, 'imageUrl'> | null
   characters: Character[]
   locations: Location[]
   includeLastFrame?: boolean
   includeCharacterSheet?: boolean
+  directorStoryboardBoardId?: string
   characterImagesPerPerson?: number
 }
 
@@ -164,6 +165,7 @@ export function buildVideoReferenceImageChoices({
   locations,
   includeLastFrame = false,
   includeCharacterSheet = false,
+  directorStoryboardBoardId,
   characterImagesPerPerson = 2,
 }: BuildVideoReferenceImageChoicesParams): VideoReferenceImageChoice[] {
   const choices: VideoReferenceImageChoice[] = []
@@ -177,6 +179,21 @@ export function buildVideoReferenceImageChoices({
       required: true,
       selectedByDefault: true,
     })
+  } else {
+    const directorStoryboardBoards = panel.directorStoryboardBoards ?? []
+    const selectedDirectorBoard = directorStoryboardBoards.find((board) => board.id === directorStoryboardBoardId)
+      || directorStoryboardBoards[0]
+    const directorSourceUrl = normalizeText(selectedDirectorBoard?.coverImageUrl)
+    if (selectedDirectorBoard && directorSourceUrl) {
+      choices.push({
+        id: `source:director-storyboard:${selectedDirectorBoard.id}`,
+        kind: 'source',
+        url: directorSourceUrl,
+        label: selectedDirectorBoard.name || '导演分镜图',
+        required: true,
+        selectedByDefault: true,
+      })
+    }
   }
 
   const lastFrameUrl = includeLastFrame ? normalizeText(nextPanel?.imageUrl) : ''

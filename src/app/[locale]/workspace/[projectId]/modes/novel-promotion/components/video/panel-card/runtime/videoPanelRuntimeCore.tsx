@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import type { VideoPanelCardShellProps } from '../types'
-import type { GridVideoSource } from '../../types'
+import type { GridVideoSource, VideoGenerationOptions } from '../../types'
 import { EMPTY_RUNNING_VOICE_LINE_IDS } from './shared'
 import { usePanelTaskStatus } from './hooks/usePanelTaskStatus'
 import { usePanelVideoModel } from './hooks/usePanelVideoModel'
@@ -64,12 +64,27 @@ export function useVideoPanelActions({
   const tCommon = useTranslations('common')
   const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
   const hasGridSplitImages = panel.imageLayout === 'grid' && (panel.gridSplitImages?.length || 0) > 0
-  const directorStoryboardBoards = panel.directorStoryboardBoards ?? []
+  const directorStoryboardBoards = useMemo(
+    () => panel.directorStoryboardBoards ?? [],
+    [panel.directorStoryboardBoards],
+  )
   const [gridVideoSourceState, setGridVideoSourceState] = useState<{ value: GridVideoSource; touched: boolean }>({
     value: hasGridSplitImages ? 'split' : 'original',
     touched: false,
   })
   const [directorStoryboardBoardId, setDirectorStoryboardBoardId] = useState<string>(directorStoryboardBoards[0]?.id || '')
+  const generatedDuration = typeof panel.textPanel?.duration === 'number'
+    && Number.isFinite(panel.textPanel.duration)
+    && panel.textPanel.duration > 0
+    ? Math.round(panel.textPanel.duration)
+    : null
+  const generatedDurationText = generatedDuration ? String(generatedDuration) : ''
+  const durationPanelKey = `${panel.panelId || panel.storyboardId}-${panel.panelIndex}`
+  const [durationState, setDurationState] = useState({
+    panelKey: durationPanelKey,
+    text: generatedDurationText,
+    touched: false,
+  })
 
   useEffect(() => {
     if (!hasGridSplitImages || gridVideoSourceState.touched) return
@@ -79,9 +94,6 @@ export function useVideoPanelActions({
   useEffect(() => {
     if (directorStoryboardBoards.length === 0) {
       setDirectorStoryboardBoardId('')
-      if (gridVideoSourceState.value === 'director_storyboard') {
-        setGridVideoSourceState({ value: hasGridSplitImages ? 'split' : 'original', touched: false })
-      }
       return
     }
     setDirectorStoryboardBoardId((previous) =>
@@ -90,6 +102,18 @@ export function useVideoPanelActions({
         : directorStoryboardBoards[0].id,
     )
   }, [directorStoryboardBoards, gridVideoSourceState.value, hasGridSplitImages])
+
+  useEffect(() => {
+    setDurationState((previous) => {
+      if (previous.panelKey !== durationPanelKey) {
+        return { panelKey: durationPanelKey, text: generatedDurationText, touched: false }
+      }
+      if (!previous.touched && previous.text !== generatedDurationText) {
+        return { ...previous, text: generatedDurationText }
+      }
+      return previous
+    })
+  }, [durationPanelKey, generatedDurationText])
 
   const isFirstLastFrameOutput = panel.videoGenerationMode === 'firstlastframe' && !!panel.videoUrl
   const [includeCharacterSheet, setIncludeCharacterSheet] = useState(false)
@@ -100,7 +124,8 @@ export function useVideoPanelActions({
     locations,
     includeLastFrame: isLinked && !!nextPanel?.imageUrl,
     includeCharacterSheet,
-  }), [characters, includeCharacterSheet, isLinked, locations, nextPanel, panel])
+    directorStoryboardBoardId,
+  }), [characters, directorStoryboardBoardId, includeCharacterSheet, isLinked, locations, nextPanel, panel])
   const defaultReferenceIds = useMemo(
     () => getDefaultSelectedVideoReferenceImageIds(referenceChoices),
     [referenceChoices],
@@ -206,6 +231,14 @@ export function useVideoPanelActions({
 
   const showLipSyncSection = voiceManager.hasMatchedVoiceLines
   const canLipSync = hasVisibleBaseVideo && voiceManager.hasMatchedAudio && !taskStatus.isLipSyncTaskRunning
+  const parsedDuration = Number(durationState.text.trim())
+  const effectiveDuration = durationState.text.trim() && Number.isFinite(parsedDuration) && parsedDuration > 0
+    ? Math.round(parsedDuration)
+    : generatedDuration
+  const withDuration = (options: VideoGenerationOptions = {}): VideoGenerationOptions => ({
+    ...options,
+    ...(effectiveDuration ? { duration: effectiveDuration } : {}),
+  })
 
   return {
     t,
@@ -230,6 +263,17 @@ export function useVideoPanelActions({
     },
     voiceManager,
     lipSync,
+    duration: {
+      generatedDuration,
+      durationText: durationState.text,
+      setDurationText: (text: string) => setDurationState((previous) => ({
+        ...previous,
+        text,
+        touched: true,
+      })),
+      effectiveDuration,
+      withDuration,
+    },
     videoReference: {
       choices: referenceChoices,
       selectedIds: selectedReferenceIds,

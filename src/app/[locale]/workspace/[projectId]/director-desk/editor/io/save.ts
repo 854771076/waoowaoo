@@ -21,6 +21,11 @@ interface SaveDirectorDeskOptions {
   autoCaptureIfNoShots?: boolean
 }
 
+interface SnapshotImageUploadResult {
+  snapshotId: string
+  imageUrl: string
+}
+
 export async function saveDirectorDesk(options: SaveDirectorDeskOptions = {}): Promise<{ warning?: string }> {
   const initialState = useDirectorStore.getState()
   const { panelId, projectId, videoRatio } = initialState
@@ -47,7 +52,13 @@ export async function saveDirectorDesk(options: SaveDirectorDeskOptions = {}): P
     }
   }
 
-  const state = useDirectorStore.getState()
+	const state = useDirectorStore.getState()
+  const snapshotImages = (state.project.directorSnapshots ?? [])
+    .filter((snapshot) => snapshot.imageDataUrl && !snapshot.imageUrl)
+    .map((snapshot) => ({
+      snapshotId: snapshot.id,
+      imageDataUrl: snapshot.imageDataUrl,
+    }))
   const response = await fetch(`/api/novel-promotion/${projectId}/director-desk/save`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -55,6 +66,7 @@ export async function saveDirectorDesk(options: SaveDirectorDeskOptions = {}): P
       panelId,
       project: JSON.parse(serializeDirectorProject(state.project)),
       shots,
+      snapshotImages,
     }),
   })
   if (!response.ok) {
@@ -62,8 +74,23 @@ export async function saveDirectorDesk(options: SaveDirectorDeskOptions = {}): P
     throw new Error(`${response.status} ${text || '保存失败'}`)
   }
 
-  const data = await response.json().catch(() => null) as { warning?: string } | null
-  useDirectorStore.setState({ isDirty: false })
+  const data = await response.json().catch(() => null) as {
+    warning?: string
+    snapshotImages?: SnapshotImageUploadResult[]
+  } | null
+  if (data?.snapshotImages?.length) {
+    const imageUrlBySnapshotId = new Map(data.snapshotImages.map((item) => [item.snapshotId, item.imageUrl]))
+    const nextProject = {
+      ...useDirectorStore.getState().project,
+      directorSnapshots: (useDirectorStore.getState().project.directorSnapshots ?? []).map((snapshot) => {
+        const imageUrl = imageUrlBySnapshotId.get(snapshot.id)
+        return imageUrl ? { ...snapshot, imageUrl } : snapshot
+      }),
+    }
+    useDirectorStore.setState({ project: nextProject, isDirty: false })
+  } else {
+    useDirectorStore.setState({ isDirty: false })
+  }
   notifyDirectorDeskSaved(panelId)
   return data?.warning ? { warning: data.warning } : {}
 }

@@ -33,6 +33,8 @@ describe('grid video frontend entry', () => {
     expect(bodySource).toContain('directorStoryboardBoardId')
     expect(bodySource).toContain('onGridVideoSourceChange')
     expect(bodySource).toContain('gridVideoSource')
+    expect(bodySource).not.toContain("disabled={computed.directorStoryboardBoards.length === 0}")
+    expect(bodySource).toContain('请先在导演台生成分镜板')
   })
 
   it('mounts the grid split dialog from the video panel card layout', () => {
@@ -48,5 +50,15 @@ describe('grid video frontend entry', () => {
     expect(dialogSource).toContain('handleEnhance(image.cellIndex)')
     expect(dialogSource).toContain('startGridSplit')
     expect(dialogSource).toContain('resplitGrid')
+  })
+
+  it('keeps loading state for multiple concurrent grid split enhance cells', () => {
+    const dialogSource = readSource('src/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/panel-card/GridSplitDialog.tsx')
+
+    expect(dialogSource).toContain('optimisticEnhanceCellIndexes')
+    expect(dialogSource).toContain('new Set<number>')
+    expect(dialogSource).toContain('activeEnhanceCellIndexes')
+    expect(dialogSource).toContain('activeEnhanceCellIndexes.has(cellIndex)')
+    expect(dialogSource).not.toContain('const activeEnhanceCellIndex =')
   })
 })

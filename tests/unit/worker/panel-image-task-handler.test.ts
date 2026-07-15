@@ -166,6 +166,12 @@ describe('worker panel-image-task-handler behavior', () => {
     expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
       projectId: 'project-1',
       variables: expect.objectContaining({
+        storyboard_text_json_input: expect.stringContaining('"image_prompt": "panel anchor prompt"'),
+      }),
+    }))
+    expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1',
+      variables: expect.objectContaining({
         storyboard_text_json_input: expect.stringContaining('"slot": "街道左侧靠墙的留白位置"'),
       }),
     }))
@@ -430,6 +436,22 @@ describe('worker panel-image-task-handler behavior', () => {
     )
   })
 
+  it('uses compact context for grid image prompt generation', async () => {
+    await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 6 }))
+
+    const call = promptMock.buildPromptAsync.mock.calls.find((args) => {
+      const first = (args as unknown as Array<{ promptId?: string }>)[0]
+      return first?.promptId === 'np_panel_grid_image'
+    }) as unknown as Array<{ variables: { storyboard_text_json_input: string } }> | undefined
+    const contextText = call?.[0].variables.storyboard_text_json_input || ''
+
+    expect(contextText).toContain('"grid_plan"')
+    expect(contextText).toContain('"cells"')
+    expect(contextText).not.toContain('preImageGridPrompt')
+    expect(contextText).not.toContain('aggregateVideoPrompt')
+    expect(contextText).not.toContain('gridCells')
+  })
+
   it('panelGridSize clamped to [1,16]', async () => {
     await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 99 }))
     expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(
@@ -466,6 +488,7 @@ describe('worker panel-image-task-handler behavior', () => {
           candidateImages: JSON.stringify(['cos/grid-1.png', 'cos/grid-2.png']),
           imageLayout: 'grid',
           gridVideoPromptAt: null,
+          duration: 6,
           gridGenerationContext: expect.stringContaining('"panelGridSize": 6'),
         }),
       }),
@@ -524,7 +547,7 @@ describe('worker panel-image-task-handler behavior', () => {
     )
   })
 
-  it('injects same-scene neighbor panels into prompt context', async () => {
+  it('injects lightweight same-scene neighbor continuity into prompt context', async () => {
     prismaMock.novelPromotionPanel.findMany.mockResolvedValueOnce([
       { panelIndex: 1, shotType: 'medium', cameraMove: 'pan', description: 'next shot', location: 'Old Town' },
     ])
@@ -534,16 +557,17 @@ describe('worker panel-image-task-handler behavior', () => {
     expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         variables: expect.objectContaining({
-          storyboard_text_json_input: expect.stringContaining('"neighbor_panels"'),
+          storyboard_text_json_input: expect.stringContaining('"neighbor_panel_continuity"'),
         }),
       }),
     )
     const call = promptMock.buildPromptAsync.mock.calls.find((args) => {
       const first = (args as unknown as Array<{ variables?: { storyboard_text_json_input?: unknown } }>)[0]
       const text = first?.variables?.storyboard_text_json_input
-      return typeof text === 'string' && text.includes('neighbor_panels')
+      return typeof text === 'string' && text.includes('neighbor_panel_continuity')
     }) as unknown as Array<{ variables: { storyboard_text_json_input: string } }> | undefined
     expect(call?.[0].variables.storyboard_text_json_input).toContain('"position": "next"')
+    expect(call?.[0].variables.storyboard_text_json_input).not.toContain('next shot')
   })
 
   it('filters out cross-scene neighbor panels', async () => {
@@ -557,7 +581,7 @@ describe('worker panel-image-task-handler behavior', () => {
       const first = (args as unknown as Array<{ variables?: { storyboard_text_json_input?: unknown } }>)[0]
       return typeof first?.variables?.storyboard_text_json_input === 'string'
     }) as unknown as Array<{ variables: { storyboard_text_json_input: string } }> | undefined
-    // 跨场景邻镜应被过滤，neighbor_panels 不出现
-    expect(call?.[0].variables.storyboard_text_json_input).not.toContain('neighbor_panels')
+    // 跨场景邻镜应被过滤，neighbor_panel_continuity 不出现
+    expect(call?.[0].variables.storyboard_text_json_input).not.toContain('neighbor_panel_continuity')
   })
 })
