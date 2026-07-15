@@ -22,6 +22,12 @@ const generatorApiMock = vi.hoisted(() => ({
   generateVideo: vi.fn(),
 }))
 
+const configServiceMock = vi.hoisted(() => ({
+  getProjectModelConfig: vi.fn(),
+  getUserModelConfig: vi.fn(),
+  resolveProjectModelCapabilityGenerationOptions: vi.fn(),
+}))
+
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/task/service', () => taskServiceMock)
 vi.mock('@/lib/async-poll', () => asyncPollMock)
@@ -33,11 +39,7 @@ vi.mock('@/lib/storage', () => ({
 }))
 vi.mock('@/lib/fonts', () => ({ initializeFonts: vi.fn(), createLabelSVG: vi.fn() }))
 vi.mock('@/lib/media-process', () => ({ processMediaResult: vi.fn() }))
-vi.mock('@/lib/config-service', () => ({
-  getProjectModelConfig: vi.fn(),
-  getUserModelConfig: vi.fn(),
-  resolveProjectModelCapabilityGenerationOptions: vi.fn(),
-}))
+vi.mock('@/lib/config-service', () => configServiceMock)
 
 import { resolveImageSourceFromGeneration, resolveVideoSourceFromGeneration } from '@/lib/workers/utils'
 
@@ -59,7 +61,10 @@ function buildJob(): Job<TaskJobData> {
 
 describe('worker utils video generation resume', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
+    taskServiceMock.isTaskActive.mockResolvedValue(true)
+    taskServiceMock.trySetTaskExternalId.mockResolvedValue(true)
+    configServiceMock.resolveProjectModelCapabilityGenerationOptions.mockResolvedValue({})
   })
 
   it('continues polling from existing externalId without re-submitting generation', async () => {
@@ -113,5 +118,24 @@ describe('worker utils video generation resume', () => {
     expect(prismaMock.task.findUnique).not.toHaveBeenCalled()
     expect(asyncPollMock.pollAsyncTask).not.toHaveBeenCalled()
     expect(generatorApiMock.generateImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('adds video generation context to provider failures', async () => {
+    prismaMock.task.findUnique.mockResolvedValueOnce({ externalId: null })
+    generatorApiMock.generateVideo.mockResolvedValueOnce({
+      success: false,
+      error: 'fetch failed',
+    })
+
+    await expect(resolveVideoSourceFromGeneration(buildJob(), {
+      userId: 'user-1',
+      modelId: 'video-model',
+      imageUrl: 'https://cos.example/source.jpg',
+      options: {
+        prompt: 'animate this frame',
+        duration: 5,
+        resolution: '1080p',
+      },
+    })).rejects.toThrow('VIDEO_GENERATION_FAILED: model=video-model imageKind=url reason=fetch failed')
   })
 })

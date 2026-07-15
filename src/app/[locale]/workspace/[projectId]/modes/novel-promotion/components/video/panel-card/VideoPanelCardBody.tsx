@@ -55,6 +55,11 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
   const showsPromptEditor = !layout.isLastFrame || layout.isLinked
   const showsFirstLastFrameActions = layout.isLinked && !!layout.nextPanel
   const isGridVideoPanel = panel.imageLayout === 'grid'
+  const hasDirectorStoryboardBoards = computed.directorStoryboardBoards.length > 0
+  const showVideoSourceControls = isGridVideoPanel || hasDirectorStoryboardBoards
+  const videoSourceForGeneration = isGridVideoPanel || computed.gridVideoSource === 'director_storyboard'
+    ? computed.gridVideoSource
+    : undefined
   const selectedDirectorStoryboardBoard = computed.directorStoryboardBoards.find((board) => board.id === computed.directorStoryboardBoardId)
   const generateVideoButtonLabel = taskStatus.isVideoTaskRunning
     ? taskStatus.taskRunningVideoLabel
@@ -273,9 +278,9 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                         panel.panelId,
                         panel.imageLayout,
                         undefined,
-                        isGridVideoPanel ? computed.gridVideoSource : undefined,
+                        videoSourceForGeneration,
                         resolvedVideoReference.selectedImages,
-                        computed.gridVideoSource === 'director_storyboard' ? computed.directorStoryboardBoardId : undefined,
+                        videoSourceForGeneration === 'director_storyboard' ? computed.directorStoryboardBoardId : undefined,
                       )}
                     disabled={
                       taskStatus.isVideoTaskRunning
@@ -309,36 +314,40 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                   </div>
                 </div>
 
-                {isGridVideoPanel && (
+                {showVideoSourceControls && (
                   <div className="mt-2 space-y-2 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-2 py-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={actions.onOpenGridSplit}
-                        disabled={!panel.panelId || !panel.imageUrl}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--glass-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <AppIcon name="scissors" className="h-3.5 w-3.5" />
-                        {t('panelCard.splitGrid')}
-                      </button>
-                      <span className="text-[10px] text-[var(--glass-text-tertiary)]">
-                        {computed.hasGridSplitImages
-                          ? t('panelCard.gridSplitReady', { count: panel.gridSplitImages?.length || 0 })
-                          : t('panelCard.gridSplitNotReady')}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-0.5">
-                      <button
-                        type="button"
-                        onClick={() => actions.onGridVideoSourceChange('split')}
-                        disabled={!computed.hasGridSplitImages}
-                        className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${computed.gridVideoSource === 'split'
-                            ? 'bg-[var(--glass-accent-from)] text-white'
-                            : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
-                          }`}
-                      >
-                        {t('panelCard.useSplitGridVideo')}
-                      </button>
+                    {isGridVideoPanel && (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={actions.onOpenGridSplit}
+                          disabled={!panel.panelId || !panel.imageUrl}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--glass-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <AppIcon name="scissors" className="h-3.5 w-3.5" />
+                          {t('panelCard.splitGrid')}
+                        </button>
+                        <span className="text-[10px] text-[var(--glass-text-tertiary)]">
+                          {computed.hasGridSplitImages
+                            ? t('panelCard.gridSplitReady', { count: panel.gridSplitImages?.length || 0 })
+                            : t('panelCard.gridSplitNotReady')}
+                        </span>
+                      </div>
+                    )}
+                    <div className={`grid overflow-hidden rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-0.5 ${isGridVideoPanel && hasDirectorStoryboardBoards ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      {isGridVideoPanel && (
+                        <button
+                          type="button"
+                          onClick={() => actions.onGridVideoSourceChange('split')}
+                          disabled={!computed.hasGridSplitImages}
+                          className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${computed.gridVideoSource === 'split'
+                              ? 'bg-[var(--glass-accent-from)] text-white'
+                              : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
+                            }`}
+                        >
+                          {t('panelCard.useSplitGridVideo')}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => actions.onGridVideoSourceChange('original')}
@@ -349,16 +358,18 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                       >
                         {t('panelCard.useOriginalGridVideo')}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => actions.onGridVideoSourceChange('director_storyboard')}
-                        className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${computed.gridVideoSource === 'director_storyboard'
-                            ? 'bg-[var(--glass-accent-from)] text-white'
-                            : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
-                          }`}
-                      >
-                        导演台分镜板
-                      </button>
+                      {hasDirectorStoryboardBoards && (
+                        <button
+                          type="button"
+                          onClick={() => actions.onGridVideoSourceChange('director_storyboard')}
+                          className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${computed.gridVideoSource === 'director_storyboard'
+                              ? 'bg-[var(--glass-accent-from)] text-white'
+                              : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
+                            }`}
+                        >
+                          导演台分镜板
+                        </button>
+                      )}
                     </div>
                     {computed.gridVideoSource === 'director_storyboard' && (
                       <div className="flex flex-wrap gap-1.5">
@@ -392,10 +403,12 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                         ) : null}
                       </div>
                     )}
-                    <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[var(--glass-text-tertiary)]">
-                      <AppIcon name="info" className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                      <span>{t('panelCard.gridSplitVideoHint')}</span>
-                    </div>
+                    {isGridVideoPanel && (
+                      <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[var(--glass-text-tertiary)]">
+                        <AppIcon name="info" className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                        <span>{t('panelCard.gridSplitVideoHint')}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 

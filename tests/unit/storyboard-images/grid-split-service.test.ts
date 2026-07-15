@@ -266,6 +266,36 @@ describe('ensureGridSplitImagesForPanel', () => {
     expect(onProgress).toHaveBeenCalledWith({ completed: 1, total: 1, cellIndex: 2 })
   })
 
+  it('adds grid split enhance context to provider failures', async () => {
+    const context = JSON.stringify({
+      gridSplitMetadata: { panelGridSize: 2, sourceGridImageUrl: 'images/grid.jpg' },
+      gridSplitImages: [
+        { cellIndex: 1, imageUrl: 'images/cell-1.jpg', panelGridSize: 2 },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', panelGridSize: 2 },
+      ],
+      gridVideoFrames: [
+        { cellIndex: 1, imageUrl: 'images/cell-1.jpg', videoPrompt: '镜头一' },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', videoPrompt: '镜头二' },
+      ],
+    })
+    generateImageMock.mockResolvedValueOnce({ success: false, error: 'fetch failed' })
+
+    await expect(enhanceGridSplitImagesForPanel({
+      panel: {
+        id: 'panel-context',
+        imageUrl: 'images/grid.jpg',
+        gridGenerationContext: context,
+        characters: null,
+        location: null,
+      },
+      projectData: { videoRatio: '16:9', characters: [], locations: [] },
+      panelGridSize: 2,
+      userId: 'user-1',
+      modelId: 'edit-model',
+      cellIndex: 2,
+    })).rejects.toThrow('GRID_SPLIT_ENHANCE_FAILED: cellIndex=2 model=edit-model referenceImageCount=1 reason=fetch failed')
+  })
+
   it('merges single-cell enhance into the latest grid context before persisting', async () => {
     const staleContext = JSON.stringify({
       gridSplitMetadata: { panelGridSize: 2, sourceGridImageUrl: 'images/grid.jpg' },

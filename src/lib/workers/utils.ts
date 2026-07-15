@@ -40,6 +40,23 @@ function summarizeImageRef(ref: string | null | undefined): Record<string, unkno
   }
 }
 
+function imageRefKind(ref: string | null | undefined): 'data-url' | 'url' | 'missing' {
+  if (typeof ref !== 'string' || !ref) return 'missing'
+  return ref.startsWith('data:') ? 'data-url' : 'url'
+}
+
+function formatGenerationFailure(
+  code: string,
+  params: Record<string, string | number | boolean | null | undefined>,
+  reason: string | undefined,
+): string {
+  const details = Object.entries(params)
+    .filter((entry): entry is [string, string | number | boolean] => entry[1] !== undefined && entry[1] !== null)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' ')
+  return `${code}: ${details} reason=${reason || 'unknown provider failure'}`
+}
+
 /**
  * 为日志摘要生成 options：把可能超长的 referenceImages/videoReferenceImages（base64 数组）替换为逐项摘要，
  * 其余字段原样保留。
@@ -326,7 +343,10 @@ export async function resolveImageSourceFromGeneration(
     }),
   )
   if (!result.success) {
-    throw new Error(result.error || 'Image generation failed')
+    throw new Error(formatGenerationFailure('IMAGE_GENERATION_FAILED', {
+      model: params.modelId,
+      referenceImageCount: params.options?.referenceImages?.length ?? 0,
+    }, result.error))
   }
 
   if (result.imageUrl) {
@@ -451,7 +471,10 @@ export async function resolveImageSourcesFromGeneration(
     }),
   )
   if (!result.success) {
-    throw new Error(result.error || 'Image generation failed')
+    throw new Error(formatGenerationFailure('IMAGE_GENERATION_FAILED', {
+      model: params.modelId,
+      referenceImageCount: params.options?.referenceImages?.length ?? 0,
+    }, result.error))
   }
 
   // 优先使用多图列表
@@ -616,7 +639,13 @@ export async function resolveVideoSourceFromGeneration(
     }),
   )
   if (!result.success) {
-    throw new Error(result.error || 'Video generation failed')
+    throw new Error(formatGenerationFailure('VIDEO_GENERATION_FAILED', {
+      model: params.modelId,
+      imageKind: imageRefKind(params.imageUrl),
+      lastFrameKind: params.options?.lastFrameImageUrl ? imageRefKind(params.options.lastFrameImageUrl) : undefined,
+      videoReferenceCount: params.options?.videoReferenceImages?.length ? params.options.videoReferenceImages.length : undefined,
+      generationMode: params.options?.generationMode,
+    }, result.error))
   }
 
   if (result.videoUrl) {

@@ -15,7 +15,7 @@ import {
   toSignedUrlIfCos,
   uploadVideoSourceToCos,
 } from './utils'
-import { normalizeToBase64ForGeneration, normalizeToOriginalMediaUrl } from '@/lib/media/outbound-image'
+import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { resolveEffectiveVideoDurationSeconds } from '@/lib/model-capabilities/video-duration'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
@@ -76,21 +76,27 @@ function extractVideoReferenceImages(payload: AnyObj): string[] {
   return images
 }
 
-function shouldUseFetchableImageUrlsForVideoModel(modelKey: string): boolean {
-  const parsed = parseModelKeyStrict(modelKey)
-  return parsed?.provider === 'starrouter'
-}
-
-function resolveDirectorStoryboardBoardImage(panel: PanelRecord, boardId: unknown): string | null {
-  if (typeof boardId !== 'string' || !boardId.trim()) return null
-  if (typeof panel.directorLayout !== 'string' || !panel.directorLayout.trim()) return null
+function resolveDirectorStoryboardBoardImages(panel: PanelRecord, boardId: unknown): string[] {
+  if (typeof boardId !== 'string' || !boardId.trim()) return []
+  if (typeof panel.directorLayout !== 'string' || !panel.directorLayout.trim()) return []
   try {
     const project = parseDirectorProject(JSON.parse(panel.directorLayout))
+    if (!project) return []
     const board = project?.directorStoryboardBoards?.find((item) => item.id === boardId.trim())
-    return board?.coverImageUrl || null
+    if (!board) return []
+    const assetsById = new Map((project.directorStoryboardAssets || []).map((asset) => [asset.id, asset]))
+    const imageUrls = board.items
+      .map((item) => assetsById.get(item.assetId)?.imageUrl?.trim())
+      .filter((imageUrl): imageUrl is string => !!imageUrl)
+    if (imageUrls.length > 0) return [...new Set(imageUrls)]
+    return board.coverImageUrl ? [board.coverImageUrl] : []
   } catch {
-    return null
+    return []
   }
+}
+
+function isStarRouterVideoModel(modelKey: string): boolean {
+  return parseModelKeyStrict(modelKey)?.provider === 'starrouter'
 }
 
 async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number) {
@@ -146,11 +152,11 @@ async function generateVideoForPanel(
     typeof payload.firstLastFrame === 'object' && payload.firstLastFrame !== null
       ? (payload.firstLastFrame as AnyObj)
       : null
-  const directorStoryboardImageUrl = resolveDirectorStoryboardBoardImage(panel, payload.directorStoryboardBoardId)
-  if (payload.directorStoryboardBoardId && !directorStoryboardImageUrl) {
+  const directorStoryboardImageUrls = resolveDirectorStoryboardBoardImages(panel, payload.directorStoryboardBoardId)
+  if (payload.directorStoryboardBoardId && directorStoryboardImageUrls.length === 0) {
     throw new Error('DIRECTOR_STORYBOARD_BOARD_NOT_FOUND')
   }
-  const isDirectorStoryboardVideo = !!directorStoryboardImageUrl
+  const isDirectorStoryboardVideo = directorStoryboardImageUrls.length > 0
   if (!isDirectorStoryboardVideo && !panel.imageUrl) {
     throw new Error(`Panel ${panel.id} has no imageUrl`)
   }
@@ -304,7 +310,8 @@ async function generateVideoForPanel(
     },
   })
 
-  let sourceImageStorageKeyOrUrl = directorStoryboardImageUrl || panel.imageUrl
+  let videoSourceImageStorageKeyOrUrls = directorStoryboardImageUrls
+  let sourceImageStorageKeyOrUrl = videoSourceImageStorageKeyOrUrls[0] || panel.imageUrl
   if (isGridImage && !firstLastFramePayload && !isDirectorStoryboardVideo && gridVideoSource === 'split') {
     let gridVideoFrames = extractGridVideoFrames(panel.gridGenerationContext)
     const splitResult = await ensureGridSplitImagesForPanel({
@@ -327,6 +334,14 @@ async function generateVideoForPanel(
         prompt = gridFrameSelection.aggregatePrompt
       }
     }
+    const gridSourceFrames = gridVideoFrames.length > 0
+      ? gridVideoFrames.map((frame) => ({ cellIndex: frame.cellIndex, imageUrl: frame.imageUrl }))
+      : splitImages.map((image) => ({ cellIndex: image.cellIndex, imageUrl: image.imageUrl }))
+    videoSourceImageStorageKeyOrUrls = gridSourceFrames
+      .slice()
+      .sort((left, right) => left.cellIndex - right.cellIndex)
+      .map((frame) => frame.imageUrl)
+      .filter((imageUrl, index, all) => !!imageUrl && all.indexOf(imageUrl) === index)
   }
 
   const sourceImageUrl = toSignedUrlIfCos(sourceImageStorageKeyOrUrl, 3600)
@@ -334,7 +349,7 @@ async function generateVideoForPanel(
     throw new Error(`Panel ${panel.id} image url invalid`)
   }
   let lastFrameImageStorageKeyOrUrl: string | undefined
-  let generationMode: VideoGenerationMode = directorStoryboardImageUrl
+  let generationMode: VideoGenerationMode = isDirectorStoryboardVideo
     ? 'director_storyboard'
     : firstLastFramePayload
       ? 'firstlastframe'
@@ -379,13 +394,16 @@ async function generateVideoForPanel(
     }
   }
 
-  const useFetchableImageUrls = shouldUseFetchableImageUrlsForVideoModel(model)
-  const normalizeVideoImage = useFetchableImageUrls
-    ? normalizeToOriginalMediaUrl
-    : normalizeToBase64ForGeneration
+  const normalizeVideoImage = normalizeToBase64ForGeneration
   const sourceImageInput = await normalizeVideoImage(sourceImageUrl)
+  const sourceReferenceImages = videoSourceImageStorageKeyOrUrls.length > 0
+    ? videoSourceImageStorageKeyOrUrls
+    : [sourceImageStorageKeyOrUrl].filter((image): image is string => typeof image === 'string' && !!image)
+  const requestedReferenceImages = extractVideoReferenceImages(payload)
   const videoReferenceImages = await Promise.all(
-    extractVideoReferenceImages(payload).map(async (image) => {
+    [...sourceReferenceImages, ...requestedReferenceImages]
+      .filter((image, index, all) => !!image && all.indexOf(image) === index)
+      .map(async (image) => {
       const signedUrl = toSignedUrlIfCos(image, 3600)
       if (!signedUrl) return null
       return normalizeVideoImage(signedUrl)
@@ -393,7 +411,10 @@ async function generateVideoForPanel(
   )
   const normalizedVideoReferenceImages = videoReferenceImages.filter((image): image is string => !!image)
   const lastFrameImageUrl = toSignedUrlIfCos(lastFrameImageStorageKeyOrUrl, 3600)
-  const lastFrameImageInput = lastFrameImageUrl ? await normalizeVideoImage(lastFrameImageUrl) : undefined
+  const usesStarRouterMultiImageReference = isStarRouterVideoModel(model) && normalizedVideoReferenceImages.length > 1
+  const lastFrameImageInput = lastFrameImageUrl && !usesStarRouterMultiImageReference
+    ? await normalizeVideoImage(lastFrameImageUrl)
+    : undefined
 
   // 面板上持久化的时长（LLM 分析 / 用户手动编辑 / 宫格重写产出）优先于
   // UI 全局默认值；按实际使用的模型（首/尾帧模式下取 flModel）做合法值对齐。
@@ -407,7 +428,7 @@ async function generateVideoForPanel(
       prompt,
       ...(projectVideoRatio ? { aspectRatio: projectVideoRatio } : {}),
       ...generationOptions,
-      generationMode: generationMode === 'director_storyboard' ? 'normal' : generationMode,
+      generationMode: generationMode === 'director_storyboard' || usesStarRouterMultiImageReference ? 'normal' : generationMode,
       // 面板上持久化的时长（LLM 分析 / 用户手动编辑 / 宫格重写产出）优先于
       // UI 全局默认值；UI 下拉若未来要支持逐片覆盖，可在 payload 中加 _panelDurationOverride。
       ...(typeof panelDurationSeconds === 'number' ? { duration: panelDurationSeconds } : {}),

@@ -102,14 +102,14 @@ describe('generateStarRouterVideo', () => {
     const imageItem = content.find(c => c.type === 'image_url')
     expect(imageItem).toBeDefined()
     expect(imageItem?.image_url).toEqual({ url: 'https://example.com/frame.png' })
-    expect(imageItem?.role).toBe('first_frame')
+    expect(imageItem).not.toHaveProperty('role')
 
     // Verify endpoint changed to the new Volcengine Doubao API
     const endpoint = fetchMock.mock.calls[0]?.[0] as string
     expect(endpoint).toBe('https://starrouter.io/volcengine/doubao/contents/generations/tasks')
   })
 
-  it('omits additional reference images because StarRouter disallows mixing first frame and references', async () => {
+  it('submits multiple image_url items without non-official role fields', async () => {
     await generateStarRouterVideo({
       userId: 'user-1',
       imageUrl: 'https://example.com/frame.png',
@@ -131,13 +131,14 @@ describe('generateStarRouterVideo', () => {
     const body = JSON.parse(String(request?.body)) as Record<string, unknown>
     const imageItems = (body.content as Array<Record<string, unknown>>).filter(c => c.type === 'image_url')
 
-    expect(imageItems).toHaveLength(1)
-    expect(imageItems[0]?.role).toBe('first_frame')
+    expect(imageItems).toHaveLength(2)
+    expect(imageItems.every((item) => !('role' in item))).toBe(true)
     expect(imageItems[0]?.image_url).toEqual({ url: 'https://example.com/frame.png' })
+    expect(imageItems[1]?.image_url).toEqual({ url: 'https://example.com/character.png' })
   })
 
-  it('rejects data url image inputs before submitting to StarRouter', async () => {
-    await expect(generateStarRouterVideo({
+  it('accepts data url image inputs for StarRouter first frame content', async () => {
+    await generateStarRouterVideo({
       userId: 'user-1',
       imageUrl: 'data:image/png;base64,AAAA',
       prompt: 'a cat running',
@@ -147,13 +148,18 @@ describe('generateStarRouterVideo', () => {
         modelKey: 'starrouter::dreamina-seedance-2-0-fast-260128',
         duration: 5,
       },
-    })).rejects.toThrow('STARSTONE_VIDEO_IMAGE_URL_FETCHABLE_REQUIRED')
+    })
 
-    expect(fetch).not.toHaveBeenCalled()
+    const fetchMock = vi.mocked(fetch)
+    const request = fetchMock.mock.calls[0]?.[1]
+    const body = JSON.parse(String(request?.body)) as Record<string, unknown>
+    const imageItem = (body.content as Array<Record<string, unknown>>).find(c => c.type === 'image_url')
+    expect(imageItem?.image_url).toEqual({ url: 'data:image/png;base64,AAAA' })
+    expect(imageItem).not.toHaveProperty('role')
   })
 
-  it('rejects data url video reference images before submitting to StarRouter', async () => {
-    await expect(generateStarRouterVideo({
+  it('accepts data url video reference images as StarRouter first frame content', async () => {
+    await generateStarRouterVideo({
       userId: 'user-1',
       imageUrl: 'https://example.com/frame.png',
       prompt: 'a cat running',
@@ -164,8 +170,43 @@ describe('generateStarRouterVideo', () => {
         duration: 5,
         videoReferenceImages: ['data:image/png;base64,AAAA'],
       },
-    })).rejects.toThrow('STARSTONE_VIDEO_IMAGE_URL_FETCHABLE_REQUIRED')
+    })
 
-    expect(fetch).not.toHaveBeenCalled()
+    const fetchMock = vi.mocked(fetch)
+    const request = fetchMock.mock.calls[0]?.[1]
+    const body = JSON.parse(String(request?.body)) as Record<string, unknown>
+    const imageItem = (body.content as Array<Record<string, unknown>>).find(c => c.type === 'image_url')
+    expect(imageItem?.image_url).toEqual({ url: 'data:image/png;base64,AAAA' })
+    expect(imageItem).not.toHaveProperty('role')
+  })
+
+  it('passes Volcengine official video fields through at the top level', async () => {
+    await generateStarRouterVideo({
+      userId: 'user-1',
+      imageUrl: 'https://example.com/frame.png',
+      prompt: 'a cat running',
+      options: {
+        provider: 'starrouter',
+        modelId: 'dreamina-seedance-2-0-fast-260128',
+        modelKey: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        ratio: '9:16',
+        duration: 5,
+        seed: 12345,
+        watermark: false,
+        generate_audio: true,
+        camerafixed: false,
+      },
+    })
+
+    const fetchMock = vi.mocked(fetch)
+    const request = fetchMock.mock.calls[0]?.[1]
+    const body = JSON.parse(String(request?.body)) as Record<string, unknown>
+
+    expect(body.ratio).toBe('9:16')
+    expect(body.duration).toBe(5)
+    expect(body.seed).toBe(12345)
+    expect(body.watermark).toBe(false)
+    expect(body.generate_audio).toBe(true)
+    expect(body.camerafixed).toBe(false)
   })
 })

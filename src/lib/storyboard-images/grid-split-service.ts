@@ -411,7 +411,8 @@ export async function enhanceGridSplitImagesForPanel(
       resolution: '1080p',
     })
     if (!generated.success) {
-      throw new Error(generated.error || `GRID_SPLIT_ENHANCE_FAILED:${image.cellIndex}`)
+      const reason = generated.error || 'unknown provider failure'
+      throw new Error(`GRID_SPLIT_ENHANCE_FAILED: cellIndex=${image.cellIndex} model=${params.modelId} referenceImageCount=${referenceImages.length} reason=${reason}`)
     }
     const generatedSource = generated.imageUrl || generated.imageBase64
     if (!generatedSource) {

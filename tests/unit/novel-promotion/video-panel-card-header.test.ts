@@ -28,7 +28,7 @@ function createRuntime(overrides: Partial<VideoPanelRuntime> = {}): VideoPanelRu
       storyboardId: 'sb-1',
       panelIndex: 2,
       panelId: 'panel-2',
-      imageUrl: 'https://example.com/panel-source.jpg',
+      imageUrl: 'images/panel-source.jpg',
       videoUrl: null,
       videoGenerationMode: null,
       lipSyncVideoUrl: null,
@@ -37,7 +37,7 @@ function createRuntime(overrides: Partial<VideoPanelRuntime> = {}): VideoPanelRu
           id: 'board-1',
           name: '导演分镜图',
           createdAt: 1,
-          coverImageUrl: 'https://example.com/director-board.jpg',
+          coverImageUrl: 'images/director-board.jpg',
           assetIds: [],
           items: [],
         },
@@ -105,6 +105,6 @@ describe('VideoPanelCardHeader', () => {
   it('uses the selected director storyboard board cover as the shot thumbnail', () => {
     render(React.createElement(VideoPanelCardHeader, { runtime: createRuntime() }))
 
-    expect(screen.getByAltText('镜头 3')).toHaveAttribute('src', 'https://example.com/director-board.jpg')
+    expect(screen.getByAltText('镜头 3').getAttribute('src')).toBe('/api/storage/sign?key=images%2Fdirector-board.jpg')
   })
 })

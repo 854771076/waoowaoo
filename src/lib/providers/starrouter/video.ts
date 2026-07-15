@@ -53,7 +53,7 @@ function readTaskIdFromResponse(data: StarRouterVideoSubmitResponse): string {
 
 interface StarRouterVideoSubmitBody {
   model: string
-  content: Array<{ type: string; text?: string; image_url?: { url: string }; role?: 'first_frame' | 'reference_image' }>
+  content: Array<{ type: string; text?: string; image_url?: { url: string } }>
   resolution?: string
   ratio?: string
   duration?: number
@@ -64,6 +64,7 @@ interface StarRouterVideoSubmitBody {
   response_format?: string
   user?: string
   metadata?: Record<string, unknown>
+  [key: string]: unknown
 }
 
 // Volcengine Doubao 接口直接使用 resolution 和 ratio 字符串，无需映射尺寸
@@ -97,12 +98,6 @@ function readOptionalStringArray(value: unknown): string[] {
   return result
 }
 
-function assertFetchableImageUrl(value: string): void {
-  if (value.startsWith('data:')) {
-    throw new Error('STARSTONE_VIDEO_IMAGE_URL_FETCHABLE_REQUIRED')
-  }
-}
-
 function readOptionalRecord(value: unknown, fieldName: string): Record<string, unknown> | undefined {
   if (value === undefined) return undefined
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -111,8 +106,37 @@ function readOptionalRecord(value: unknown, fieldName: string): Record<string, u
   return { ...(value as Record<string, unknown>) }
 }
 
+function isPassthroughValue(value: unknown): value is string | number | boolean | string[] | Record<string, unknown> {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true
+  if (Array.isArray(value)) return value.every((item) => typeof item === 'string')
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function collectOfficialPassthroughOptions(options: StarRouterGenerateRequestOptions): Record<string, unknown> {
+  const internalOptionKeys = new Set([
+    'provider',
+    'modelId',
+    'modelKey',
+    'prompt',
+    'aspectRatio',
+    'aspect_ratio',
+    'outputFormat',
+    'generateAudio',
+    'videoReferenceImages',
+  ])
+  const passthrough: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(options)) {
+    if (value === undefined || internalOptionKeys.has(key)) continue
+    if (!isPassthroughValue(value)) {
+      throw new Error(`STARSTONE_VIDEO_OPTION_INVALID: ${key}`)
+    }
+    passthrough[key] = value
+  }
+  return passthrough
+}
+
 function assertNoUnsupportedOptions(options: StarRouterGenerateRequestOptions): void {
-  const allowedOptionKeys = new Set([
+  const reservedOptionKeys = new Set([
     'provider',
     'modelId',
     'modelKey',
@@ -120,6 +144,7 @@ function assertNoUnsupportedOptions(options: StarRouterGenerateRequestOptions): 
     'duration',
     'aspectRatio',
     'aspect_ratio',
+    'ratio',
     'fps',
     'seed',
     'n',
@@ -135,8 +160,8 @@ function assertNoUnsupportedOptions(options: StarRouterGenerateRequestOptions): 
   ])
   for (const [key, value] of Object.entries(options)) {
     if (value === undefined) continue
-    if (!allowedOptionKeys.has(key)) {
-      throw new Error(`STARSTONE_VIDEO_OPTION_UNSUPPORTED: ${key}`)
+    if (!reservedOptionKeys.has(key) && !isPassthroughValue(value)) {
+      throw new Error(`STARSTONE_VIDEO_OPTION_INVALID: ${key}`)
     }
   }
 }
@@ -149,7 +174,6 @@ function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
   if (!imageUrl) {
     throw new Error('STARSTONE_VIDEO_IMAGE_URL_REQUIRED')
   }
-  assertFetchableImageUrl(imageUrl)
   const modelId = readTrimmedString(params.options.modelId)
   if (!modelId) {
     throw new Error('STARSTONE_VIDEO_MODEL_ID_REQUIRED')
@@ -163,38 +187,38 @@ function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
   const responseFormat = readTrimmedString(params.options.outputFormat) || readTrimmedString(params.options.response_format)
   const user = readTrimmedString(params.options.user)
   const resolution = readTrimmedString(params.options.resolution)
-  const ratio = readTrimmedString(params.options.aspectRatio) || readTrimmedString(params.options.aspect_ratio)
+  const ratio = readTrimmedString(params.options.ratio)
+    || readTrimmedString(params.options.aspectRatio)
+    || readTrimmedString(params.options.aspect_ratio)
+  const watermark = readOptionalBoolean(params.options.watermark)
 
   // metadata 是 StarRouter 的模型扩展参数入口，必须保留调用方传入的负向词、风格、质量等字段。
   const metadata = readOptionalRecord(params.options.metadata, 'metadata') ?? {}
 
-  // generate_audio 放入 metadata（文档说 metadata 放扩展参数）
   const generateAudio = readOptionalBoolean(params.options.generateAudio)
     ?? readOptionalBoolean(params.options.generate_audio)
-  if (typeof generateAudio === 'boolean') {
-    metadata.generate_audio = generateAudio
-  }
 
   const videoReferenceImages = readOptionalStringArray(params.options.videoReferenceImages)
 
-  // StarRouter 当前接口不允许 first_frame 与 reference_image 混用；
-  // 视频阶段传入的多张参考图只取第一张作为起始帧，其余由提示词承担一致性约束。
+  // StarRouter 不允许 first_frame/last_frame 与 reference_image 混用。
+  // 单图走首帧模式；多图走纯参考图模式，支持拆分格/导演分镜板等多图输入。
   const content: StarRouterVideoSubmitBody['content'] = []
   if (prompt) {
     content.push({ type: 'text', text: prompt })
   }
-  const contentImageUrl = videoReferenceImages[0] || imageUrl
-  assertFetchableImageUrl(contentImageUrl)
-  content.push({
-    type: 'image_url',
-    image_url: { url: contentImageUrl },
-    role: 'first_frame',
-  })
+  const contentImageUrls = videoReferenceImages.length > 0 ? videoReferenceImages : [imageUrl]
+  for (const contentImageUrl of contentImageUrls) {
+    content.push({
+      type: 'image_url',
+      image_url: { url: contentImageUrl },
+    })
+  }
 
   const submitBody: StarRouterVideoSubmitBody = {
+    ...collectOfficialPassthroughOptions(params.options),
     model: modelId,
     content,
-    watermark: false,
+    watermark: watermark ?? false,
   }
   if (typeof duration === 'number') submitBody.duration = duration
   if (resolution) submitBody.resolution = resolution
@@ -204,6 +228,7 @@ function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
   if (typeof n === 'number') submitBody.n = n
   if (responseFormat) submitBody.response_format = responseFormat
   if (user) submitBody.user = user
+  if (typeof generateAudio === 'boolean') submitBody.generate_audio = generateAudio
   if (Object.keys(metadata).length > 0) submitBody.metadata = metadata
 
   return {

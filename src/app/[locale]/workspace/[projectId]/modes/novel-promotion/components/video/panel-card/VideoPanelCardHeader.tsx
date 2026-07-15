@@ -4,6 +4,7 @@ import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 
 import type { VideoPanelRuntime } from './hooks/useVideoPanelActions'
 import { AppIcon } from '@/components/ui/icons'
+import { toDisplayImageUrl } from '@/lib/media/image-url'
 
 interface VideoPanelCardHeaderProps {
   runtime: VideoPanelRuntime
@@ -34,6 +35,14 @@ export default function VideoPanelCardHeader({ runtime, onOpenHistory, historyCo
 
   const hasVisibleBaseVideo = !!media.baseVideoUrl
   const showFirstLastFrameSwitch = layout.hasNext
+  const selectedDirectorStoryboardBoard = panel.directorStoryboardBoards?.find(
+    (board) => board.id === runtime.computed.directorStoryboardBoardId,
+  ) || panel.directorStoryboardBoards?.[0]
+  const shotThumbnailUrl = selectedDirectorStoryboardBoard?.coverImageUrl || panel.imageUrl || ''
+  const displayShotThumbnailUrl = toDisplayImageUrl(shotThumbnailUrl) || ''
+  const videoSourceForGeneration = panel.imageLayout === 'grid' || runtime.computed.gridVideoSource === 'director_storyboard'
+    ? runtime.computed.gridVideoSource
+    : undefined
 
   return (
     <div className="bg-[var(--glass-bg-muted)] flex items-center justify-center relative" style={{ aspectRatio: player.cssAspectRatio }}>
@@ -53,7 +62,7 @@ export default function VideoPanelCardHeader({ runtime, onOpenHistory, historyCo
           onClick={() => void player.handlePlayClick()}
         >
           <MediaImageWithLoading
-            src={panel.imageUrl || ''}
+            src={displayShotThumbnailUrl}
             alt={t('panelCard.shot', { number: panelIndex + 1 })}
             containerClassName="w-full h-full bg-black"
             className="w-full h-full object-contain bg-black"
@@ -64,9 +73,9 @@ export default function VideoPanelCardHeader({ runtime, onOpenHistory, historyCo
             </div>
           </div>
         </div>
-      ) : panel.imageUrl ? (
+      ) : displayShotThumbnailUrl ? (
         <MediaImageWithLoading
-          src={panel.imageUrl}
+          src={displayShotThumbnailUrl}
           alt={t('panelCard.shot', { number: panelIndex + 1 })}
           containerClassName="w-full h-full bg-[var(--glass-bg-muted)]"
           className={`w-full h-full object-contain bg-[var(--glass-bg-muted)] ${media.onPreviewImage ? 'cursor-zoom-in' : ''}`}
@@ -146,9 +155,9 @@ export default function VideoPanelCardHeader({ runtime, onOpenHistory, historyCo
               panel.panelId,
               panel.imageLayout,
               undefined,
-              panel.imageLayout === 'grid' ? runtime.computed.gridVideoSource : undefined,
+              videoSourceForGeneration,
               runtime.videoReference.selectedImages,
-              runtime.computed.gridVideoSource === 'director_storyboard'
+              videoSourceForGeneration === 'director_storyboard'
                 ? runtime.computed.directorStoryboardBoardId
                 : undefined,
             )}

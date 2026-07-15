@@ -8,6 +8,9 @@ type PanelRow = {
   id: string
   videoUrl: string | null
   imageUrl: string | null
+  imageLayout?: string | null
+  gridGenerationContext?: string | null
+  gridVideoPromptAt?: Date | null
   videoPrompt: string | null
   description: string | null
   firstLastFramePrompt: string | null
@@ -45,6 +48,15 @@ const modelConfigMock = vi.hoisted(() => ({
 const outboundImageMock = vi.hoisted(() => ({
   normalizeToBase64ForGeneration: vi.fn(async (input: string) => input),
   normalizeToOriginalMediaUrl: vi.fn(async (input: string) => input),
+}))
+const gridSplitMock = vi.hoisted(() => ({
+  ensureGridSplitImagesForPanel: vi.fn<() => Promise<{
+    images: Array<{ cellIndex: number; panelGridSize: number; imageUrl: string }>
+    gridGenerationContext: string | null
+  }>>(async () => ({
+    images: [],
+    gridGenerationContext: null,
+  })),
 }))
 const concurrencyGateMock = vi.hoisted(() => ({
   withUserConcurrencyGate: vi.fn(async <T>(input: {
@@ -105,6 +117,7 @@ vi.mock('@/lib/api-config', () => ({
 }))
 vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
+vi.mock('@/lib/storyboard-images/grid-split-service', () => gridSplitMock)
 
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
@@ -148,6 +161,10 @@ describe('worker video processor behavior', () => {
     modelConfigMock.parseModelKeyStrict.mockReturnValue({ provider: 'fal' })
     outboundImageMock.normalizeToBase64ForGeneration.mockImplementation(async (input: string) => input)
     outboundImageMock.normalizeToOriginalMediaUrl.mockImplementation(async (input: string) => input)
+    gridSplitMock.ensureGridSplitImagesForPanel.mockResolvedValue({
+      images: [],
+      gridGenerationContext: null,
+    })
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue(buildPanel())
     prismaMock.novelPromotionPanel.findFirst.mockResolvedValue(buildPanel())
@@ -235,7 +252,7 @@ describe('worker video processor behavior', () => {
     })
   })
 
-  it('VIDEO_PANEL: 使用导演台分镜板封面图生成视频并标记生成方式', async () => {
+  it('VIDEO_PANEL: 使用导演台分镜板里的每张渲染分镜图生成视频并标记生成方式', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -262,20 +279,34 @@ describe('worker video processor behavior', () => {
           visible: true,
         }],
         activeCameraId: 'cam-1',
+        directorStoryboardAssets: [
+          {
+            id: 'asset-1',
+            type: 'rendered_snapshot',
+            name: '分镜 1',
+            createdAt: 1710000000001,
+            imageUrl: 'cos/director-render-1.png',
+            layout: { x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+          },
+          {
+            id: 'asset-2',
+            type: 'rendered_snapshot',
+            name: '分镜 2',
+            createdAt: 1710000000002,
+            imageUrl: 'cos/director-render-2.png',
+            layout: { x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+          },
+        ],
         directorStoryboardBoards: [{
           id: 'director-board-1',
           name: '导演台分镜板 1',
           createdAt: 1710000000000,
           coverImageUrl: 'cos/director-board-cover.png',
-          assetIds: ['asset-1'],
-          items: [{
-            assetId: 'asset-1',
-            x: 0,
-            y: 0,
-            width: 1,
-            height: 1,
-            rotation: 0,
-          }],
+          assetIds: ['asset-1', 'asset-2'],
+          items: [
+            { assetId: 'asset-1', x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+            { assetId: 'asset-2', x: 1, y: 0, width: 1, height: 1, rotation: 0 },
+          ],
         }],
       }),
     }))
@@ -294,9 +325,13 @@ describe('worker video processor behavior', () => {
     expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        imageUrl: 'https://signed.example/cos/director-board-cover.png',
+        imageUrl: 'https://signed.example/cos/director-render-1.png',
         options: expect.objectContaining({
           generationMode: 'normal',
+          videoReferenceImages: [
+            'https://signed.example/cos/director-render-1.png',
+            'https://signed.example/cos/director-render-2.png',
+          ],
         }),
       }),
     )
@@ -307,10 +342,62 @@ describe('worker video processor behavior', () => {
     }))
   })
 
-  it('VIDEO_PANEL: StarRouter 视频使用可抓取 URL 而不是 base64 data URL', async () => {
+  it('VIDEO_PANEL: 拆分格视频使用每一张拆分单图作为视频输入', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    const gridContext = JSON.stringify({
+      gridMetadata: { panelGridSize: 3 },
+      gridVideoFrames: [
+        { cellIndex: 1, imageUrl: 'cos/split-1.png', videoPrompt: '格 1' },
+        { cellIndex: 2, imageUrl: 'cos/split-2.png', videoPrompt: '格 2' },
+        { cellIndex: 3, imageUrl: 'cos/split-3.png', videoPrompt: '格 3' },
+      ],
+    })
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({
+      imageLayout: 'grid',
+      gridGenerationContext: gridContext,
+    }))
+    gridSplitMock.ensureGridSplitImagesForPanel.mockResolvedValueOnce({
+      images: [
+        { cellIndex: 1, panelGridSize: 3, imageUrl: 'cos/split-1.png' },
+        { cellIndex: 2, panelGridSize: 3, imageUrl: 'cos/split-2.png' },
+        { cellIndex: 3, panelGridSize: 3, imageUrl: 'cos/split-3.png' },
+      ],
+      gridGenerationContext: gridContext,
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        imageLayout: 'grid',
+        gridVideoSource: 'split',
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        imageUrl: 'https://signed.example/cos/split-1.png',
+        options: expect.objectContaining({
+          videoReferenceImages: [
+            'https://signed.example/cos/split-1.png',
+            'https://signed.example/cos/split-2.png',
+            'https://signed.example/cos/split-3.png',
+          ],
+        }),
+      }),
+    )
+  })
+
+  it('VIDEO_PANEL: StarRouter 视频使用 base64 data URL', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
     modelConfigMock.parseModelKeyStrict.mockReturnValue({ provider: 'starrouter' })
+    outboundImageMock.normalizeToBase64ForGeneration.mockImplementation(async (input: string) => `data:image/png;base64,${Buffer.from(input).toString('base64')}`)
 
     const job = buildJob({
       type: TASK_TYPE.VIDEO_PANEL,
@@ -325,16 +412,16 @@ describe('worker video processor behavior', () => {
     expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        imageUrl: 'https://signed.example/cos/panel-image.png',
+        imageUrl: 'data:image/png;base64,aHR0cHM6Ly9zaWduZWQuZXhhbXBsZS9jb3MvcGFuZWwtaW1hZ2UucG5n',
         options: expect.objectContaining({
           videoReferenceImages: [
-            'https://signed.example/cos/source.png',
-            'https://signed.example/cos/character.png',
+            'data:image/png;base64,aHR0cHM6Ly9zaWduZWQuZXhhbXBsZS9jb3MvcGFuZWwtaW1hZ2UucG5n',
+            'data:image/png;base64,aHR0cHM6Ly9zaWduZWQuZXhhbXBsZS9jb3Mvc291cmNlLnBuZw==',
+            'data:image/png;base64,aHR0cHM6Ly9zaWduZWQuZXhhbXBsZS9jb3MvY2hhcmFjdGVyLnBuZw==',
           ],
         }),
       }),
     )
-    expect(outboundImageMock.normalizeToBase64ForGeneration).not.toHaveBeenCalled()
   })
 
   it('LIP_SYNC: 缺少 panel 时显式失败', async () => {

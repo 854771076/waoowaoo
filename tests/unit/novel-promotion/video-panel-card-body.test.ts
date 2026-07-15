@@ -19,6 +19,10 @@ vi.mock('@/components/ui/icons', () => ({
   AppIcon: ({ name }: { name: string }) => React.createElement('span', null, name),
 }))
 
+vi.mock('@/components/media/MediaImageWithLoading', () => ({
+  MediaImageWithLoading: ({ src, alt }: { src: string; alt: string }) => React.createElement('img', { src, alt }),
+}))
+
 function createRuntime(overrides: Partial<VideoPanelRuntime> = {}): VideoPanelRuntime {
   const translate = (key: string, values?: Record<string, unknown>) => {
     if (key === 'firstLastFrame.asLastFrameFor') {
@@ -258,9 +262,74 @@ describe('VideoPanelCardBody', () => {
 
     render(React.createElement(VideoPanelCardBody, { runtime }))
 
-    fireEvent.click(screen.getByRole('button', { name: '生成视频' }))
+    const generateButtons = screen.getAllByRole('button', { name: '生成视频' })
+    fireEvent.click(generateButtons[generateButtons.length - 1])
 
     expect(onGenerateVideo).toHaveBeenCalledTimes(1)
     expect(onGenerateVideo.mock.calls[0][4]).toEqual({ motion: 'smooth', duration: 7 })
+  })
+
+  it('lets a non-grid panel choose director storyboard board for video generation', () => {
+    const onGenerateVideo = vi.fn()
+    const onGridVideoSourceChange = vi.fn()
+    const runtime = createRuntime({
+      layout: {
+        isLinked: false,
+        isLastFrame: false,
+        nextPanel: null,
+        prevPanel: null,
+        hasNext: false,
+        flModel: 'veo-3.1',
+        flModelOptions: [],
+        flGenerationOptions: {},
+        flCapabilityFields: [],
+        flMissingCapabilityFields: [],
+        flCustomPrompt: '',
+        defaultFlPrompt: '',
+        videoRatio: '9:16',
+      },
+      actions: {
+        onGenerateVideo,
+        onUpdatePanelVideoModel: () => undefined,
+        onToggleLink: () => undefined,
+        onFlModelChange: () => undefined,
+        onFlCapabilityChange: () => undefined,
+        onFlCustomPromptChange: () => undefined,
+        onResetFlPrompt: () => undefined,
+        onGenerateFirstLastFrame: () => undefined,
+        onOpenGridSplit: () => undefined,
+        onGridVideoSourceChange,
+        onDirectorStoryboardBoardChange: () => undefined,
+      },
+      computed: {
+        showLipSyncSection: false,
+        canLipSync: false,
+        hasVisibleBaseVideo: false,
+        gridVideoSource: 'director_storyboard',
+        hasGridSplitImages: false,
+        directorStoryboardBoardId: 'board-1',
+        directorStoryboardBoards: [
+          {
+            id: 'board-1',
+            name: '导演分镜图',
+            createdAt: 1,
+            coverImageUrl: 'images/director-board.jpg',
+            assetIds: [],
+            items: [],
+          },
+        ],
+      },
+    })
+
+    render(React.createElement(VideoPanelCardBody, { runtime }))
+
+    expect(screen.getByRole('button', { name: /导演分镜图/ })).toBeTruthy()
+
+    const generateButtons = screen.getAllByRole('button', { name: '生成视频' })
+    fireEvent.click(generateButtons[generateButtons.length - 1])
+
+    expect(onGenerateVideo).toHaveBeenCalledTimes(1)
+    expect(onGenerateVideo.mock.calls[0][8]).toBe('director_storyboard')
+    expect(onGenerateVideo.mock.calls[0][10]).toBe('board-1')
   })
 })
