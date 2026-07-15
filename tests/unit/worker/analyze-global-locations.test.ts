@@ -2,13 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type CreateArgs = { data: { name: string; parentId?: string | null; sceneType?: string } }
 const mockLocationCreate = vi.hoisted(() => vi.fn<(args: CreateArgs) => Promise<{ id: string }>>())
+const mockLocationFindFirst = vi.hoisted(() => vi.fn<() => Promise<{ id: string; name: string } | null>>())
 const mockCharacterCreate = vi.hoisted(() => vi.fn<(args: CreateArgs) => Promise<{ id: string }>>())
 const mockSeedSlots = vi.hoisted(() => vi.fn<(args: unknown) => Promise<void>>(async () => undefined))
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     novelPromotionCharacter: { create: (args: unknown) => mockCharacterCreate(args as CreateArgs) },
-    novelPromotionLocation: { create: (args: unknown) => mockLocationCreate(args as CreateArgs) },
+    novelPromotionLocation: {
+      create: (args: unknown) => mockLocationCreate(args as CreateArgs),
+      findFirst: () => mockLocationFindFirst(),
+    },
   },
 }))
 vi.mock('@/lib/assets/services/location-backed-assets', () => ({
@@ -32,6 +36,7 @@ import {
 describe('persistAnalyzeGlobalChunk locations with hierarchy', () => {
   beforeEach(() => {
     mockLocationCreate.mockReset()
+    mockLocationFindFirst.mockReset()
     mockSeedSlots.mockClear()
   })
 
@@ -187,5 +192,91 @@ describe('persistAnalyzeGlobalChunk locations with hierarchy', () => {
     expect(mockLocationCreate).toHaveBeenCalledTimes(2)
     expect(stats.skippedSubLocations).toBe(1)
     expect(existingChildPaths.has('宅院a/花园')).toBe(true)
+  })
+
+  it('creates new sub-locations under an existing macro instead of skipping the whole branch', async () => {
+    mockLocationCreate.mockImplementation(async ({ data }: { data: { name: string } }) => {
+      if (data.name === '正堂') return { id: 'micro-existing-parent' }
+      return { id: 'x' }
+    })
+    const stats = createAnalyzeGlobalStats(1)
+    await persistAnalyzeGlobalChunk({
+      projectInternalId: 'proj1',
+      charactersData: {},
+      locationsData: {
+        locations: [
+          {
+            name: '林家老宅',
+            summary: '已存在主场景',
+            sub_locations: [
+              { name: '正堂', summary: '会客正厅', description: '红木桌椅' },
+            ],
+          },
+        ],
+      },
+      propsData: {},
+      existingCharacters: [],
+      existingCharacterNames: [],
+      existingLocationNames: ['林家老宅'],
+      existingMacroLocations: [{ id: 'macro-existing', name: '林家老宅' }],
+      existingLocationInfo: ['林家老宅'],
+      existingPropNames: [],
+      stats,
+    })
+
+    expect(mockLocationCreate).toHaveBeenCalledTimes(1)
+    expect(mockLocationCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: '正堂',
+          sceneType: 'micro',
+          parentId: 'macro-existing',
+        }),
+      }),
+    )
+    expect(stats.newLocations).toBe(1)
+  })
+
+  it('accepts local_scenes as an alias of sub_locations', async () => {
+    mockLocationCreate.mockImplementation(async ({ data }: { data: { name: string } }) => {
+      if (data.name === '林家老宅') return { id: 'macro1' }
+      if (data.name === '偏厅') return { id: 'micro1' }
+      return { id: 'x' }
+    })
+    const stats = createAnalyzeGlobalStats(1)
+    await persistAnalyzeGlobalChunk({
+      projectInternalId: 'proj1',
+      charactersData: {},
+      locationsData: {
+        locations: [
+          {
+            name: '林家老宅',
+            description: '宅院全貌',
+            local_scenes: [
+              { name: '偏厅', summary: '侧厅', description: '屏风与茶桌' },
+            ],
+          },
+        ],
+      },
+      propsData: {},
+      existingCharacters: [],
+      existingCharacterNames: [],
+      existingLocationNames: [],
+      existingLocationInfo: [],
+      existingPropNames: [],
+      stats,
+    })
+
+    expect(mockLocationCreate).toHaveBeenCalledTimes(2)
+    expect(mockLocationCreate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: '偏厅',
+          sceneType: 'micro',
+          parentId: 'macro1',
+        }),
+      }),
+    )
   })
 })

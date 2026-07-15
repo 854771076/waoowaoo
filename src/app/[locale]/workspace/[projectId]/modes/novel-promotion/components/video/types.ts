@@ -13,8 +13,43 @@ export interface VideoModelOption {
   videoPricingTiers?: VideoPricingTier[]
 }
 
-export type VideoGenerationMode = 'normal' | 'firstlastframe'
-export type GridVideoSource = 'split' | 'original'
+export type VideoGenerationMode = 'normal' | 'firstlastframe' | 'director_storyboard'
+export type GridVideoSource = 'split' | 'original' | 'director_storyboard'
+
+export interface DirectorStoryboardAsset {
+  id: string
+  type: 'rendered_snapshot'
+  name: string
+  createdAt: number
+  imageUrl: string
+  sourceSnapshotId?: string
+  sourceCameraId?: string
+  note?: string
+  layout: {
+    x: number
+    y: number
+    width: number
+    height: number
+    rotation: number
+  }
+}
+
+export interface DirectorStoryboardBoard {
+  id: string
+  name: string
+  createdAt: number
+  coverImageUrl: string
+  assetIds: string[]
+  items: Array<{
+    assetId: string
+    x: number
+    y: number
+    width: number
+    height: number
+    rotation: number
+  }>
+  note?: string
+}
 
 export interface GridSplitImage {
   imageUrl: string
@@ -77,6 +112,7 @@ export interface Panel {
   imageTaskRunning?: boolean | null
   gridVideoPromptAt?: string | null  // 宫格视频提示词重写时间戳
   gridGenerationContext?: string | null  // 宫格图生成时的上下文JSON
+  directorLayout?: string | null
   // 口型同步相关
   lipSyncVideoUrl?: string | null
   lipSyncTaskRunning?: boolean | null
@@ -113,6 +149,8 @@ export interface VideoPanel {
   gridGenerationContext?: string | null
   gridSplitImages?: GridSplitImage[]
   gridVideoFrames?: GridVideoFrame[]
+  directorStoryboardAssets?: DirectorStoryboardAsset[]
+  directorStoryboardBoards?: DirectorStoryboardBoard[]
   videoUrl?: string
   videoHistory?: string | null  // 历史视频 JSON 数组
   videoGenerationMode?: VideoGenerationMode

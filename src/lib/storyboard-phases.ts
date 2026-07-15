@@ -135,6 +135,55 @@ function parseScreenplay(raw: string | null | undefined): unknown {
     }
 }
 
+function getClipCharacterName(value: ClipCharacterRef): string {
+    if (typeof value === 'string') return value.trim()
+    return typeof value.name === 'string' ? value.name.trim() : ''
+}
+
+function normalizeCharacterKey(value: string): string {
+    return value.trim().toLowerCase()
+}
+
+function getCharacterMentionAliases(name: string): string[] {
+    return name
+        .split('/')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+}
+
+export function mergeClipCharactersWithMentionedAssets(params: {
+    clipCharacters: ClipCharacterRef[]
+    characters: CharacterAsset[]
+    content?: string | null
+    screenplay?: unknown
+}): ClipCharacterRef[] {
+    const merged: ClipCharacterRef[] = [...params.clipCharacters]
+    const existing = new Set(
+        merged
+            .map(getClipCharacterName)
+            .filter(Boolean)
+            .map(normalizeCharacterKey),
+    )
+    const sourceText = [
+        typeof params.content === 'string' ? params.content : '',
+        params.screenplay ? JSON.stringify(params.screenplay) : '',
+    ].join('\n')
+    if (!sourceText.trim()) return merged
+
+    for (const character of params.characters) {
+        const aliases = getCharacterMentionAliases(character.name)
+        if (aliases.length === 0) continue
+        const alreadyExists = aliases.some((alias) => existing.has(normalizeCharacterKey(alias)))
+        if (alreadyExists) continue
+        const mentioned = aliases.some((alias) => sourceText.includes(alias))
+        if (!mentioned) continue
+        merged.push({ name: character.name })
+        for (const alias of aliases) existing.add(normalizeCharacterKey(alias))
+    }
+
+    return merged
+}
+
 // 阶段进度映射
 export const PHASE_PROGRESS: Record<string, { start: number, end: number, label: string, labelKey: string }> = {
     '1': { start: 10, end: 40, label: '规划分镜', labelKey: 'phases.planning' },

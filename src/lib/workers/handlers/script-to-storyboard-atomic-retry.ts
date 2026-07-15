@@ -16,6 +16,7 @@ import {
   getFilteredAppearanceList,
   getFilteredFullDescription,
   getFilteredLocationsDescription,
+  mergeClipCharactersWithMentionedAssets,
   type LocationAsset,
   type PropAsset,
   type PhotographyRule,
@@ -347,9 +348,17 @@ export async function runScriptToStoryboardAtomicRetry(params: {
   promptTemplates: ScriptToStoryboardPromptTemplates
   runStep: StepRunner
 }): Promise<ScriptToStoryboardAtomicRetryResult> {
-  const clipCharacters = parseClipCharacters(params.clip.characters)
+  const rawClipCharacters = parseClipCharacters(params.clip.characters)
   const clipLocation = params.clip.location || null
   const clipProps = parseClipProps(params.clip.props ?? null)
+  const clipContent = typeof params.clip.content === 'string' ? params.clip.content.trim() : ''
+  const screenplay = parseScreenplay(params.clip.screenplay)
+  const clipCharacters = mergeClipCharactersWithMentionedAssets({
+    clipCharacters: rawClipCharacters,
+    characters: params.novelPromotionData.characters || [],
+    content: clipContent,
+    screenplay,
+  })
   const filteredFullDescription = getFilteredFullDescription(params.novelPromotionData.characters || [], clipCharacters)
   const filteredLocationsDescription = getFilteredLocationsDescription(
     params.novelPromotionData.locations || [],
@@ -402,7 +411,6 @@ export async function runScriptToStoryboardAtomicRetry(params: {
   })
 
   if (params.retryTarget.phase === 'phase1') {
-    const clipContent = typeof params.clip.content === 'string' ? params.clip.content.trim() : ''
     if (!clipContent) {
       throw new Error(`Clip ${formatClipId(params.clip)} content is empty`)
     }
@@ -429,7 +437,6 @@ export async function runScriptToStoryboardAtomicRetry(params: {
       .replace('{characters_full_description}', filteredFullDescription)
       .replace('{props_description}', filteredPropsDescription)
       .replace('{clip_json}', clipJson)
-    const screenplay = parseScreenplay(params.clip.screenplay)
     if (screenplay) {
       phase1Prompt = phase1Prompt.replace('{clip_content}', `【剧本格式】\n${JSON.stringify(screenplay, null, 2)}`)
     } else {

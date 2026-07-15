@@ -328,6 +328,94 @@ describe('worker panel-image-task-handler behavior', () => {
     )
   })
 
+  it('persists rendered director snapshot as a director storyboard asset without replacing panel image', async () => {
+    const directorLayout = {
+      version: 1,
+      scene: {
+        backgroundColor: '#111111',
+        showGround: true,
+        groundOpacity: 0.5,
+        showLabels: true,
+        showGrid: true,
+        backdropAssetId: null,
+        backdropOpacity: 0.6,
+        backdropYaw: 0,
+      },
+      objects: [],
+      cameras: [{
+        id: 'cam-snap',
+        name: '快照机位',
+        fov: 38,
+        position: [1, 2, 3],
+        target: [0, 1, 0],
+        visible: true,
+      }],
+      activeCameraId: 'cam-snap',
+    }
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce({
+      id: 'panel-1',
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      shotType: 'close-up',
+      cameraMove: 'static',
+      description: 'hero close-up',
+      imagePrompt: null,
+      videoPrompt: 'dramatic',
+      location: 'Old Town',
+      characters: '[]',
+      srtSegment: null,
+      photographyRules: null,
+      actingNotes: null,
+      sketchImageUrl: null,
+      imageUrl: 'cos/panel-original.png',
+      directorLayout: JSON.stringify(directorLayout),
+      directorShots: [],
+    })
+
+    utilsMock.resolveImageSourceFromGeneration.mockReset()
+    utilsMock.uploadImageSourceToCos.mockReset()
+    utilsMock.resolveImageSourceFromGeneration.mockResolvedValueOnce('generated-director-source')
+    utilsMock.uploadImageSourceToCos.mockResolvedValueOnce('cos/director-storyboard.png')
+
+    const snapshot = {
+      id: 'snap-asset-1',
+      name: '导演分镜 1',
+      capturedAt: 1710000000000,
+      cameraId: 'cam-snap',
+      camera: { fov: 38, position: [1, 2, 3], target: [0, 1, 0] },
+      imageDataUrl: 'data:image/jpeg;base64,snapshot',
+      note: '低角度构图',
+      project: directorLayout,
+    }
+
+    await handlePanelImageTask(buildJob({
+      candidateCount: 1,
+      panelGridSize: 1,
+      source: 'director_snapshot',
+      directorSnapshot: snapshot,
+    }))
+
+    const updateArg = prismaMock.novelPromotionPanel.update.mock.calls[0]?.[0] as {
+      where?: { id?: string }
+      data?: { directorLayout?: string; previousImageUrl?: string; candidateImages?: string }
+    }
+    expect(updateArg.where).toEqual({ id: 'panel-1' })
+    expect(updateArg.data?.previousImageUrl).toBeUndefined()
+    expect(updateArg.data?.candidateImages).toBeUndefined()
+    expect(updateArg.data?.directorLayout).toBeTruthy()
+
+    const nextLayout = JSON.parse(updateArg.data?.directorLayout || '{}') as {
+      directorStoryboardAssets?: Array<{ imageUrl?: string; sourceSnapshotId?: string; type?: string }>
+    }
+    expect(nextLayout.directorStoryboardAssets).toEqual([
+      expect.objectContaining({
+        type: 'rendered_snapshot',
+        imageUrl: 'cos/director-storyboard.png',
+        sourceSnapshotId: 'snap-asset-1',
+      }),
+    ])
+  })
+
   it('panelGridSize=6 -> switches to grid prompt with grid_layout + panel_grid_size', async () => {
     await handlePanelImageTask(buildJob({ candidateCount: 1, panelGridSize: 6 }))
     expect(promptMock.buildPromptAsync).toHaveBeenCalledWith(

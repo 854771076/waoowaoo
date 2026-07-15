@@ -10,6 +10,15 @@ const utilsMock = vi.hoisted(() => ({
     artStyle: 'japanese-anime',
     artStylePrompt: null as string | null,
   })),
+  toSignedUrlIfCos: vi.fn((value: string | null | undefined) =>
+    value?.startsWith('images/') ? `/api/storage/sign?key=${encodeURIComponent(value)}&expires=3600` : value || null,
+  ),
+}))
+
+const outboundMock = vi.hoisted(() => ({
+  normalizeReferenceImagesForGeneration: vi.fn(async (inputs: string[]) =>
+    inputs.map((input) => `normalized:${input}`),
+  ),
 }))
 
 const prismaMock = vi.hoisted(() => ({
@@ -20,6 +29,7 @@ const prismaMock = vi.hoisted(() => ({
   novelPromotionLocation: {
     findUnique: vi.fn(),
     findMany: vi.fn(async () => []),
+    update: vi.fn(async () => ({})),
   },
 }))
 
@@ -28,6 +38,7 @@ const sharedMock = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/workers/utils', () => utilsMock)
+vi.mock('@/lib/media/outbound-image', () => outboundMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: vi.fn(async () => undefined) }))
 vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
@@ -135,7 +146,11 @@ describe('worker location-image-task-handler behavior', () => {
 
     expect(prismaMock.locationImage.update).toHaveBeenCalledWith({
       where: { id: 'location-image-1' },
-      data: { imageUrl: 'cos/location-generated-1.png' },
+      data: { imageUrl: 'cos/location-generated-1.png', isSelected: true },
+    })
+    expect(prismaMock.novelPromotionLocation.update).toHaveBeenCalledWith({
+      where: { id: 'location-1' },
+      data: { selectedImageId: 'location-image-1' },
     })
   })
 
@@ -163,6 +178,125 @@ describe('worker location-image-task-handler behavior', () => {
     if (!generationCall) throw new Error('expected generateProjectLabeledImageToStorage call')
     expect(generationCall[0].prompt).toContain('custom location gouache style')
     expect(generationCall[0].prompt).not.toContain(getArtStylePrompt('japanese-anime', 'zh'))
+  })
+
+  it('uses parent macro selected image as reference when generating micro scene image', async () => {
+    prismaMock.locationImage.findUnique.mockResolvedValueOnce({
+      id: 'micro-image-1',
+      locationId: 'micro-location-1',
+      imageIndex: 0,
+      description: '「大殿入口」汉白玉台阶连接广场与殿门',
+      availableSlots: JSON.stringify(['大殿门前台阶下方的留白位置']),
+      location: { name: '大殿入口' },
+    })
+    prismaMock.novelPromotionLocation.findMany.mockResolvedValueOnce([
+      {
+        id: 'micro-location-1',
+        name: '大殿入口',
+        sceneType: 'micro',
+        parentId: 'macro-location-1',
+        images: [],
+        selectedImage: null,
+        parent: {
+          id: 'macro-location-1',
+          name: '紫霄宫',
+          sceneType: 'macro',
+          parentId: null,
+          selectedImage: { imageUrl: 'images/zixiao-palace-selected.png' },
+          images: [
+            { id: 'macro-image-1', locationId: 'macro-location-1', imageIndex: 0, imageUrl: 'images/zixiao-palace-fallback.png' },
+          ],
+        },
+      },
+    ] as never)
+
+    await handleLocationImageTask(buildJob({ imageIndex: 0 }, 'micro-image-1'))
+
+    expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: '大殿入口',
+        prompt: expect.stringContaining('父级大场景参考图：紫霄宫'),
+        options: expect.objectContaining({
+          aspectRatio: '16:9',
+          referenceImages: ['normalized:/api/storage/sign?key=images%2Fzixiao-palace-selected.png&expires=3600'],
+        }),
+      }),
+    )
+    expect(outboundMock.normalizeReferenceImagesForGeneration).toHaveBeenCalledWith(
+      ['/api/storage/sign?key=images%2Fzixiao-palace-selected.png&expires=3600'],
+      expect.objectContaining({
+        context: expect.objectContaining({
+          source: 'location_parent_reference',
+          locationId: 'micro-location-1',
+          parentId: 'macro-location-1',
+        }),
+      }),
+    )
+    expect(prismaMock.novelPromotionLocation.update).toHaveBeenCalledWith({
+      where: { id: 'micro-location-1' },
+      data: { selectedImageId: 'micro-image-1' },
+    })
+  })
+
+  it('waits for parent macro image when micro scene starts before parent generation finishes', async () => {
+    prismaMock.locationImage.findUnique.mockResolvedValueOnce({
+      id: 'micro-image-1',
+      locationId: 'micro-location-1',
+      imageIndex: 0,
+      description: '「大殿入口」汉白玉台阶连接广场与殿门',
+      availableSlots: JSON.stringify(['大殿门前台阶下方的留白位置']),
+      location: { name: '大殿入口' },
+    })
+    prismaMock.novelPromotionLocation.findMany.mockResolvedValueOnce([
+      {
+        id: 'micro-location-1',
+        name: '大殿入口',
+        sceneType: 'micro',
+        parentId: 'macro-location-1',
+        images: [],
+        selectedImage: null,
+        parent: {
+          id: 'macro-location-1',
+          name: '紫霄宫',
+          sceneType: 'macro',
+          parentId: null,
+          selectedImage: null,
+          images: [],
+        },
+      },
+    ] as never)
+    prismaMock.novelPromotionLocation.findUnique.mockResolvedValueOnce({
+      id: 'macro-location-1',
+      name: '紫霄宫',
+      sceneType: 'macro',
+      parentId: null,
+      selectedImage: null,
+      images: [
+        {
+          id: 'macro-image-1',
+          locationId: 'macro-location-1',
+          imageIndex: 0,
+          imageUrl: 'images/zixiao-palace-ready.png',
+          isSelected: true,
+        },
+      ],
+    } as never)
+
+    await handleLocationImageTask(buildJob({ imageIndex: 0 }, 'micro-image-1'))
+
+    expect(prismaMock.novelPromotionLocation.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'macro-location-1' },
+      }),
+    )
+    expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: '大殿入口',
+        options: expect.objectContaining({
+          referenceImages: ['normalized:/api/storage/sign?key=images%2Fzixiao-palace-ready.png&expires=3600'],
+        }),
+      }),
+    )
   })
 
   it('invalid payload artStyle -> explicit error', async () => {
@@ -193,8 +327,31 @@ describe('worker location-image-task-handler behavior', () => {
     expect(prismaMock.locationImage.update).toHaveBeenCalledTimes(1)
     expect(prismaMock.locationImage.update).toHaveBeenCalledWith({
       where: { id: 'location-image-1' },
+      data: { imageUrl: 'cos/location-generated-1.png', isSelected: true },
+    })
+  })
+
+  it('does not override existing selected location image', async () => {
+    prismaMock.novelPromotionLocation.findMany.mockResolvedValueOnce([
+      {
+        id: 'location-1',
+        name: 'Old Town',
+        sceneType: 'macro',
+        selectedImageId: 'existing-selected',
+        selectedImage: { imageUrl: 'images/existing-selected.png' },
+        images: [
+          { id: 'existing-selected', imageIndex: 1, imageUrl: 'images/existing-selected.png', isSelected: true },
+        ],
+      },
+    ] as never)
+
+    await handleLocationImageTask(buildJob({ imageIndex: 0 }))
+
+    expect(prismaMock.locationImage.update).toHaveBeenCalledWith({
+      where: { id: 'location-image-1' },
       data: { imageUrl: 'cos/location-generated-1.png' },
     })
+    expect(prismaMock.novelPromotionLocation.update).not.toHaveBeenCalled()
   })
 
   it('uses the same aspect ratio as character generation for prop images', async () => {

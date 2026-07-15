@@ -51,6 +51,7 @@ export interface VideoPanelCardShellProps {
     gridSize?: number,
     gridVideoSource?: GridVideoSource,
     videoReferenceImages?: string[],
+    directorStoryboardBoardId?: string,
   ) => void
   onUpdatePanelVideoModel: (storyboardId: string, panelIndex: number, model: string) => void
   onToggleLink: (panelKey: string, storyboardId: string, panelIndex: number) => void

@@ -58,6 +58,7 @@ export interface VideoStageShellProps {
     gridSize?: number,
     gridVideoSource?: GridVideoSource,
     videoReferenceImages?: string[],
+    directorStoryboardBoardId?: string,
   ) => Promise<void>
   onGenerateAllVideos: (options?: BatchVideoGenerationParams) => Promise<void>
   onBack: () => void

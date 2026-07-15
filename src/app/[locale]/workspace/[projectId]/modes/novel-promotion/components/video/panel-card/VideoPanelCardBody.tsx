@@ -54,6 +54,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
   const showsPromptEditor = !layout.isLastFrame || layout.isLinked
   const showsFirstLastFrameActions = layout.isLinked && !!layout.nextPanel
   const isGridVideoPanel = panel.imageLayout === 'grid'
+  const selectedDirectorStoryboardBoard = computed.directorStoryboardBoards.find((board) => board.id === computed.directorStoryboardBoardId)
   const generateVideoButtonLabel = taskStatus.isVideoTaskRunning
     ? taskStatus.taskRunningVideoLabel
     : isGridVideoPanel
@@ -267,10 +268,12 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                         undefined,
                         isGridVideoPanel ? computed.gridVideoSource : undefined,
                         resolvedVideoReference.selectedImages,
+                        computed.gridVideoSource === 'director_storyboard' ? computed.directorStoryboardBoardId : undefined,
                       )}
                     disabled={
                       taskStatus.isVideoTaskRunning
-                      || !panel.imageUrl
+                      || (!panel.imageUrl && computed.gridVideoSource !== 'director_storyboard')
+                      || (computed.gridVideoSource === 'director_storyboard' && !computed.directorStoryboardBoardId)
                       || !videoModel.selectedModel
                       || videoModel.missingCapabilityFields.length > 0
                     }
@@ -317,7 +320,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                           : t('panelCard.gridSplitNotReady')}
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-0.5">
+                    <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-0.5">
                       <button
                         type="button"
                         onClick={() => actions.onGridVideoSourceChange('split')}
@@ -339,7 +342,50 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                       >
                         {t('panelCard.useOriginalGridVideo')}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => actions.onGridVideoSourceChange('director_storyboard')}
+                        disabled={computed.directorStoryboardBoards.length === 0}
+                        className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${computed.gridVideoSource === 'director_storyboard'
+                            ? 'bg-[var(--glass-accent-from)] text-white'
+                            : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
+                          }`}
+                      >
+                        导演台分镜板
+                      </button>
                     </div>
+                    {computed.gridVideoSource === 'director_storyboard' && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {computed.directorStoryboardBoards.map((board) => {
+                          const displayUrl = toDisplayImageUrl(board.coverImageUrl)
+                          return (
+                            <button
+                              key={board.id}
+                              type="button"
+                              onClick={() => actions.onDirectorStoryboardBoardChange(board.id)}
+                              className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] ${computed.directorStoryboardBoardId === board.id
+                                  ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
+                                  : 'border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] text-[var(--glass-text-tertiary)]'
+                                }`}
+                            >
+                              {displayUrl ? (
+                                <MediaImageWithLoading
+                                  src={displayUrl}
+                                  alt=""
+                                  containerClassName="h-6 w-6 flex-shrink-0 rounded"
+                                  className="h-full w-full object-cover"
+                                  showLoadingIndicator={false}
+                                />
+                              ) : null}
+                              <span className="truncate">{board.name}</span>
+                            </button>
+                          )
+                        })}
+                        {!selectedDirectorStoryboardBoard ? (
+                          <span className="text-[10px] text-[var(--glass-text-tertiary)]">请先在导演台生成分镜板</span>
+                        ) : null}
+                      </div>
+                    )}
                     <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[var(--glass-text-tertiary)]">
                       <AppIcon name="info" className="mt-0.5 h-3 w-3 flex-shrink-0" />
                       <span>{t('panelCard.gridSplitVideoHint')}</span>

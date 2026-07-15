@@ -34,11 +34,12 @@ import { resolveAnalysisModel } from './handlers/resolve-analysis-model'
 import { withTextBilling } from '@/lib/billing'
 import { handleEditorRenderTask } from './handlers/editor-render-task-handler'
 import { archiveToHistory } from '@/lib/novel-promotion/panel-history'
+import { parseDirectorProject } from '@/lib/director-desk/schema'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
 type VideoOptionMap = Record<string, VideoOptionValue>
-type VideoGenerationMode = 'normal' | 'firstlastframe'
+type VideoGenerationMode = 'normal' | 'firstlastframe' | 'director_storyboard'
 type PanelRecord = NonNullable<Awaited<ReturnType<typeof prisma.novelPromotionPanel.findUnique>>>
 
 function toDurationMs(value: number | null | undefined): number | undefined {
@@ -73,6 +74,18 @@ function extractVideoReferenceImages(payload: AnyObj): string[] {
     images.push(image)
   }
   return images
+}
+
+function resolveDirectorStoryboardBoardImage(panel: PanelRecord, boardId: unknown): string | null {
+  if (typeof boardId !== 'string' || !boardId.trim()) return null
+  if (typeof panel.directorLayout !== 'string' || !panel.directorLayout.trim()) return null
+  try {
+    const project = parseDirectorProject(JSON.parse(panel.directorLayout))
+    const board = project?.directorStoryboardBoards?.find((item) => item.id === boardId.trim())
+    return board?.coverImageUrl || null
+  } catch {
+    return null
+  }
 }
 
 async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number) {
@@ -115,10 +128,6 @@ async function generateVideoForPanel(
   generationOptions: VideoOptionMap,
   defaultGridSize: number,
 ): Promise<{ cosKey: string; generationMode: VideoGenerationMode; actualVideoTokens?: number }> {
-  if (!panel.imageUrl) {
-    throw new Error(`Panel ${panel.id} has no imageUrl`)
-  }
-
   const logger = createScopedLogger({
     module: 'worker.video-panel',
     action: 'panel_video_generate',
@@ -132,6 +141,14 @@ async function generateVideoForPanel(
     typeof payload.firstLastFrame === 'object' && payload.firstLastFrame !== null
       ? (payload.firstLastFrame as AnyObj)
       : null
+  const directorStoryboardImageUrl = resolveDirectorStoryboardBoardImage(panel, payload.directorStoryboardBoardId)
+  if (payload.directorStoryboardBoardId && !directorStoryboardImageUrl) {
+    throw new Error('DIRECTOR_STORYBOARD_BOARD_NOT_FOUND')
+  }
+  const isDirectorStoryboardVideo = !!directorStoryboardImageUrl
+  if (!isDirectorStoryboardVideo && !panel.imageUrl) {
+    throw new Error(`Panel ${panel.id} has no imageUrl`)
+  }
   const firstLastCustomPrompt = typeof firstLastFramePayload?.customPrompt === 'string' ? firstLastFramePayload.customPrompt : null
   const persistedFirstLastPrompt = firstLastFramePayload ? panel.firstLastFramePrompt : null
   const customPrompt = typeof payload.customPrompt === 'string' ? payload.customPrompt : null
@@ -144,13 +161,17 @@ async function generateVideoForPanel(
   const panelImageLayout = typeof panel.imageLayout === 'string' ? panel.imageLayout : null
   const payloadImageLayout = typeof payload.imageLayout === 'string' ? payload.imageLayout : null
   const isGridImage = isGridLayout(panelImageLayout || payloadImageLayout)
-  const gridVideoSource = payload.gridVideoSource === 'original' ? 'original' : 'split'
+  const gridVideoSource = payload.gridVideoSource === 'director_storyboard'
+    ? 'director_storyboard'
+    : payload.gridVideoSource === 'original'
+      ? 'original'
+      : 'split'
 
   let prompt = basePrompt
   let usedGridPrompt = false
   let gridFrameSelection: ReturnType<typeof selectGridVideoFrameImages> | null = null
   let resolvedGridSize = defaultGridSize
-  if (isGridImage && !firstLastFramePayload) {
+  if (isGridImage && !firstLastFramePayload && !isDirectorStoryboardVideo) {
     // 优先从 gridGenerationContext 中读取保存的实际宫格尺寸，兜底使用 payload 或项目默认值
     let contextGridSize = 4
     if (panel.gridGenerationContext) {
@@ -278,8 +299,8 @@ async function generateVideoForPanel(
     },
   })
 
-  let sourceImageStorageKeyOrUrl = panel.imageUrl
-  if (isGridImage && !firstLastFramePayload && gridVideoSource === 'split') {
+  let sourceImageStorageKeyOrUrl = directorStoryboardImageUrl || panel.imageUrl
+  if (isGridImage && !firstLastFramePayload && !isDirectorStoryboardVideo && gridVideoSource === 'split') {
     let gridVideoFrames = extractGridVideoFrames(panel.gridGenerationContext)
     const splitResult = await ensureGridSplitImagesForPanel({
       panel,
@@ -318,7 +339,11 @@ async function generateVideoForPanel(
   const normalizedVideoReferenceImages = videoReferenceImages.filter((image): image is string => !!image)
 
   let lastFrameImageBase64: string | undefined
-  let generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
+  let generationMode: VideoGenerationMode = directorStoryboardImageUrl
+    ? 'director_storyboard'
+    : firstLastFramePayload
+      ? 'firstlastframe'
+      : 'normal'
   const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
     : undefined
@@ -349,7 +374,7 @@ async function generateVideoForPanel(
         }
       }
     }
-  } else if (isGridImage && gridVideoSource === 'split' && gridFrameSelection) {
+  } else if (isGridImage && !isDirectorStoryboardVideo && gridVideoSource === 'split' && gridFrameSelection) {
     const gridFirstLastFrameCapabilities = resolveBuiltinCapabilitiesByModelKey('video', model)
     if (shouldUseGridFirstLastFrame({
       supportsFirstLastFrame: gridFirstLastFrameCapabilities?.video?.firstlastframe === true,
@@ -375,7 +400,7 @@ async function generateVideoForPanel(
       prompt,
       ...(projectVideoRatio ? { aspectRatio: projectVideoRatio } : {}),
       ...generationOptions,
-      generationMode,
+      generationMode: generationMode === 'director_storyboard' ? 'normal' : generationMode,
       // 面板上持久化的时长（LLM 分析 / 用户手动编辑 / 宫格重写产出）优先于
       // UI 全局默认值；UI 下拉若未来要支持逐片覆盖，可在 payload 中加 _panelDurationOverride。
       ...(typeof panelDurationSeconds === 'number' ? { duration: panelDurationSeconds } : {}),
@@ -442,7 +467,7 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
     data: {
       videoHistory: archiveToHistory(panel.videoHistory, panel.videoUrl),
       videoUrl: cosKey,
-      videoGenerationMode: generationMode,
+	      videoGenerationMode: generationMode,
     },
   })
 

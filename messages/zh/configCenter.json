@@ -18,7 +18,7 @@
     "status": "状态",
     "allLocales": "全部语言",
     "allStatuses": "全部状态",
-    "searchPlaceholder": "搜索名称 / ID / 备注..."
+    "searchPlaceholder": "搜索中文名 / 功能 / 备注..."
   },
   "locales": {
     "zh": "中文",

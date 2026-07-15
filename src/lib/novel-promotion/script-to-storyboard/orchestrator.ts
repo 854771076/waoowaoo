@@ -16,6 +16,7 @@ import {
   getFilteredAppearanceList,
   getFilteredFullDescription,
   getFilteredLocationsDescription,
+  mergeClipCharactersWithMentionedAssets,
 } from '@/lib/storyboard-phases'
 import {
   buildPromptAssetContext,
@@ -321,9 +322,16 @@ export async function runScriptToStoryboardOrchestrator(
       if (!clipContent) {
         throw new Error(`Clip ${formatClipId(clip)} content is empty`)
       }
-      const clipCharacters = parseClipCharacters(clip.characters)
+      const rawClipCharacters = parseClipCharacters(clip.characters)
       const clipLocation = clip.location || null
       const clipProps = parseClipProps(clip.props ?? null)
+      const screenplay = parseScreenplay(clip.screenplay)
+      const clipCharacters = mergeClipCharactersWithMentionedAssets({
+        clipCharacters: rawClipCharacters,
+        characters: novelPromotionData.characters || [],
+        content: clipContent,
+        screenplay,
+      })
       const filteredAppearanceList = getFilteredAppearanceList(novelPromotionData.characters || [], clipCharacters)
       const filteredFullDescription = getFilteredFullDescription(novelPromotionData.characters || [], clipCharacters)
       const filteredLocationsDescription = getFilteredLocationsDescription(
@@ -360,7 +368,6 @@ export async function runScriptToStoryboardOrchestrator(
         .replace('{props_description}', filteredPropsDescription)
         .replace('{clip_json}', clipJson)
 
-      const screenplay = parseScreenplay(clip.screenplay)
       if (screenplay) {
         phase1Prompt = phase1Prompt.replace('{clip_content}', `【剧本格式】\n${JSON.stringify(screenplay, null, 2)}`)
       } else {

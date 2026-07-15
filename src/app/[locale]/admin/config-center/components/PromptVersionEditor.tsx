@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import { useToast } from '@/contexts/ToastContext'
 import type { PromptDefinition, PromptLocale, PromptVersion } from './PromptLibraryPanel'
+import { getPromptCategoryLabel, getPromptDisplayDescription, getPromptDisplayName } from './prompt-display'
 
 interface PromptVersionEditorProps {
   prompt: PromptDefinition
@@ -73,6 +74,8 @@ export default function PromptVersionEditor({ prompt, variableKeys, onChanged }:
   }, [prompt.promptId, versions])
 
   const selectedOverrideVersion = versions.find((version) => version.id === overrideVersionId) ?? null
+  const displayName = getPromptDisplayName(prompt.promptId, prompt.name)
+  const displayDescription = getPromptDisplayDescription(prompt.promptId, prompt.description)
 
   async function handleSaveNote() {
     setMessage(null)
@@ -212,12 +215,14 @@ export default function PromptVersionEditor({ prompt, variableKeys, onChanged }:
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-semibold text-[var(--glass-text-primary)]">{prompt.name}</h2>
+              <h2 className="truncate text-lg font-semibold text-[var(--glass-text-primary)]">{displayName}</h2>
               <span className="rounded-full border border-[var(--glass-stroke-base)] px-2 py-0.5 text-[11px] text-[var(--glass-text-secondary)]">
-                {prompt.category}
+                {getPromptCategoryLabel(prompt.category)}
               </span>
             </div>
-            <p className="mt-1 break-all text-xs text-[var(--glass-text-tertiary)]">{prompt.promptId}</p>
+            {displayDescription ? (
+              <p className="mt-1 text-xs text-[var(--glass-text-tertiary)]">{displayDescription}</p>
+            ) : null}
             <div className="mt-3 flex items-center gap-2">
               <input
                 value={note}

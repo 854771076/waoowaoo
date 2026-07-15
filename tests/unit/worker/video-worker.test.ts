@@ -12,6 +12,7 @@ type PanelRow = {
   description: string | null
   firstLastFramePrompt: string | null
   duration: number | null
+  directorLayout?: string | null
 }
 
 const workerState = vi.hoisted(() => ({
@@ -108,6 +109,7 @@ function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
     description: 'panel description',
     firstLastFramePrompt: null,
     duration: 5,
+    directorLayout: null,
     ...(overrides || {}),
   }
 }
@@ -222,6 +224,78 @@ describe('worker video processor behavior', () => {
       videoUrl: 'cos/lip-sync/video.mp4',
       actualVideoTokens: 108000,
     })
+  })
+
+  it('VIDEO_PANEL: 使用导演台分镜板封面图生成视频并标记生成方式', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({
+      directorLayout: JSON.stringify({
+        version: 1,
+        scene: {
+          backgroundColor: '#111111',
+          showGround: true,
+          groundOpacity: 0.5,
+          showLabels: true,
+          showGrid: true,
+          backdropAssetId: null,
+          backdropOpacity: 0.6,
+          backdropYaw: 0,
+        },
+        objects: [],
+        cameras: [{
+          id: 'cam-1',
+          name: '主机位',
+          fov: 50,
+          position: [0, 1.55, 5.4],
+          target: [0, 1.05, 0],
+          visible: true,
+        }],
+        activeCameraId: 'cam-1',
+        directorStoryboardBoards: [{
+          id: 'director-board-1',
+          name: '导演台分镜板 1',
+          createdAt: 1710000000000,
+          coverImageUrl: 'cos/director-board-cover.png',
+          assetIds: ['asset-1'],
+          items: [{
+            assetId: 'asset-1',
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            rotation: 0,
+          }],
+        }],
+      }),
+    }))
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'openai-compatible:oa-1::sora-2',
+        gridVideoSource: 'director_storyboard',
+        directorStoryboardBoardId: 'director-board-1',
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        imageUrl: 'https://signed.example/cos/director-board-cover.png',
+        options: expect.objectContaining({
+          generationMode: 'normal',
+        }),
+      }),
+    )
+    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        videoGenerationMode: 'director_storyboard',
+      }),
+    }))
   })
 
   it('LIP_SYNC: 缺少 panel 时显式失败', async () => {

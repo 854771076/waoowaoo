@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { removeLocationPromptSuffix } from '@/lib/constants'
 import {
   asLocationRecordArray,
-  asSubLocationArray,
+  extractSubLocationArray,
   isInvalidLocation,
   readText,
   toStringArray,
@@ -28,6 +28,11 @@ export type AnalyzeGlobalStats = {
   skippedProps: number
 }
 
+export type ExistingMacroLocationBrief = {
+  id: string
+  name: string
+}
+
 export function createAnalyzeGlobalStats(totalChunks: number): AnalyzeGlobalStats {
   return {
     totalChunks,
@@ -51,6 +56,7 @@ export async function persistAnalyzeGlobalChunk(params: {
   existingCharacters: CharacterBrief[]
   existingCharacterNames: string[]
   existingLocationNames: string[]
+  existingMacroLocations?: ExistingMacroLocationBrief[]
   existingLocationInfo: string[]
   existingChildPaths?: Set<string>
   existingPropNames: string[]
@@ -163,51 +169,70 @@ export async function persistAnalyzeGlobalChunk(params: {
       continue
     }
 
-    const macroExists = params.existingLocationNames.some((item) => item.toLowerCase() === name.toLowerCase())
-    if (macroExists) {
-      params.stats.skippedLocations += 1
-      continue
-    }
-
-    const macroDescriptionsRaw = Array.isArray(loc.descriptions)
-      ? (loc.descriptions as unknown[])
-      : (readText(loc.description) ? [readText(loc.description)] : [])
-    const macroDescriptions = macroDescriptionsRaw.map((item) => readText(item)).filter(Boolean)
-    const cleanMacroDescriptions = macroDescriptions.map((item) => removeLocationPromptSuffix(item))
-    const macroSlots = normalizeLocationAvailableSlots(loc.available_slots)
-
     let macroId: string | null = null
-    try {
-      const created = await prisma.novelPromotionLocation.create({
-        data: {
+    const existingMacro = params.existingMacroLocations?.find(
+      (item) => item.name.toLowerCase() === name.toLowerCase(),
+    )
+    const macroExists = !!existingMacro
+      || params.existingLocationNames.some((item) => item.toLowerCase() === name.toLowerCase())
+
+    if (existingMacro) {
+      macroId = existingMacro.id
+    } else if (macroExists) {
+      const persistedMacro = await prisma.novelPromotionLocation.findFirst({
+        where: {
           novelPromotionProjectId: params.projectInternalId,
           name,
-          summary: summary || null,
+          assetKind: 'location',
           sceneType: 'macro',
-          parentId: null,
         },
-        select: { id: true },
+        select: { id: true, name: true },
       })
-      macroId = created.id
+      macroId = persistedMacro?.id || null
+    } else {
+      const macroDescriptionsRaw = Array.isArray(loc.descriptions)
+        ? (loc.descriptions as unknown[])
+        : (readText(loc.description) ? [readText(loc.description)] : [])
+      const macroDescriptions = macroDescriptionsRaw.map((item) => readText(item)).filter(Boolean)
+      const cleanMacroDescriptions = macroDescriptions.map((item) => removeLocationPromptSuffix(item))
+      const macroSlots = normalizeLocationAvailableSlots(loc.available_slots)
 
-      await seedProjectLocationBackedImageSlots({
-        locationId: created.id,
-        descriptions: cleanMacroDescriptions.length > 0 ? cleanMacroDescriptions : undefined,
-        fallbackDescription: summary || name,
-        availableSlots: macroSlots,
-      })
+      try {
+        const created = await prisma.novelPromotionLocation.create({
+          data: {
+            novelPromotionProjectId: params.projectInternalId,
+            name,
+            summary: summary || null,
+            sceneType: 'macro',
+            parentId: null,
+          },
+          select: { id: true },
+        })
+        macroId = created.id
 
-      params.existingLocationNames.push(name)
-      params.existingLocationInfo.push(summary ? `${name}(${summary})` : name)
-      params.stats.newLocations += 1
-    } catch {
+        await seedProjectLocationBackedImageSlots({
+          locationId: created.id,
+          descriptions: cleanMacroDescriptions.length > 0 ? cleanMacroDescriptions : undefined,
+          fallbackDescription: summary || name,
+          availableSlots: macroSlots,
+        })
+
+        params.existingLocationNames.push(name)
+        params.existingMacroLocations?.push({ id: created.id, name })
+        params.existingLocationInfo.push(summary ? `${name}(${summary})` : name)
+        params.stats.newLocations += 1
+      } catch {
+        params.stats.skippedLocations += 1
+        continue
+      }
+    }
+
+    if (!macroId) {
       params.stats.skippedLocations += 1
       continue
     }
-
-    if (!macroId) continue
     const subLocationNamesInThisMacro = new Set<string>()
-    for (const sub of asSubLocationArray(loc.sub_locations)) {
+    for (const sub of extractSubLocationArray(loc)) {
       const subName = readText(sub.name).trim()
       const subSummary = readText(sub.summary)
       if (!subName) continue

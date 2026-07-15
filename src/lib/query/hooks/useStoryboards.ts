@@ -29,7 +29,7 @@ export interface StoryboardPanel {
     voiceUrl: string | null
     voiceMedia?: MediaRef | null
     videoUrl: string | null
-    videoGenerationMode?: 'normal' | 'firstlastframe' | null
+	    videoGenerationMode?: 'normal' | 'firstlastframe' | 'director_storyboard' | null
     videoMedia?: MediaRef | null
     imageTaskRunning?: boolean
     videoTaskRunning?: boolean
@@ -51,7 +51,7 @@ export interface StoryboardData {
 
 type VideoGenerationOptionValue = string | number | boolean
 type VideoGenerationOptions = Record<string, VideoGenerationOptionValue>
-type GridVideoSource = 'split' | 'original'
+type GridVideoSource = 'split' | 'original' | 'director_storyboard'
 
 export interface GridSplitImage {
     imageUrl: string
@@ -189,6 +189,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             gridSize?: number
             gridVideoSource?: GridVideoSource
             videoReferenceImages?: string[]
+            directorStoryboardBoardId?: string
         }) => {
             if (!projectId) throw new Error('Project ID is required')
 
@@ -208,6 +209,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
                 gridSize?: number
                 gridVideoSource?: GridVideoSource
                 videoReferenceImages?: string[]
+                directorStoryboardBoardId?: string
             } = {
                 storyboardId: params.storyboardId,
                 panelIndex: params.panelIndex,
@@ -237,6 +239,10 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
 
             if (Array.isArray(params.videoReferenceImages) && params.videoReferenceImages.length > 0) {
                 requestBody.videoReferenceImages = params.videoReferenceImages
+            }
+
+            if (typeof params.directorStoryboardBoardId === 'string' && params.directorStoryboardBoardId.trim()) {
+                requestBody.directorStoryboardBoardId = params.directorStoryboardBoardId.trim()
             }
 
             const res = await apiFetch(`/api/novel-promotion/${projectId}/generate-video`, {

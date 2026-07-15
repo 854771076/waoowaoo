@@ -45,6 +45,7 @@ interface VideoRenderPanelProps {
     gridSize?: number,
     gridVideoSource?: GridVideoSource,
     videoReferenceImages?: string[],
+    directorStoryboardBoardId?: string,
   ) => Promise<void>
   onUpdatePanelVideoModel: (storyboardId: string, panelIndex: number, model: string) => Promise<void>
   onLipSync: (storyboardId: string, panelIndex: number, voiceLineId: string, panelId?: string) => Promise<void>

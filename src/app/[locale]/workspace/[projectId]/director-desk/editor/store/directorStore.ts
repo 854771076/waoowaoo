@@ -3,7 +3,7 @@
  * In-memory only: persists via save API; undo/redo capped at 50.
  */
 import { create } from 'zustand'
-import type { DirectorProject, DirectorObject, DirectorCamera, DirectorSceneSettings, DirectorSnapshot } from '@/lib/director-desk/schema'
+import type { DirectorProject, DirectorObject, DirectorCamera, DirectorSceneSettings, DirectorSnapshot, DirectorStoryboardBoard } from '@/lib/director-desk/schema'
 import { createDefaultDirectorProject } from '@/lib/director-desk/schema'
 
 interface LoadedPanel {
@@ -34,6 +34,12 @@ export interface CameraCapture {
   capturedTarget?: [number, number, number]
 }
 
+export interface ViewportCameraSnapshot {
+  fov: number
+  position: [number, number, number]
+  target: [number, number, number]
+}
+
 interface DirectorState {
   project: DirectorProject
   selectedId: string | null
@@ -47,6 +53,7 @@ interface DirectorState {
   videoRatio: string
   loaded: boolean
   glCanvas: HTMLCanvasElement | null
+  viewportCamera: ViewportCameraSnapshot | null
   cameraCaptures: Record<string, CameraCapture[]>
 
   load: (project: DirectorProject, panelId: string, projectId: string, videoRatio: string, boundShots?: Array<{cameraId:string;name:string;isActive:boolean;imageUrl:string;note?:string;fov:number;pos:[number,number,number];target:[number,number,number]}>) => void
@@ -69,11 +76,12 @@ interface DirectorState {
   /** Silent: set active camera without pushing undo history (used for temporary capture switches). */
   setActiveCameraSilent: (id: string) => void
   addCameraCapture: (cameraId: string, dataUrl: string, name?: string, meta?: { fov: number; position: [number, number, number]; target: [number, number, number] }) => string
-  addDirectorSnapshot: (input: { name?: string; dataUrl?: string; note?: string }) => string | null
+  addDirectorSnapshot: (input: { name?: string; dataUrl?: string; note?: string; camera?: ViewportCameraSnapshot }) => string | null
   restoreDirectorSnapshot: (snapshotId: string) => void
   setDirectorSnapshotName: (snapshotId: string, name: string) => void
   setDirectorSnapshotNote: (snapshotId: string, note: string) => void
   removeDirectorSnapshot: (snapshotId: string) => void
+  createDirectorStoryboardBoard: (input?: { name?: string; assetIds?: string[] }) => string | null
   toggleCaptureBound: (cameraId: string, captureId: string) => void
   toggleCaptureActive: (cameraId: string, captureId: string) => void
   setCaptureName: (cameraId: string, captureId: string, name: string) => void
@@ -83,6 +91,7 @@ interface DirectorState {
   clearBoundCaptures: () => void
   hydrateBoundShots: (shots: Array<{id?:string;cameraId:string;name:string;isActive:boolean;imageUrl:string;imageMediaId?:string|null;note?:string;fov?:number;pos?:[number,number,number];target?:[number,number,number]}>) => void
   setGlCanvas: (canvas: HTMLCanvasElement | null) => void
+  setViewportCamera: (camera: ViewportCameraSnapshot | null) => void
   undo: () => void
   redo: () => void
 }
@@ -119,6 +128,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   videoRatio: '9:16',
   loaded: false,
   glCanvas: null,
+  viewportCamera: null,
   cameraCaptures: {},
 
   load(project, panelId, projectId, videoRatio, boundShots) {
@@ -212,6 +222,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   setViewModeSilent(m) { set({ viewMode: m }) },
   setTransformMode(m) { set({ transformMode: m }) },
   setGlCanvas(canvas) { set({ glCanvas: canvas }) },
+  setViewportCamera(camera) { set({ viewportCamera: camera }) },
 
   setSceneField(k, v) {
     const { project } = get()
@@ -364,19 +375,32 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const { project } = get()
     const camera = project.cameras.find(c => c.id === project.activeCameraId) ?? project.cameras[0]
     if (!camera) return null
+    const snapshotCamera = input.camera ?? {
+      fov: camera.fov,
+      position: camera.position,
+      target: camera.target,
+    }
+    const snapshotProject = createSnapshotProject(project)
+    snapshotProject.activeCameraId = camera.id
+    snapshotProject.cameras = snapshotProject.cameras.map(item =>
+      item.id === camera.id
+        ? {
+            ...item,
+            fov: snapshotCamera.fov,
+            position: snapshotCamera.position,
+            target: snapshotCamera.target,
+          }
+        : item,
+    )
     const snapshots = project.directorSnapshots ?? []
     const snapshotId = uid('snap')
     const snapshot: DirectorSnapshot = {
       id: snapshotId,
       name: input.name?.trim() || `快照 ${snapshots.length + 1}`,
       capturedAt: Date.now(),
-      project: createSnapshotProject(project),
+      project: snapshotProject,
       cameraId: camera.id,
-      camera: {
-        fov: camera.fov,
-        position: camera.position,
-        target: camera.target,
-      },
+      camera: snapshotCamera,
       imageDataUrl: input.dataUrl,
       note: input.note,
     }
@@ -436,6 +460,36 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const { project } = get()
     const snapshots = (project.directorSnapshots ?? []).filter(snapshot => snapshot.id !== snapshotId)
     set(pushHistory(get(), { ...project, directorSnapshots: snapshots }))
+  },
+
+  createDirectorStoryboardBoard(input) {
+    const { project } = get()
+    const assets = project.directorStoryboardAssets ?? []
+    const requestedIds = input?.assetIds?.length ? new Set(input.assetIds) : null
+    const selectedAssets = requestedIds ? assets.filter(asset => requestedIds.has(asset.id)) : assets
+    if (selectedAssets.length === 0) return null
+    const boards = project.directorStoryboardBoards ?? []
+    const boardId = uid('director-board')
+    const board: DirectorStoryboardBoard = {
+      id: boardId,
+      name: input?.name?.trim() || `导演台分镜板 ${boards.length + 1}`,
+      createdAt: Date.now(),
+      coverImageUrl: selectedAssets[0].imageUrl,
+      assetIds: selectedAssets.map(asset => asset.id),
+      items: selectedAssets.map((asset, index) => ({
+        assetId: asset.id,
+        x: asset.layout.x,
+        y: asset.layout.y + index * 0.08,
+        width: asset.layout.width,
+        height: asset.layout.height,
+        rotation: asset.layout.rotation,
+      })),
+    }
+    set(pushHistory(get(), {
+      ...project,
+      directorStoryboardBoards: [board, ...boards].slice(0, 24),
+    }))
+    return boardId
   },
 
   toggleCaptureBound(cameraId, captureId) {

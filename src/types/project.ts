@@ -193,7 +193,7 @@ export interface NovelPromotionPanel {
   videoUrl: string | null
   gridVideoPromptAt?: string | null  // 宫格视频提示词重写时间戳
   gridGenerationContext?: string | null  // 宫格图生成时的上下文JSON
-  videoGenerationMode?: 'normal' | 'firstlastframe' | null
+  videoGenerationMode?: 'normal' | 'firstlastframe' | 'director_storyboard' | null
   videoMedia?: MediaRef | null
   lipSyncVideoUrl?: string | null
   lipSyncVideoMedia?: MediaRef | null
@@ -201,6 +201,7 @@ export interface NovelPromotionPanel {
   sketchImageMedia?: MediaRef | null
   previousImageUrl?: string | null
   previousImageMedia?: MediaRef | null
+  directorLayout?: string | null
   photographyRules: string | null  // 单镜头摄影规则JSON
   actingNotes: string | null        // 演技指导数据JSON
   // 任务态字段（由 tasks + hook 派生，不再依赖数据库持久化）

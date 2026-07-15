@@ -31,7 +31,7 @@ import {
 } from '@/lib/storyboard-images/grid-generation-context'
 import { buildCharacterConsistencyContext } from '@/lib/storyboard-images/character-consistency-context'
 import { buildGridInvalidationPatch } from './panel-image-grid-invalidate'
-import { parseDirectorProject, type DirectorProject } from '@/lib/director-desk/schema'
+import { parseDirectorProject, serializeDirectorProject, type DirectorProject, type DirectorStoryboardAsset } from '@/lib/director-desk/schema'
 import { archiveToHistory } from '@/lib/novel-promotion/panel-history'
 
 interface DirectorSnapshotPayload {
@@ -283,6 +283,30 @@ function buildPanelPrompt(params: {
   })
 }
 
+function createDirectorStoryboardAsset(params: {
+  imageUrl: string
+  snapshot: DirectorSnapshotPayload
+  existingCount: number
+}): DirectorStoryboardAsset {
+  return {
+    id: `director-storyboard-${params.snapshot.id}-${Date.now().toString(36)}`,
+    type: 'rendered_snapshot',
+    name: params.snapshot.name?.trim() || `导演分镜 ${params.existingCount + 1}`,
+    createdAt: Date.now(),
+    imageUrl: params.imageUrl,
+    sourceSnapshotId: params.snapshot.id,
+    sourceCameraId: params.snapshot.cameraId,
+    note: params.snapshot.note,
+    layout: {
+      x: 0,
+      y: params.existingCount * 0.08,
+      width: 1,
+      height: 1,
+      rotation: 0,
+    },
+  }
+}
+
 export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const panelId = pickFirstString(payload.panelId, job.data.targetId)
@@ -505,6 +529,34 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const imageLayout = panelGridSize > 1 ? 'grid' : 'single'
 
   await assertTaskActive(job, 'persist_panel_image')
+  if (directorSnapshot) {
+    const persistedProject = parseDirectorProject(parseJsonUnknown(panel.directorLayout)) ?? directorSnapshot.project
+    const existingAssets = persistedProject.directorStoryboardAssets ?? []
+    const nextProject: DirectorProject = {
+      ...persistedProject,
+      directorStoryboardAssets: [
+        createDirectorStoryboardAsset({
+          imageUrl: candidates[0] || '',
+          snapshot: directorSnapshot,
+          existingCount: existingAssets.length,
+        }),
+        ...existingAssets,
+      ].filter((asset) => asset.imageUrl).slice(0, 48),
+    }
+    await prisma.novelPromotionPanel.update({
+      where: { id: panel.id },
+      data: {
+        directorLayout: serializeDirectorProject(nextProject),
+      },
+    })
+    return {
+      panelId: panel.id,
+      candidateCount: candidates.length,
+      imageUrl: null,
+      directorStoryboardAssetId: nextProject.directorStoryboardAssets?.[0]?.id ?? null,
+    }
+  }
+
   if (isFirstGeneration) {
     await prisma.novelPromotionPanel.update({
       where: { id: panel.id },

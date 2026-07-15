@@ -3,7 +3,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
-import type { BatchVideoGenerationParams, VideoGenerationOptions } from './components/video'
+import type { BatchVideoGenerationParams, GridVideoSource, VideoGenerationOptions } from './components/video'
 
 export interface WorkspaceStageVideoModelOption {
   value: string
@@ -48,6 +48,11 @@ export interface WorkspaceStageRuntimeValue {
     },
     generationOptions?: VideoGenerationOptions,
     panelId?: string,
+    imageLayout?: 'single' | 'grid',
+    gridSize?: number,
+    gridVideoSource?: GridVideoSource,
+    videoReferenceImages?: string[],
+    directorStoryboardBoardId?: string,
   ) => Promise<void>
   onGenerateAllVideos: (options?: BatchVideoGenerationParams) => Promise<void>
   onUpdateVideoPrompt: (

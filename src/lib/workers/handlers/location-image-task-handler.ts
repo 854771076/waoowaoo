@@ -1,13 +1,16 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
+import { createScopedLogger } from '@/lib/logging/core'
 import { PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { type TaskJobData } from '@/lib/task/types'
+import { normalizeReferenceImagesForGeneration } from '@/lib/media/outbound-image'
 import { resolveWorkerArtStylePrompt } from '@/lib/workers/art-style'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
   getProjectModels,
+  toSignedUrlIfCos,
 } from '../utils'
 import {
   AnyObj,
@@ -16,6 +19,10 @@ import {
 } from './image-task-handler-shared'
 import { buildLocationImagePromptCore } from '@/lib/location-image-prompt'
 import { buildPropImagePromptCore } from '@/lib/prop-image-prompt'
+
+const logger = createScopedLogger({ module: 'worker.location-image' })
+const PARENT_REFERENCE_WAIT_TIMEOUT_MS = 180_000
+const PARENT_REFERENCE_WAIT_INTERVAL_MS = 3_000
 
 function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
   if (!Object.prototype.hasOwnProperty.call(payload, 'artStyle')) return undefined
@@ -31,6 +38,8 @@ interface LocationImageRecord {
   locationId: string
   description: string | null
   availableSlots?: string | null
+  imageUrl?: string | null
+  isSelected?: boolean
   imageIndex: number
   location?: { name: string } | null
 }
@@ -38,6 +47,11 @@ interface LocationImageRecord {
 interface LocationWithImages {
   id: string
   name: string
+  sceneType?: string | null
+  parentId?: string | null
+  selectedImageId?: string | null
+  selectedImage?: { imageUrl?: string | null } | null
+  parent?: LocationWithImages | null
   images?: LocationImageRecord[]
 }
 
@@ -49,12 +63,109 @@ interface LocationImageTaskDb {
   novelPromotionLocation: {
     findUnique(args: Record<string, unknown>): Promise<LocationWithImages | null>
     findMany(args: Record<string, unknown>): Promise<LocationWithImages[]>
+    update(args: Record<string, unknown>): Promise<unknown>
   }
 }
 
 function resolveRequestedLocationCount(payload: AnyObj): number | null {
   if (!Object.prototype.hasOwnProperty.call(payload, 'count')) return null
   return normalizeImageGenerationCount('location', payload.count)
+}
+
+function pickLocationReferenceImage(location: LocationWithImages | null | undefined): string | null {
+  if (!location) return null
+  const selectedImageUrl = location.selectedImage?.imageUrl?.trim()
+  if (selectedImageUrl) return selectedImageUrl
+  const selectedImage = location.images?.find((image) => image.isSelected && image.imageUrl?.trim())
+  const fallbackImage = selectedImage || location.images?.find((image) => image.imageUrl?.trim())
+  return fallbackImage?.imageUrl?.trim() || null
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function waitForParentReferenceImage(params: {
+  job: Job<TaskJobData>
+  db: LocationImageTaskDb
+  projectId: string
+  locationId: string
+  locationName: string
+  parentId: string
+  parentName: string
+}): Promise<string | null> {
+  const startedAt = Date.now()
+  let attempt = 0
+
+  await reportTaskProgress(params.job, 18, {
+    stage: 'wait_parent_location_reference',
+    stageLabel: '等待父级场景图',
+    displayMode: 'detail',
+    message: `等待「${params.parentName}」生成完成后作为局部场景参考`,
+  })
+
+  while (Date.now() - startedAt < PARENT_REFERENCE_WAIT_TIMEOUT_MS) {
+    attempt += 1
+    const parent = await params.db.novelPromotionLocation.findUnique({
+      where: { id: params.parentId },
+      include: {
+        selectedImage: true,
+        images: { orderBy: { imageIndex: 'asc' } },
+      },
+    })
+    const parentImage = pickLocationReferenceImage(parent)
+    const signedParentImage = toSignedUrlIfCos(parentImage, 3600)
+    if (signedParentImage) {
+      logger.info({
+        action: 'location_image_parent_reference_wait_succeeded',
+        message: 'parent location reference became available',
+        projectId: params.projectId,
+        details: {
+          locationId: params.locationId,
+          locationName: params.locationName,
+          parentId: params.parentId,
+          parentName: params.parentName,
+          attempt,
+          waitedMs: Date.now() - startedAt,
+        },
+      })
+      return signedParentImage
+    }
+    await wait(PARENT_REFERENCE_WAIT_INTERVAL_MS)
+  }
+
+  logger.warn({
+    action: 'location_image_parent_reference_wait_timeout',
+    message: 'parent location reference unavailable before timeout',
+    projectId: params.projectId,
+    details: {
+      locationId: params.locationId,
+      locationName: params.locationName,
+      parentId: params.parentId,
+      parentName: params.parentName,
+      timeoutMs: PARENT_REFERENCE_WAIT_TIMEOUT_MS,
+    },
+  })
+  return null
+}
+
+function buildParentSceneReferenceInstruction(params: {
+  parentName: string
+  locationName: string
+  locale: 'zh' | 'en'
+}): string {
+  if (params.locale === 'en') {
+    return [
+      '',
+      `Parent scene reference image: ${params.parentName}.`,
+      `Generate ${params.locationName} as a local area inside this parent scene. Keep the same world design, architectural material, color palette, light direction, scale logic, and era style from the reference image. Do not redesign the parent setting; extend it consistently into this local scene.`,
+    ].join('\n')
+  }
+  return [
+    '',
+    `父级大场景参考图：${params.parentName}。`,
+    `请将「${params.locationName}」生成为该父级场景内部/附属的局部空间，继承参考图中的世界观、建筑材质、色彩体系、光线方向、空间尺度和时代风格。不要重新设计父级场景，只在统一视觉语言下延展出该局部场景。`,
+  ].join('\n')
 }
 
 export async function handleLocationImageTask(job: Job<TaskJobData>) {
@@ -142,6 +253,77 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   }
 
   const locationIds = Array.from(new Set(locationImages.map((it) => it.locationId)))
+  const parentReferenceByLocationId = new Map<string, { parentName: string; imageUrl: string }>()
+  const hasSelectedImageByLocationId = new Map<string, boolean>()
+
+  if (assetType === 'location' && locationIds.length > 0) {
+    const contextLocations = await db.novelPromotionLocation.findMany({
+      where: { id: { in: locationIds } } as Record<string, unknown>,
+      include: {
+        selectedImage: true,
+        images: { orderBy: { imageIndex: 'asc' } },
+        parent: {
+          include: {
+            selectedImage: true,
+            images: { orderBy: { imageIndex: 'asc' } },
+          },
+        },
+      },
+    })
+    for (const loc of contextLocations) {
+      if (loc.name) locationNameMap[loc.id] = loc.name
+      hasSelectedImageByLocationId.set(
+        loc.id,
+        Boolean(
+          loc.selectedImageId
+          || loc.selectedImage?.imageUrl?.trim()
+          || loc.images?.some((image) => image.isSelected && image.imageUrl?.trim()),
+        ),
+      )
+      if (loc.sceneType !== 'micro' || !loc.parent) continue
+      const parentImage = pickLocationReferenceImage(loc.parent)
+      let signedParentImage = toSignedUrlIfCos(parentImage, 3600)
+      logger.info({
+        action: 'location_image_parent_reference_resolved',
+        message: 'location image parent reference resolved',
+        projectId,
+        details: {
+          locationId: loc.id,
+          locationName: loc.name,
+          parentId: loc.parent.id,
+          parentName: loc.parent.name,
+          hasParentReference: Boolean(signedParentImage),
+          parentSelectedImageId: loc.parent.selectedImageId ?? null,
+        },
+      })
+      if (!signedParentImage) {
+        signedParentImage = await waitForParentReferenceImage({
+          job,
+          db,
+          projectId,
+          locationId: loc.id,
+          locationName: loc.name,
+          parentId: loc.parent.id,
+          parentName: loc.parent.name,
+        })
+      }
+      if (!signedParentImage) continue
+      const normalizedParentReferences = await normalizeReferenceImagesForGeneration([signedParentImage], {
+        context: {
+          projectId,
+          taskId: job.data.taskId,
+          locationId: loc.id,
+          parentId: loc.parent.id,
+          source: 'location_parent_reference',
+        },
+      })
+      if (normalizedParentReferences.length === 0) continue
+      parentReferenceByLocationId.set(loc.id, {
+        parentName: loc.parent.name,
+        imageUrl: normalizedParentReferences[0],
+      })
+    }
+  }
 
   for (let i = 0; i < locationImages.length; i++) {
     const item = locationImages[i]
@@ -159,9 +341,18 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
         locale: job.data.locale === 'en' ? 'en' : 'zh',
       })
 
+    const parentReference = parentReferenceByLocationId.get(item.locationId) || null
+    const locale = job.data.locale === 'en' ? 'en' : 'zh'
+    const promptWithParentReference = parentReference
+      ? `${promptCore}${buildParentSceneReferenceInstruction({
+        parentName: parentReference.parentName,
+        locationName: name,
+        locale,
+      })}`
+      : promptCore
     const promptWithSuffix = assetType === 'prop'
-      ? addPropPromptSuffix(promptCore)
-      : addLocationPromptSuffix(promptCore)
+      ? addPropPromptSuffix(promptWithParentReference)
+      : addLocationPromptSuffix(promptWithParentReference)
     const prompt = artStyle ? `${promptWithSuffix}，${artStyle}` : promptWithSuffix
     // ponytail: 背景图比例跟随项目视频比例(16:9/9:16/1:1 等),道具仍是固定 3:2 资产图。
     // videoRatio 已由 getProjectModelConfig 兜底为 '16:9',不会为空。
@@ -181,16 +372,39 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       keyPrefix: 'location',
       options: {
         aspectRatio,
+        ...(parentReference ? { referenceImages: [parentReference.imageUrl] } : {}),
       },
       // 同一 task 内串行生成多张时，禁止复用已有 externalId，否则所有图都会一模一样
       allowTaskExternalIdResume: locationImages.length === 1,
     })
 
     await assertTaskActive(job, 'persist_location_image')
+    const shouldAutoSelectLocationImage = assetType === 'location'
+      && !hasSelectedImageByLocationId.get(item.locationId)
     await db.locationImage.update({
       where: { id: item.id },
-      data: { imageUrl: imageKey },
+      data: {
+        imageUrl: imageKey,
+        ...(shouldAutoSelectLocationImage ? { isSelected: true } : {}),
+      },
     })
+    if (shouldAutoSelectLocationImage) {
+      await db.novelPromotionLocation.update({
+        where: { id: item.locationId },
+        data: { selectedImageId: item.id },
+      })
+      hasSelectedImageByLocationId.set(item.locationId, true)
+      logger.info({
+        action: 'location_image_auto_selected',
+        message: 'location image auto selected after generation',
+        projectId,
+        details: {
+          locationId: item.locationId,
+          imageId: item.id,
+          imageIndex: item.imageIndex,
+        },
+      })
+    }
   }
 
   return {

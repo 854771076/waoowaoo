@@ -64,15 +64,32 @@ export function useVideoPanelActions({
   const tCommon = useTranslations('common')
   const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
   const hasGridSplitImages = panel.imageLayout === 'grid' && (panel.gridSplitImages?.length || 0) > 0
+  const directorStoryboardBoards = panel.directorStoryboardBoards ?? []
   const [gridVideoSourceState, setGridVideoSourceState] = useState<{ value: GridVideoSource; touched: boolean }>({
     value: hasGridSplitImages ? 'split' : 'original',
     touched: false,
   })
+  const [directorStoryboardBoardId, setDirectorStoryboardBoardId] = useState<string>(directorStoryboardBoards[0]?.id || '')
 
   useEffect(() => {
     if (!hasGridSplitImages || gridVideoSourceState.touched) return
     setGridVideoSourceState({ value: 'split', touched: false })
   }, [gridVideoSourceState.touched, hasGridSplitImages])
+
+  useEffect(() => {
+    if (directorStoryboardBoards.length === 0) {
+      setDirectorStoryboardBoardId('')
+      if (gridVideoSourceState.value === 'director_storyboard') {
+        setGridVideoSourceState({ value: hasGridSplitImages ? 'split' : 'original', touched: false })
+      }
+      return
+    }
+    setDirectorStoryboardBoardId((previous) =>
+      directorStoryboardBoards.some((board) => board.id === previous)
+        ? previous
+        : directorStoryboardBoards[0].id,
+    )
+  }, [directorStoryboardBoards, gridVideoSourceState.value, hasGridSplitImages])
 
   const isFirstLastFrameOutput = panel.videoGenerationMode === 'firstlastframe' && !!panel.videoUrl
   const [includeCharacterSheet, setIncludeCharacterSheet] = useState(false)
@@ -247,6 +264,7 @@ export function useVideoPanelActions({
       onGenerateFirstLastFrame,
       onOpenGridSplit,
       onGridVideoSourceChange: (value: GridVideoSource) => setGridVideoSourceState({ value, touched: true }),
+      onDirectorStoryboardBoardChange: setDirectorStoryboardBoardId,
     },
     computed: {
       showLipSyncSection,
@@ -254,6 +272,8 @@ export function useVideoPanelActions({
       hasVisibleBaseVideo,
       gridVideoSource: gridVideoSourceState.value,
       hasGridSplitImages,
+      directorStoryboardBoards,
+      directorStoryboardBoardId,
     },
   }
 }

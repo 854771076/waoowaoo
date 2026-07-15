@@ -145,6 +145,45 @@ export interface DirectorSnapshot {
   note?: string;
 }
 
+export type DirectorStoryboardAssetType = 'rendered_snapshot';
+
+export interface DirectorStoryboardAsset {
+  id: string;
+  type: DirectorStoryboardAssetType;
+  name: string;
+  createdAt: number;
+  imageUrl: string;
+  sourceSnapshotId?: string;
+  sourceCameraId?: string;
+  note?: string;
+  layout: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+  };
+}
+
+export interface DirectorStoryboardBoardItem {
+  assetId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+}
+
+export interface DirectorStoryboardBoard {
+  id: string;
+  name: string;
+  createdAt: number;
+  coverImageUrl: string;
+  assetIds: string[];
+  items: DirectorStoryboardBoardItem[];
+  note?: string;
+}
+
 export interface DirectorSceneSettings {
   backgroundColor: string;
   showGround: boolean;
@@ -166,6 +205,8 @@ export interface DirectorProject {
   cameras: DirectorCamera[];
   activeCameraId: string;
   directorSnapshots?: DirectorSnapshot[];
+  directorStoryboardAssets?: DirectorStoryboardAsset[];
+  directorStoryboardBoards?: DirectorStoryboardBoard[];
 }
 
 const MAX_PROJECT_JSON_BYTES = 1024 * 1024;
@@ -399,6 +440,78 @@ function parseSnapshot(input: unknown): DirectorSnapshot | null {
   };
 }
 
+function parseStoryboardAsset(input: unknown): DirectorStoryboardAsset | null {
+  if (!isRecord(input)) return null;
+  if (typeof input.id !== 'string' || !input.id) return null;
+  if (input.type !== 'rendered_snapshot') return null;
+  if (typeof input.name !== 'string') return null;
+  if (typeof input.createdAt !== 'number' || !Number.isFinite(input.createdAt)) return null;
+  if (typeof input.imageUrl !== 'string' || !input.imageUrl) return null;
+  if (!isRecord(input.layout)) return null;
+  const { x, y, width, height, rotation } = input.layout;
+  if (
+    typeof x !== 'number' || !Number.isFinite(x) ||
+    typeof y !== 'number' || !Number.isFinite(y) ||
+    typeof width !== 'number' || !Number.isFinite(width) ||
+    typeof height !== 'number' || !Number.isFinite(height) ||
+    typeof rotation !== 'number' || !Number.isFinite(rotation)
+  ) {
+    return null;
+  }
+
+  return {
+    id: input.id,
+    type: input.type,
+    name: input.name,
+    createdAt: input.createdAt,
+    imageUrl: input.imageUrl,
+    sourceSnapshotId: typeof input.sourceSnapshotId === 'string' ? input.sourceSnapshotId : undefined,
+    sourceCameraId: typeof input.sourceCameraId === 'string' ? input.sourceCameraId : undefined,
+    note: typeof input.note === 'string' ? input.note : undefined,
+    layout: { x, y, width, height, rotation },
+  };
+}
+
+function parseStoryboardBoardItem(input: unknown): DirectorStoryboardBoardItem | null {
+  if (!isRecord(input)) return null;
+  if (typeof input.assetId !== 'string' || !input.assetId) return null;
+  const { x, y, width, height, rotation } = input;
+  if (
+    typeof x !== 'number' || !Number.isFinite(x) ||
+    typeof y !== 'number' || !Number.isFinite(y) ||
+    typeof width !== 'number' || !Number.isFinite(width) ||
+    typeof height !== 'number' || !Number.isFinite(height) ||
+    typeof rotation !== 'number' || !Number.isFinite(rotation)
+  ) {
+    return null;
+  }
+  return { assetId: input.assetId, x, y, width, height, rotation };
+}
+
+function parseStoryboardBoard(input: unknown): DirectorStoryboardBoard | null {
+  if (!isRecord(input)) return null;
+  if (typeof input.id !== 'string' || !input.id) return null;
+  if (typeof input.name !== 'string') return null;
+  if (typeof input.createdAt !== 'number' || !Number.isFinite(input.createdAt)) return null;
+  if (typeof input.coverImageUrl !== 'string' || !input.coverImageUrl) return null;
+  const assetIds = Array.isArray(input.assetIds)
+    ? input.assetIds.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+  const items = Array.isArray(input.items)
+    ? input.items.map(parseStoryboardBoardItem).filter((item): item is DirectorStoryboardBoardItem => item !== null)
+    : [];
+  if (assetIds.length === 0 || items.length === 0) return null;
+  return {
+    id: input.id,
+    name: input.name,
+    createdAt: input.createdAt,
+    coverImageUrl: input.coverImageUrl,
+    assetIds,
+    items,
+    note: typeof input.note === 'string' ? input.note : undefined,
+  };
+}
+
 export function parseDirectorProject(json: unknown): DirectorProject | null {
   if (!isRecord(json)) return null;
   if (json.version !== DIRECTOR_PROJECT_VERSION) return null;
@@ -432,6 +545,22 @@ export function parseDirectorProject(json: unknown): DirectorProject | null {
       directorSnapshots.push(parsed);
     }
   }
+  const directorStoryboardAssets: DirectorStoryboardAsset[] = [];
+  if (Array.isArray(json.directorStoryboardAssets)) {
+    for (const raw of json.directorStoryboardAssets) {
+      const parsed = parseStoryboardAsset(raw);
+      if (!parsed) return null;
+      directorStoryboardAssets.push(parsed);
+    }
+  }
+  const directorStoryboardBoards: DirectorStoryboardBoard[] = [];
+  if (Array.isArray(json.directorStoryboardBoards)) {
+    for (const raw of json.directorStoryboardBoards) {
+      const parsed = parseStoryboardBoard(raw);
+      if (!parsed) return null;
+      directorStoryboardBoards.push(parsed);
+    }
+  }
 
   // strip transient scene field
   scene.backdropImageUrl = null;
@@ -443,6 +572,8 @@ export function parseDirectorProject(json: unknown): DirectorProject | null {
     cameras,
     activeCameraId: json.activeCameraId,
     ...(directorSnapshots.length > 0 ? { directorSnapshots } : {}),
+    ...(directorStoryboardAssets.length > 0 ? { directorStoryboardAssets } : {}),
+    ...(directorStoryboardBoards.length > 0 ? { directorStoryboardBoards } : {}),
   };
 }
 
@@ -452,6 +583,16 @@ function stripDirectorProjectForPersistence(p: DirectorProject, includeSnapshots
     scene: { ...p.scene },
     objects: p.objects.map((o) => ({ ...o })),
     cameras: p.cameras.map((c) => ({ ...c })),
+    ...(p.directorStoryboardAssets
+      ? { directorStoryboardAssets: p.directorStoryboardAssets.map((asset) => ({ ...asset, layout: { ...asset.layout } })) }
+      : {}),
+    ...(p.directorStoryboardBoards
+      ? { directorStoryboardBoards: p.directorStoryboardBoards.map((board) => ({
+          ...board,
+          assetIds: [...board.assetIds],
+          items: board.items.map((item) => ({ ...item })),
+        })) }
+      : {}),
     ...(includeSnapshots && p.directorSnapshots
       ? {
           directorSnapshots: p.directorSnapshots.map((snapshot) => ({
@@ -471,6 +612,12 @@ function stripDirectorProjectForPersistence(p: DirectorProject, includeSnapshots
   }
   if (stripped.directorSnapshots?.length === 0) {
     delete stripped.directorSnapshots;
+  }
+  if (stripped.directorStoryboardAssets?.length === 0) {
+    delete stripped.directorStoryboardAssets;
+  }
+  if (stripped.directorStoryboardBoards?.length === 0) {
+    delete stripped.directorStoryboardBoards;
   }
   return stripped;
 }

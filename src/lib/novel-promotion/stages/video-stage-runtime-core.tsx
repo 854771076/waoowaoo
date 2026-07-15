@@ -347,6 +347,7 @@ export function useVideoStageRuntime({
     gridSize?: number,
     gridVideoSource?: GridVideoSource,
     videoReferenceImages?: string[],
+    directorStoryboardBoardId?: string,
   ) => {
     if (isSubmittingVideoBatch) return
 
@@ -380,6 +381,7 @@ export function useVideoStageRuntime({
         gridSize,
         gridVideoSource,
         videoReferenceImages,
+        directorStoryboardBoardId,
       )
     } catch (error) {
       setSubmittingVideoPanelKeys((previous) => {

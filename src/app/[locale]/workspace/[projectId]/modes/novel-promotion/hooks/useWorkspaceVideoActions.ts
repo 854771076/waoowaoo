@@ -54,6 +54,7 @@ export function useWorkspaceVideoActions({
     gridSize?: number,
     gridVideoSource?: GridVideoSource,
     videoReferenceImages?: string[],
+    directorStoryboardBoardId?: string,
   ) => {
     const normalizedVideoModel = typeof videoModel === 'string' ? videoModel.trim() : ''
     if (!normalizedVideoModel) {
@@ -72,6 +73,7 @@ export function useWorkspaceVideoActions({
         gridSize,
         gridVideoSource,
         videoReferenceImages,
+        directorStoryboardBoardId,
       })
     } catch (err: unknown) {
       if (isAbortError(err)) {

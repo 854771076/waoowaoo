@@ -1,22 +1,42 @@
 'use client'
 import { Canvas, useThree } from '@react-three/fiber'
 import { GizmoHelper, GizmoViewport, OrbitControls, PerspectiveCamera } from '@react-three/drei'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { PerspectiveCamera as ThreePerspectiveCamera } from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useDirectorStore } from '../store/directorStore'
 import { useActiveCamera } from '../store/directorSelectors'
 import { SceneRoot } from './SceneRoot'
 
 function CameraRig() {
   const setGlCanvas = useDirectorStore((s) => s.setGlCanvas)
+  const setViewportCamera = useDirectorStore((s) => s.setViewportCamera)
   const viewMode = useDirectorStore((s) => s.viewMode)
   const active = useActiveCamera()
-  const { gl } = useThree()
+  const { gl, camera } = useThree()
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
 
   useEffect(() => {
     setGlCanvas(gl.domElement)
     return () => setGlCanvas(null)
   }, [gl, setGlCanvas])
+
+  const syncViewportCamera = useCallback(() => {
+    const target = controlsRef.current?.target.toArray()
+    const fov = 'fov' in camera && typeof camera.fov === 'number' ? camera.fov : 50
+    setViewportCamera({
+      fov,
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      target: target && target.length >= 3
+        ? [target[0], target[1], target[2]]
+        : [0, 1.05, 0],
+    })
+  }, [camera, setViewportCamera])
+
+  useEffect(() => {
+    if (viewMode !== 'director') return
+    syncViewportCamera()
+  }, [syncViewportCamera, viewMode])
 
   if (viewMode === 'camera' && active) {
     return <CameraFromActive cam={active} />
@@ -24,7 +44,13 @@ function CameraRig() {
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, 1.55, 5.4]} fov={50} near={0.05} far={200} />
-      <OrbitControls makeDefault target={[0, 1.05, 0]} enableDamping />
+      <OrbitControls
+        ref={controlsRef}
+        makeDefault
+        target={[0, 1.05, 0]}
+        enableDamping
+        onChange={syncViewportCamera}
+      />
     </>
   )
 }

@@ -533,6 +533,27 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
           .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) !== 'prop')
           .map((item) => String(item.name || '').toLowerCase()),
       )
+      const existingMacroLocations = (novelData.locations || [])
+        .filter((item) => {
+          const record = item as unknown as Record<string, unknown>
+          return readAssetKind(record) !== 'prop'
+            && ((record.sceneType as string | undefined) === 'micro' ? 'micro' : 'macro') === 'macro'
+        })
+        .map((item) => ({ id: item.id, name: item.name }))
+      const existingLocationById = new Map(
+        (novelData.locations || []).map((item) => [item.id, item]),
+      )
+      const existingChildPaths = new Set<string>()
+      for (const item of novelData.locations || []) {
+        const record = item as unknown as Record<string, unknown>
+        if (readAssetKind(record) === 'prop') continue
+        const sceneType = (record.sceneType as string | undefined) === 'micro' ? 'micro' : 'macro'
+        const parentId = typeof record.parentId === 'string' ? record.parentId : null
+        if (sceneType !== 'micro' || !parentId) continue
+        const parent = existingLocationById.get(parentId)
+        if (!parent) continue
+        existingChildPaths.add(`${String(parent.name || '').toLowerCase()}/${String(item.name || '').toLowerCase()}`)
+      }
       const existingPropNames = new Set<string>(
         (novelData.locations || [])
           .filter((item) => readAssetKind(item as unknown as Record<string, unknown>) === 'prop')
@@ -550,6 +571,8 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
         const createdLocations = await persistAnalyzedLocations({
           projectInternalId: novelData.id,
           existingNames: existingLocationNames,
+          existingMacroLocations,
+          existingChildPaths,
           analyzedLocations: result.analyzedLocations,
           db: tx,
         })

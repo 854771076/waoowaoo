@@ -94,4 +94,31 @@ describe('useWorkspaceVideoActions', () => {
       videoReferenceImages: ['images/source.png', 'images/character.png'],
     }))
   })
+
+  it('forwards director storyboard board id to single video mutation', async () => {
+    generateVideoMutateAsyncMock.mockResolvedValueOnce({ taskId: 'task-director-storyboard' })
+    const actions = useWorkspaceVideoActions({
+      projectId: 'project-1',
+      episodeId: 'episode-1',
+      t: (key: string) => key,
+    })
+
+    await actions.handleGenerateVideo(
+      'storyboard-1',
+      0,
+      'veo-3.1',
+      undefined,
+      { duration: 5 },
+      'panel-1',
+      'single',
+      undefined,
+      undefined,
+      [],
+      'director-board-1',
+    )
+
+    expect(generateVideoMutateAsyncMock).toHaveBeenCalledWith(expect.objectContaining({
+      directorStoryboardBoardId: 'director-board-1',
+    }))
+  })
 })

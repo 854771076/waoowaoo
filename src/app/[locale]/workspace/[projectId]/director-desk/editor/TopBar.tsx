@@ -1,27 +1,13 @@
 'use client'
 import { useState } from 'react'
 import { useDirectorStore } from './store/directorStore'
-import { collectBoundShotsForSave, getActiveCameraSnapshot } from './store/directorSelectors'
+import { getActiveCameraSnapshot } from './store/directorSelectors'
 import { captureCameraScreenshot } from './io/screenshot'
-import { serializeDirectorProject } from '@/lib/director-desk/schema'
-
-const DIRECTOR_DESK_SAVED_EVENT = 'director-desk:saved'
-
-function notifyOpener(panelId: string) {
-  // Notify the storyboard opener (if any) that saves happened so it can refresh the panel preview.
-  try {
-    if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({ type: DIRECTOR_DESK_SAVED_EVENT, panelId }, '*')
-    }
-  } catch {
-    /* cross-origin opener — ignore */
-  }
-}
+import { saveDirectorDesk } from './io/save'
 
 export function TopBar() {
   const viewMode = useDirectorStore((s) => s.viewMode)
   const setViewMode = useDirectorStore((s) => s.setViewMode)
-  const project = useDirectorStore((s) => s.project)
   const panelId = useDirectorStore((s) => s.panelId)
   const projectId = useDirectorStore((s) => s.projectId)
   const videoRatio = useDirectorStore((s) => s.videoRatio)
@@ -33,47 +19,12 @@ export function TopBar() {
     if (!panelId || !projectId) return false
     setSaving(true)
     try {
-      let shots = collectBoundShotsForSave()
-      // if user hasn't captured anything, auto-capture the active camera
-      if (shots.length === 0) {
-        const active = getActiveCameraSnapshot()
-        if (active) {
-          try {
-            const dataUrl = await captureCameraScreenshot(videoRatio, active.id)
-            const store = useDirectorStore.getState()
-            const capId = store.addCameraCapture(active.id, dataUrl, active.name, {
-              fov: active.fov,
-              position: active.position,
-              target: active.target,
-            })
-            store.toggleCaptureBound(active.id, capId)
-            store.toggleCaptureActive(active.id, capId)
-            shots = collectBoundShotsForSave()
-          } catch (err) {
-            console.error('[TopBar] auto-capture failed', err)
-          }
-        }
-      }
-      const body = {
-        panelId,
-        project: JSON.parse(serializeDirectorProject(project)),
-        shots,
-      }
-      const res = await fetch(`/api/novel-promotion/${projectId}/director-desk/save`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        alert(`保存失败: ${res.status} ${text}`)
-        return false
-      }
-      const data = await res.json().catch(() => null)
-      if (data?.warning) alert(data.warning)
-      useDirectorStore.setState({ isDirty: false })
-      notifyOpener(panelId)
+      const data = await saveDirectorDesk({ autoCaptureIfNoShots: true })
+      if (data.warning) alert(data.warning)
       return true
+    } catch (error) {
+      alert(`保存失败: ${error instanceof Error ? error.message : String(error)}`)
+      return false
     } finally {
       setSaving(false)
     }

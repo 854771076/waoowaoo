@@ -29,6 +29,8 @@ describe('grid video frontend entry', () => {
     expect(bodySource).toContain('splitGrid')
     expect(bodySource).toContain('useSplitGridVideo')
     expect(bodySource).toContain('useOriginalGridVideo')
+    expect(bodySource).toContain("onGridVideoSourceChange('director_storyboard')")
+    expect(bodySource).toContain('directorStoryboardBoardId')
     expect(bodySource).toContain('onGridVideoSourceChange')
     expect(bodySource).toContain('gridVideoSource')
   })

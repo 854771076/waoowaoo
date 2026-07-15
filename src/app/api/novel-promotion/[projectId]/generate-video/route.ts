@@ -33,8 +33,9 @@ function toVideoRuntimeSelections(value: unknown): Record<string, CapabilityValu
   return selections
 }
 
-function resolveVideoGenerationMode(payload: unknown): 'normal' | 'firstlastframe' {
+function resolveVideoGenerationMode(payload: unknown): 'normal' | 'firstlastframe' | 'director_storyboard' {
   if (!isRecord(payload)) return 'normal'
+  if (typeof payload.directorStoryboardBoardId === 'string' && payload.directorStoryboardBoardId.trim()) return 'director_storyboard'
   return isRecord(payload.firstLastFrame) ? 'firstlastframe' : 'normal'
 }
 
@@ -110,7 +111,8 @@ async function validateVideoCapabilityCombination(input: {
   if (!builtinCaps) return
 
   const runtimeSelections = toVideoRuntimeSelections(payload.generationOptions)
-  runtimeSelections.generationMode = resolveVideoGenerationMode(payload)
+  const generationMode = resolveVideoGenerationMode(payload)
+  runtimeSelections.generationMode = generationMode === 'director_storyboard' ? 'normal' : generationMode
 
   let resolvedOptions: Record<string, CapabilityValue>
   try {

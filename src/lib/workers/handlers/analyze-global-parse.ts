@@ -31,6 +31,9 @@ export type LocationRaw = {
   descriptions?: unknown
   available_slots?: unknown
   sub_locations?: unknown
+  local_scenes?: unknown
+  micro_locations?: unknown
+  children?: unknown
 }
 
 export type AnalyzeGlobalLocationsData = {
@@ -49,6 +52,19 @@ export function asSubLocationArray(value: unknown): SubLocationRaw[] {
   return value.filter(
     (item): item is Record<string, unknown> => typeof item === 'object' && item !== null,
   ) as SubLocationRaw[]
+}
+
+export function extractSubLocationArray(location: LocationRaw): SubLocationRaw[] {
+  for (const value of [
+    location.sub_locations,
+    location.local_scenes,
+    location.micro_locations,
+    location.children,
+  ]) {
+    const rows = asSubLocationArray(value)
+    if (rows.length > 0) return rows
+  }
+  return []
 }
 
 export type AnalyzeGlobalPropsData = {

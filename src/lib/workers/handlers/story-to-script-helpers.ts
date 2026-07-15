@@ -100,12 +100,45 @@ export async function persistAnalyzedCharacters(params: {
 export async function persistAnalyzedLocations(params: {
   projectInternalId: string
   existingNames: Set<string>
+  existingMacroLocations?: Array<{ id: string; name: string }>
+  existingChildPaths?: Set<string>
   analyzedLocations: Record<string, unknown>[]
   db?: LocationCreateDb
 }) {
   const created: Array<{ id: string; name: string }> = []
   const invalidKeywords = ['幻想', '抽象', '无明确', '空间锚点', '未说明', '不明确']
   const db = params.db ?? prisma
+
+  const extractSubLocations = (item: Record<string, unknown>) => {
+    for (const key of ['sub_locations', 'local_scenes', 'micro_locations', 'children']) {
+      const value = item[key]
+      if (Array.isArray(value)) {
+        return value.filter((sub): sub is Record<string, unknown> => {
+          return !!sub && typeof sub === 'object' && !Array.isArray(sub)
+        })
+      }
+    }
+    return []
+  }
+
+  const createLocationImageSlots = async (locationId: string, item: Record<string, unknown>, fallbackName: string) => {
+    const descriptions = toStringArray(item.descriptions)
+    const mergedDescriptions = descriptions.length > 0
+      ? descriptions
+      : (asString(item.description) ? [asString(item.description)] : [])
+    const cleanDescriptions = mergedDescriptions.map((desc) => removeLocationPromptSuffix(desc || ''))
+    const availableSlots = normalizeLocationAvailableSlots(item.available_slots)
+    await seedProjectLocationBackedImageSlots({
+      locationId,
+      descriptions: cleanDescriptions,
+      fallbackDescription: asString(item.summary) || fallbackName,
+      availableSlots,
+      locationImageModel: db.locationImage,
+    })
+  }
+
+  const existingMacroLocations = params.existingMacroLocations ?? []
+  const existingChildPaths = params.existingChildPaths ?? new Set<string>()
 
   for (const item of params.analyzedLocations) {
     const name = asString(item.name).trim()
@@ -123,32 +156,85 @@ export async function persistAnalyzedLocations(params: {
     if (isInvalid) continue
 
     const key = name.toLowerCase()
-    if (params.existingNames.has(key)) continue
+    let macroId: string | null = null
+    const knownMacro = existingMacroLocations.find((macro) => macro.name.toLowerCase() === key)
+    if (knownMacro) {
+      macroId = knownMacro.id
+    } else if (params.existingNames.has(key)) {
+      const existing = await db.novelPromotionLocation.findFirst({
+        where: {
+          novelPromotionProjectId: params.projectInternalId,
+          name,
+          assetKind: 'location',
+          sceneType: 'macro',
+        },
+        select: { id: true, name: true },
+      })
+      macroId = existing?.id || null
+    } else {
+      const location = await db.novelPromotionLocation.create({
+        data: {
+          novelPromotionProjectId: params.projectInternalId,
+          name,
+          summary: asString(item.summary) || null,
+          sceneType: 'macro',
+          parentId: null,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      })
 
-    const location = await db.novelPromotionLocation.create({
-      data: {
-        novelPromotionProjectId: params.projectInternalId,
-        name,
-        summary: asString(item.summary) || null,
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    })
+      await createLocationImageSlots(location.id, item, name)
 
-    const cleanDescriptions = mergedDescriptions.map((desc) => removeLocationPromptSuffix(desc || ''))
-    const availableSlots = normalizeLocationAvailableSlots(item.available_slots)
-    await seedProjectLocationBackedImageSlots({
-      locationId: location.id,
-      descriptions: cleanDescriptions,
-      fallbackDescription: asString(item.summary) || name,
-      availableSlots,
-      locationImageModel: db.locationImage,
-    })
+      params.existingNames.add(key)
+      existingMacroLocations.push({ id: location.id, name })
+      macroId = location.id
+      created.push(location)
+    }
 
-    params.existingNames.add(key)
-    created.push(location)
+    if (!macroId) continue
+
+    const subNamesInThisMacro = new Set<string>()
+    for (const sub of extractSubLocations(item)) {
+      const subName = asString(sub.name).trim()
+      if (!subName) continue
+
+      const subDescriptions = toStringArray(sub.descriptions)
+      const subMergedDescriptions = subDescriptions.length > 0
+        ? subDescriptions
+        : (asString(sub.description) ? [asString(sub.description)] : [])
+      const subFirstDescription = subMergedDescriptions[0] || ''
+      const subInvalid = invalidKeywords.some((keyword) =>
+        subName.includes(keyword) || subFirstDescription.includes(keyword),
+      )
+      if (subInvalid) continue
+
+      const subKey = subName.toLowerCase()
+      if (subNamesInThisMacro.has(subKey)) continue
+      const childPath = `${key}/${subKey}`
+      if (existingChildPaths.has(childPath)) continue
+      subNamesInThisMacro.add(subKey)
+
+      const child = await db.novelPromotionLocation.create({
+        data: {
+          novelPromotionProjectId: params.projectInternalId,
+          name: subName,
+          summary: asString(sub.summary) || null,
+          sceneType: 'micro',
+          parentId: macroId,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      })
+
+      await createLocationImageSlots(child.id, sub, subName)
+      existingChildPaths.add(childPath)
+      created.push(child)
+    }
   }
 
   return created

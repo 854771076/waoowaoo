@@ -16,6 +16,11 @@ Selection rules:
 Location hierarchy — macro vs. micro:
 - Macro (top-level location entry): the overall setting/building/place (e.g. "Lin Manor", "the Palace", "the school", "the starship").
 - Micro (nested under `sub_locations`): a specific room, corner, or area *inside* a macro (e.g. "Main Hall", "garden", "classroom", "cockpit").
+- Do not merge the parent place and a local area into one macro name. For example, "Zixiao Palace Square" should be emitted as macro "Zixiao Palace" with micro "Palace Square"; "Lin Manor Main Hall" should be macro "Lin Manor" plus micro "Main Hall".
+- When the script says characters move toward / enter / arrive at / pass through a specific area inside a parent location, treat that area as a `sub_locations` candidate. For example, "walking toward Zixiao Palace Main Hall" should create a micro such as "Main Hall Entrance" or "Main Hall" under "Zixiao Palace".
+- **Keep both the current action area and the explicit destination area**: if characters act in one micro area inside a macro and then clearly move toward / enter another micro area, emit both micro areas even when the destination appears only at the end of the scene. For example, "the conversation happens on Zixiao Palace Square, then they walk toward Zixiao Palace Main Hall" should emit both "Palace Square" and "Main Hall Entrance/Main Hall", not only "Palace Square".
+- Reusable placement nodes inside a macro (square, gate, steps, portico, entrance, main hall, inner hall, corridor, courtyard, gallery, etc.) should become micro candidates whenever they are tied to a route, dialogue, gathering, waiting, entrance, or exit. Do not drop them merely because they are a movement endpoint or a next-shot entry point.
+- If multiple reusable areas appear inside the same parent location (square, gate, steps, hall entrance, inner hall, corridor, etc.), prefer multiple `sub_locations` instead of collapsing everything into one broad macro.
 - Only nest a micro under a macro when there is a **clear physical containment** relation. A micro must actually be located *inside* that macro.
 - Independent, unrelated places stay at the top level as separate macros — do not force-nest them.
 - If the source text only mentions the macro (no specific sub-space), emit only the macro and omit `sub_locations` (or return `[]`).
@@ -80,6 +85,7 @@ Output format (JSON only):
 Notes on sub_locations:
 - Emit `sub_locations` only when the source text explicitly names a specific room/area *inside* the macro with a clear containment relation.
 - If only the macro is mentioned, omit `sub_locations` or return `[]`.
+- If the source text includes both the micro area where action is currently happening and a clear destination micro area that characters move toward / enter, emit both. The destination may be named as a drawable space such as "Main Hall Entrance", "Gate Steps", or "Inner Hall" based on the text.
 - Micro entries follow the exact same field format and quality bar as macros (3 descriptions, 2-6 available_slots, anchor-grounded).
 - Focus difference: macro = overall environment / exterior / spatial silhouette; micro = interior layout / local detail / close-in anchors.
 

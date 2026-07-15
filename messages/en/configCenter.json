@@ -18,7 +18,7 @@
     "status": "Status",
     "allLocales": "All locales",
     "allStatuses": "All statuses",
-    "searchPlaceholder": "Search name / ID / note..."
+    "searchPlaceholder": "Search display name / function / note..."
   },
   "locales": {
     "zh": "Chinese",

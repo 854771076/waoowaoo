@@ -3,6 +3,8 @@
 import { useMemo } from 'react'
 import type {
   Clip,
+  DirectorStoryboardAsset,
+  DirectorStoryboardBoard,
   GridSplitImage,
   GridVideoFrame,
   Storyboard,
@@ -94,6 +96,89 @@ function parseGridGenerationContext(value: unknown): {
   }
 }
 
+function parseDirectorStoryboardAssets(value: unknown): DirectorStoryboardAsset[] {
+  if (typeof value !== 'string' || !value.trim()) return []
+  try {
+    const project = asRecord(JSON.parse(value))
+    const assets = Array.isArray(project.directorStoryboardAssets) ? project.directorStoryboardAssets : []
+    return assets
+      .map((item): DirectorStoryboardAsset | null => {
+        const record = asRecord(item)
+        const id = pickText(record.id)
+        const name = pickText(record.name)
+        const imageUrl = pickText(record.imageUrl)
+        if (!id || record.type !== 'rendered_snapshot' || !name || !imageUrl) return null
+        const layout = asRecord(record.layout)
+        return {
+          id,
+          type: 'rendered_snapshot',
+          name,
+          createdAt: typeof record.createdAt === 'number' ? record.createdAt : 0,
+          imageUrl,
+          sourceSnapshotId: pickText(record.sourceSnapshotId) || undefined,
+          sourceCameraId: pickText(record.sourceCameraId) || undefined,
+          note: pickText(record.note) || undefined,
+          layout: {
+            x: typeof layout.x === 'number' ? layout.x : 0,
+            y: typeof layout.y === 'number' ? layout.y : 0,
+            width: typeof layout.width === 'number' ? layout.width : 1,
+            height: typeof layout.height === 'number' ? layout.height : 1,
+            rotation: typeof layout.rotation === 'number' ? layout.rotation : 0,
+          },
+        }
+      })
+      .filter((item): item is DirectorStoryboardAsset => item !== null)
+  } catch {
+    return []
+  }
+}
+
+function parseDirectorStoryboardBoards(value: unknown): DirectorStoryboardBoard[] {
+  if (typeof value !== 'string' || !value.trim()) return []
+  try {
+    const project = asRecord(JSON.parse(value))
+    const boards = Array.isArray(project.directorStoryboardBoards) ? project.directorStoryboardBoards : []
+    return boards
+      .map((item): DirectorStoryboardBoard | null => {
+        const record = asRecord(item)
+        const id = pickText(record.id)
+        const name = pickText(record.name)
+        const coverImageUrl = pickText(record.coverImageUrl)
+        const assetIds = Array.isArray(record.assetIds)
+          ? record.assetIds.filter((assetId): assetId is string => typeof assetId === 'string' && assetId.length > 0)
+          : []
+        const items = Array.isArray(record.items)
+          ? record.items.map((rawItem) => {
+              const item = asRecord(rawItem)
+              const assetId = pickText(item.assetId)
+              if (!assetId) return null
+              return {
+                assetId,
+                x: typeof item.x === 'number' ? item.x : 0,
+                y: typeof item.y === 'number' ? item.y : 0,
+                width: typeof item.width === 'number' ? item.width : 1,
+                height: typeof item.height === 'number' ? item.height : 1,
+                rotation: typeof item.rotation === 'number' ? item.rotation : 0,
+              }
+            }).filter((entry): entry is DirectorStoryboardBoard['items'][number] => entry !== null)
+          : []
+        if (!id || !name || !coverImageUrl || assetIds.length === 0 || items.length === 0) return null
+        return {
+          id,
+          name,
+          createdAt: typeof record.createdAt === 'number' ? record.createdAt : 0,
+          coverImageUrl,
+          assetIds,
+          items,
+          note: pickText(record.note) || undefined,
+        }
+      })
+      .filter((item): item is DirectorStoryboardBoard => item !== null)
+  } catch {
+    return []
+  }
+}
+
 export function useVideoPanelsProjection({
   storyboards,
   clips,
@@ -162,6 +247,8 @@ export function useVideoPanelsProjection({
           imageUrl: panel.imageUrl || undefined,
           imageLayout: (panel.imageLayout as 'single' | 'grid' | undefined) || undefined,
           gridGenerationContext: panel.gridGenerationContext || undefined,
+          directorStoryboardAssets: parseDirectorStoryboardAssets(panel.directorLayout),
+          directorStoryboardBoards: parseDirectorStoryboardBoards(panel.directorLayout),
           gridSplitImages: gridContext.gridSplitImages,
           gridVideoFrames: gridContext.gridVideoFrames,
           firstLastFramePrompt: panel.firstLastFramePrompt || undefined,

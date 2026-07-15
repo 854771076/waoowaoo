@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import PromptVersionEditor from './PromptVersionEditor'
 import WorkflowStatusStrip from '@/components/operations/WorkflowStatusStrip'
+import { getPromptCategoryLabel, getPromptDisplayDescription, getPromptDisplayName } from './prompt-display'
 
 export type PromptVersionStatus = 'draft' | 'published' | 'disabled'
 export type PromptLocale = 'zh' | 'en'
@@ -76,7 +77,15 @@ function promptMatchesFilters(prompt: PromptDefinition, locale: LocaleFilter, st
 function promptMatchesSearch(prompt: PromptDefinition, query: string) {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true
-  return [prompt.name, prompt.promptId, prompt.category, prompt.description ?? '']
+  return [
+    getPromptDisplayName(prompt.promptId, prompt.name),
+    getPromptDisplayDescription(prompt.promptId, prompt.description),
+    getPromptCategoryLabel(prompt.category),
+    prompt.name,
+    prompt.promptId,
+    prompt.category,
+    prompt.description ?? '',
+  ]
     .some((field) => field.toLowerCase().includes(normalized))
 }
 
@@ -242,6 +251,8 @@ export default function PromptLibraryPanel() {
               {filteredPrompts.map((prompt) => {
                 const counts = getStatusCounts(prompt.versions)
                 const active = prompt.promptId === selectedPrompt?.promptId
+                const displayName = getPromptDisplayName(prompt.promptId, prompt.name)
+                const displayDescription = getPromptDisplayDescription(prompt.promptId, prompt.description)
                 return (
                   <button
                     key={prompt.id}
@@ -254,11 +265,13 @@ export default function PromptLibraryPanel() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[var(--glass-text-primary)]">{prompt.name}</p>
-                        <p className="mt-1 truncate text-[11px] text-[var(--glass-text-tertiary)]">{prompt.promptId}</p>
+                        <p className="truncate text-sm font-semibold text-[var(--glass-text-primary)]">{displayName}</p>
+                        {displayDescription ? (
+                          <p className="mt-1 truncate text-[11px] text-[var(--glass-text-tertiary)]">{displayDescription}</p>
+                        ) : null}
                       </div>
                       <span className="shrink-0 rounded-full border border-[var(--glass-stroke-base)] px-2 py-0.5 text-[10px] text-[var(--glass-text-secondary)]">
-                        {prompt.category}
+                        {getPromptCategoryLabel(prompt.category)}
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] font-medium">

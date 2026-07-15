@@ -88,11 +88,13 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
   }))
   const existingCharacterNames = existingCharacters.flatMap((item) => [item.name, ...item.aliases])
   const existingLocationEntries: Array<{
+    id: string
     name: string
     summary: string | null
     sceneType: 'macro' | 'micro'
     parentName: string | null
   }> = []
+  const existingMacroLocations: Array<{ id: string; name: string }> = []
   const existingChildPaths = new Set<string>()
   for (const loc of novelData.locations) {
     if (readAssetKind(loc as unknown as Record<string, unknown>) === 'prop') continue
@@ -100,11 +102,13 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
     const parentId = (loc as unknown as { parentId?: string | null }).parentId ?? null
     if (sceneType === 'macro') {
       existingLocationEntries.push({
+        id: loc.id,
         name: loc.name,
         summary: readText(loc.summary),
         sceneType: 'macro',
         parentName: null,
       })
+      existingMacroLocations.push({ id: loc.id, name: loc.name })
       const children = (loc as unknown as { children?: Array<Record<string, unknown>> }).children || []
       for (const child of children) {
         if (readAssetKind(child) === 'prop') continue
@@ -112,6 +116,7 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
         const childName = typeof child.name === 'string' ? child.name : ''
         if (!childName) continue
         existingLocationEntries.push({
+          id: typeof child.id === 'string' ? child.id : '',
           name: childName,
           summary: readText(child.summary),
           sceneType: 'micro',
@@ -122,6 +127,7 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
     } else if (sceneType === 'micro' && !parentId) {
       // ponytail: 孤立子场景（parent 被删）作为顶层条目兜底
       existingLocationEntries.push({
+        id: loc.id,
         name: loc.name,
         summary: readText(loc.summary),
         sceneType: 'micro',
@@ -239,6 +245,7 @@ export async function handleAnalyzeGlobalTask(job: Job<TaskJobData>) {
         existingCharacters,
         existingCharacterNames,
         existingLocationNames,
+        existingMacroLocations,
         existingLocationInfo,
         existingChildPaths,
         existingPropNames,
