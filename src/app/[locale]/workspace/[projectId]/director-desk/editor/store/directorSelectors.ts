@@ -45,13 +45,13 @@ export function collectBoundShotsForSave(): SaveShot[] {
   const s = useDirectorStore.getState()
   const shots: SaveShot[] = []
   for (const [cameraId, caps] of Object.entries(s.cameraCaptures)) {
+    const cam = s.project.cameras.find(c => c.id === cameraId)
+    if (!cam) continue
     for (const cap of caps) {
       if (!cap.isBound) continue
-      const cam = s.project.cameras.find(c => c.id === cameraId)
-      // Fall back to persisted camera pose if the camera was deleted from project
-      const fov = cap.capturedFov ?? cam?.fov ?? cap.persistedFov ?? 50
-      const position = (cap.capturedPosition ?? cam?.position ?? cap.persistedPos ?? [0, 1.55, 5.4]) as [number, number, number]
-      const target = (cap.capturedTarget ?? cam?.target ?? cap.persistedTarget ?? [0, 1.05, 0]) as [number, number, number]
+      const fov = cap.capturedFov ?? cam.fov ?? cap.persistedFov ?? 50
+      const position = (cap.capturedPosition ?? cam.position ?? cap.persistedPos ?? [0, 1.55, 5.4]) as [number, number, number]
+      const target = (cap.capturedTarget ?? cam.target ?? cap.persistedTarget ?? [0, 1.05, 0]) as [number, number, number]
       if (cap.persistedShotId) {
         shots.push({
           cameraId,

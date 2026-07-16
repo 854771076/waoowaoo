@@ -4,6 +4,9 @@ import {
 } from '@/lib/providers/official/model-registry'
 import { getProviderConfig } from '@/lib/api-config'
 import type { GenerateResult } from '@/lib/generators/base'
+import { getPublicBaseUrl } from '@/lib/env'
+import { getSignedObjectUrl } from '@/lib/storage'
+import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { ensureStarRouterCatalogRegistered } from './catalog'
 import type { StarRouterGenerateRequestOptions } from './types'
 
@@ -53,7 +56,7 @@ function readTaskIdFromResponse(data: StarRouterVideoSubmitResponse): string {
 
 interface StarRouterVideoSubmitBody {
   model: string
-  content: Array<{ type: string; text?: string; image_url?: { url: string } }>
+  content: Array<{ type: string; text?: string; image_url?: { url: string }; role?: 'first_frame' | 'reference_image' }>
   resolution?: string
   ratio?: string
   duration?: number
@@ -96,6 +99,83 @@ function readOptionalStringArray(value: unknown): string[] {
     if (normalized && !result.includes(normalized)) result.push(normalized)
   }
   return result
+}
+
+function assertFetchableImageUrl(value: string): void {
+  if (value.startsWith('data:')) {
+    throw new Error('STARSTONE_VIDEO_IMAGE_URL_FETCHABLE_REQUIRED')
+  }
+}
+
+function isHttpUrl(value: string): boolean {
+  return value.startsWith('http://') || value.startsWith('https://')
+}
+
+function isStorageKey(value: string): boolean {
+  return value.startsWith('images/') || value.startsWith('video/') || value.startsWith('voice/')
+}
+
+function parseKnownRouteStorageKey(value: string): string | null {
+  try {
+    const parsed = new URL(value, 'http://localhost')
+    if (parsed.pathname === '/api/storage/sign') {
+      const key = parsed.searchParams.get('key')
+      return key?.trim() || null
+    }
+    if (parsed.pathname.startsWith('/api/files/')) {
+      const encodedKey = parsed.pathname.slice('/api/files/'.length)
+      return decodeURIComponent(encodedKey)
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function assertPubliclyReachableImageUrl(value: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error('STARSTONE_VIDEO_IMAGE_URL_PUBLIC_REQUIRED')
+  }
+  const host = parsed.hostname
+  const isPubliclyReachable =
+    parsed.protocol === 'https:'
+    && !['localhost', '127.0.0.1', '0.0.0.0', '::1', 'minio'].includes(host)
+    && !host.endsWith('.local')
+    && !host.endsWith('.internal')
+  if (!isPubliclyReachable) {
+    throw new Error('STARSTONE_VIDEO_IMAGE_URL_PUBLIC_REQUIRED')
+  }
+}
+
+async function signPublicStorageUrl(storageKey: string): Promise<string> {
+  const signed = await getSignedObjectUrl(storageKey, 3600)
+  const absoluteUrl = isHttpUrl(signed)
+    ? signed
+    : `${getPublicBaseUrl().replace(/\/$/, '')}${signed.startsWith('/') ? signed : `/${signed}`}`
+  assertPubliclyReachableImageUrl(absoluteUrl)
+  return absoluteUrl
+}
+
+async function normalizeStarRouterImageUrl(value: string): Promise<string> {
+  const normalized = readTrimmedString(value)
+  if (!normalized) throw new Error('STARSTONE_VIDEO_IMAGE_URL_REQUIRED')
+  assertFetchableImageUrl(normalized)
+
+  const routeStorageKey = parseKnownRouteStorageKey(normalized)
+  if (routeStorageKey) return await signPublicStorageUrl(routeStorageKey)
+  if (isStorageKey(normalized)) return await signPublicStorageUrl(normalized)
+
+  const mediaStorageKey = await resolveStorageKeyFromMediaValue(normalized)
+  if (mediaStorageKey) return await signPublicStorageUrl(mediaStorageKey)
+
+  if (!isHttpUrl(normalized)) {
+    throw new Error('STARSTONE_VIDEO_IMAGE_URL_PUBLIC_REQUIRED')
+  }
+  assertPubliclyReachableImageUrl(normalized)
+  return normalized
 }
 
 function readOptionalRecord(value: unknown, fieldName: string): Record<string, unknown> | undefined {
@@ -166,14 +246,15 @@ function assertNoUnsupportedOptions(options: StarRouterGenerateRequestOptions): 
   }
 }
 
-function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
+async function buildSubmitRequest(params: StarRouterVideoGenerateParams): Promise<{
   endpoint: string
   body: StarRouterVideoSubmitBody
-} {
+}> {
   const imageUrl = readTrimmedString(params.imageUrl)
   if (!imageUrl) {
     throw new Error('STARSTONE_VIDEO_IMAGE_URL_REQUIRED')
   }
+  const normalizedImageUrl = await normalizeStarRouterImageUrl(imageUrl)
   const modelId = readTrimmedString(params.options.modelId)
   if (!modelId) {
     throw new Error('STARSTONE_VIDEO_MODEL_ID_REQUIRED')
@@ -200,17 +281,19 @@ function buildSubmitRequest(params: StarRouterVideoGenerateParams): {
 
   const videoReferenceImages = readOptionalStringArray(params.options.videoReferenceImages)
 
-  // StarRouter 不允许 first_frame/last_frame 与 reference_image 混用。
-  // 单图走首帧模式；多图走纯参考图模式，支持拆分格/导演分镜板等多图输入。
+  // StarRouter/火山会校验图片项必须声明 role；多图时统一用 reference_image，避免与 first_frame 混用。
   const content: StarRouterVideoSubmitBody['content'] = []
   if (prompt) {
     content.push({ type: 'text', text: prompt })
   }
-  const contentImageUrls = videoReferenceImages.length > 0 ? videoReferenceImages : [imageUrl]
+  const contentImageUrls = videoReferenceImages.length > 0 ? videoReferenceImages : [normalizedImageUrl]
+  const imageRole = contentImageUrls.length === 1 ? 'first_frame' : 'reference_image'
   for (const contentImageUrl of contentImageUrls) {
+    const normalizedContentImageUrl = await normalizeStarRouterImageUrl(contentImageUrl)
     content.push({
       type: 'image_url',
-      image_url: { url: contentImageUrl },
+      image_url: { url: normalizedContentImageUrl },
+      role: imageRole,
     })
   }
 
@@ -256,7 +339,7 @@ export async function generateStarRouterVideo(params: StarRouterVideoGeneratePar
   assertNoUnsupportedOptions(params.options)
 
   const { apiKey } = await getProviderConfig(params.userId, params.options.provider)
-  const submitRequest = buildSubmitRequest(params)
+  const submitRequest = await buildSubmitRequest(params)
   let response: Response
   try {
     response = await fetch(submitRequest.endpoint, {

@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import type { DirectorSnapshot, DirectorStoryboardAsset, DirectorStoryboardBoard } from '@/lib/director-desk/schema'
+import type { DirectorSnapshot, DirectorStoryboardAsset, DirectorStoryboardBoard, DirectorStoryboardBoardItem } from '@/lib/director-desk/schema'
 import { toDisplayImageUrl } from '@/lib/media/image-url'
 import { useDirectorStore } from '../store/directorStore'
 import { captureActiveCameraScreenshot } from '../io/screenshot'
@@ -13,7 +13,19 @@ const EMPTY_DIRECTOR_STORYBOARD_BOARDS: DirectorStoryboardBoard[] = []
 interface BoardEditorState {
   boardId: string | null
   name: string
+  note: string
   assetIds: string[]
+  itemLayouts: Record<string, Omit<DirectorStoryboardBoardItem, 'assetId'>>
+}
+
+function getAssetBoardLayout(asset: DirectorStoryboardAsset, index = 0): Omit<DirectorStoryboardBoardItem, 'assetId'> {
+  return {
+    x: asset.layout.x,
+    y: asset.layout.y + index * 0.08,
+    width: asset.layout.width,
+    height: asset.layout.height,
+    rotation: asset.layout.rotation,
+  }
 }
 
 function formatSnapshotTime(value: number) {
@@ -80,12 +92,13 @@ export function SnapshotPanel() {
     setStatus(null)
     try {
       await saveDirectorDesk()
+      const snapshotForRender = useDirectorStore.getState().project.directorSnapshots?.find((item) => item.id === snapshot.id) ?? snapshot
       const response = await fetch(`/api/novel-promotion/${projectId}/director-desk/render-snapshot`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           panelId,
-          snapshot,
+          snapshot: snapshotForRender,
         }),
       })
       if (!response.ok) {
@@ -135,7 +148,9 @@ export function SnapshotPanel() {
     setBoardEditor({
       boardId: null,
       name: `导演台分镜板 ${storyboardBoards.length + 1}`,
+      note: '',
       assetIds: storyboardAssets.map((asset) => asset.id),
+      itemLayouts: Object.fromEntries(storyboardAssets.map((asset, index) => [asset.id, getAssetBoardLayout(asset, index)])),
     })
   }
 
@@ -144,19 +159,40 @@ export function SnapshotPanel() {
     setStatus(null)
     const existingAssetIds = new Set(storyboardAssets.map((asset) => asset.id))
     const assetIds = board.assetIds.filter((assetId) => existingAssetIds.has(assetId))
+    const itemsByAssetId = new Map(board.items.map((item) => [item.assetId, item]))
     setBoardEditor({
       boardId: board.id,
       name: board.name,
+      note: board.note ?? '',
       assetIds,
+      itemLayouts: Object.fromEntries(assetIds.map((assetId, index) => {
+        const item = itemsByAssetId.get(assetId)
+        if (item) {
+          return [assetId, { x: item.x, y: item.y, width: item.width, height: item.height, rotation: item.rotation }]
+        }
+        const asset = storyboardAssets.find((candidate) => candidate.id === assetId)
+        return [assetId, asset ? getAssetBoardLayout(asset, index) : { x: 0, y: 0, width: 1, height: 1, rotation: 0 }]
+      })),
     })
   }
 
   function toggleBoardAsset(assetId: string) {
     setBoardEditor((current) => {
       if (!current) return current
-      return current.assetIds.includes(assetId)
-        ? { ...current, assetIds: current.assetIds.filter((id) => id !== assetId) }
-        : { ...current, assetIds: [...current.assetIds, assetId] }
+      if (current.assetIds.includes(assetId)) {
+        const { [assetId]: _removed, ...itemLayouts } = current.itemLayouts
+        void _removed
+        return { ...current, assetIds: current.assetIds.filter((id) => id !== assetId), itemLayouts }
+      }
+      const asset = storyboardAssets.find((item) => item.id === assetId)
+      return {
+        ...current,
+        assetIds: [...current.assetIds, assetId],
+        itemLayouts: {
+          ...current.itemLayouts,
+          [assetId]: asset ? getAssetBoardLayout(asset, current.assetIds.length) : { x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+        },
+      }
     })
   }
 
@@ -172,6 +208,21 @@ export function SnapshotPanel() {
     })
   }
 
+  function updateBoardItemLayout(assetId: string, field: keyof Omit<DirectorStoryboardBoardItem, 'assetId'>, value: number) {
+    if (!Number.isFinite(value)) return
+    setBoardEditor((current) => {
+      if (!current) return current
+      const currentLayout = current.itemLayouts[assetId] ?? { x: 0, y: 0, width: 1, height: 1, rotation: 0 }
+      return {
+        ...current,
+        itemLayouts: {
+          ...current.itemLayouts,
+          [assetId]: { ...currentLayout, [field]: value },
+        },
+      }
+    })
+  }
+
   async function saveStoryboardBoard() {
     if (busy || !boardEditor) return
     setSavingBoard(true)
@@ -180,7 +231,12 @@ export function SnapshotPanel() {
       const boardId = saveDirectorStoryboardBoard({
         boardId: boardEditor.boardId ?? undefined,
         name: boardEditor.name,
+        note: boardEditor.note,
         assetIds: boardEditor.assetIds,
+        items: boardEditor.assetIds.map((assetId) => ({
+          assetId,
+          ...(boardEditor.itemLayouts[assetId] ?? { x: 0, y: 0, width: 1, height: 1, rotation: 0 }),
+        })),
       })
       if (!boardId) throw new Error('没有可用分镜资产')
       await persistSnapshotState(boardEditor.boardId ? '导演台分镜板已更新并保存' : '导演台分镜板已生成并保存')
@@ -344,6 +400,7 @@ export function SnapshotPanel() {
                   ) : null}
                   <div className="truncate text-[11px] text-white/70">{board.name}</div>
                   <div className="text-[10px] text-white/40">{board.items.length} 个资产</div>
+                  {board.note ? <div className="mt-0.5 line-clamp-2 text-[10px] text-white/40">{board.note}</div> : null}
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button
                       type="button"
@@ -384,6 +441,15 @@ export function SnapshotPanel() {
                 className="w-full rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] outline-none focus:border-white/30"
               />
             </label>
+            <label className="mb-3 block">
+              <span className="mb-1 block text-[10px] text-white/45">分镜板备注</span>
+              <textarea
+                value={boardEditor.note}
+                onChange={(event) => setBoardEditor((current) => current ? { ...current, note: event.target.value } : current)}
+                rows={2}
+                className="w-full resize-none rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] outline-none focus:border-white/30"
+              />
+            </label>
             <div className="mb-2 text-[11px] font-medium text-white/70">选择分镜资产</div>
             <div className="mb-3 flex flex-col gap-2">
               {storyboardAssets.map((asset) => {
@@ -419,30 +485,54 @@ export function SnapshotPanel() {
               <div className="flex flex-col gap-2">
                 {boardEditorSelectedAssets.map((asset, index) => {
                   const displayUrl = toDisplayImageUrl(asset.imageUrl)
+                  const layout = boardEditor.itemLayouts[asset.id] ?? getAssetBoardLayout(asset, index)
                   return (
-                    <div key={asset.id} className="flex items-center gap-2 rounded border border-white/10 bg-white/5 p-2">
-                      <div className="w-4 text-center text-[10px] text-white/35">{index + 1}</div>
-                      {displayUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={displayUrl} alt={asset.name} className="h-10 w-14 flex-shrink-0 rounded object-cover" />
-                      ) : null}
-                      <div className="min-w-0 flex-1 truncate text-[11px] text-white/70">{asset.name}</div>
-                      <button
-                        type="button"
-                        onClick={() => moveBoardAsset(asset.id, -1)}
-                        disabled={index === 0}
-                        className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60 disabled:opacity-30"
-                      >
-                        上移
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveBoardAsset(asset.id, 1)}
-                        disabled={index === boardEditorSelectedAssets.length - 1}
-                        className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60 disabled:opacity-30"
-                      >
-                        下移
-                      </button>
+                    <div key={asset.id} className="rounded border border-white/10 bg-white/5 p-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 text-center text-[10px] text-white/35">{index + 1}</div>
+                        {displayUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={displayUrl} alt={asset.name} className="h-10 w-14 flex-shrink-0 rounded object-cover" />
+                        ) : null}
+                        <div className="min-w-0 flex-1 truncate text-[11px] text-white/70">{asset.name}</div>
+                        <button
+                          type="button"
+                          onClick={() => moveBoardAsset(asset.id, -1)}
+                          disabled={index === 0}
+                          className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60 disabled:opacity-30"
+                        >
+                          上移
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveBoardAsset(asset.id, 1)}
+                          disabled={index === boardEditorSelectedAssets.length - 1}
+                          className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60 disabled:opacity-30"
+                        >
+                          下移
+                        </button>
+                      </div>
+                      <div className="mt-2 text-[10px] font-medium text-white/45">布局参数</div>
+                      <div className="mt-1 grid grid-cols-5 gap-1">
+                        {([
+                          ['x', 'X'],
+                          ['y', 'Y'],
+                          ['width', '宽'],
+                          ['height', '高'],
+                          ['rotation', '旋转'],
+                        ] as const).map(([field, label]) => (
+                          <label key={field} className="min-w-0">
+                            <span className="mb-0.5 block text-[9px] text-white/35">{label}</span>
+                            <input
+                              type="number"
+                              step={field === 'rotation' ? 0.05 : 0.01}
+                              value={layout[field]}
+                              onChange={(event) => updateBoardItemLayout(asset.id, field, Number(event.target.value))}
+                              className="w-full rounded border border-white/10 bg-black/20 px-1 py-0.5 text-[10px] outline-none focus:border-white/30"
+                            />
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   )
                 })}

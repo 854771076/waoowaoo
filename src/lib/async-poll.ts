@@ -24,6 +24,7 @@ import { composeModelKey } from './model-config-contract'
 
 const OPENAI_COMPAT_PROVIDER_PREFIX = 'openai-compatible:'
 const PROVIDER_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const STARSTONE_QUERY_TIMEOUT_MS = 30_000
 
 export interface PollResult {
     status: 'pending' | 'completed' | 'failed'
@@ -44,6 +45,22 @@ function getErrorMessage(error: unknown): string {
         if (typeof candidate === 'string') return candidate
     }
     return '查询异常'
+}
+
+function isTransientFetchError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') return true
+
+    const message = error.message.toLowerCase()
+    return (
+        message.includes('fetch failed') ||
+        message.includes('network') ||
+        message.includes('timeout') ||
+        message.includes('econnreset') ||
+        message.includes('etimedout') ||
+        message.includes('enotfound') ||
+        message.includes('eai_again')
+    )
 }
 
 /**
@@ -892,6 +909,7 @@ async function pollStarstoneTask(requestId: string, userId: string): Promise<Pol
                 headers: {
                     Authorization: `Bearer ${apiKey}`,
                 },
+                signal: AbortSignal.timeout(STARSTONE_QUERY_TIMEOUT_MS),
             },
         )
 
@@ -1027,6 +1045,7 @@ async function pollStarstoneTask(requestId: string, userId: string): Promise<Pol
         return {
             status: 'failed',
             error: `StarStone: ${errorMessage}`,
+            transient: isTransientFetchError(error),
         }
     }
 }

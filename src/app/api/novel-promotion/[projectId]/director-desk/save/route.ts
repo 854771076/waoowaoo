@@ -6,10 +6,12 @@ import { apiHandler, ApiError } from '@/lib/api-errors'
 import { uploadObject, generateUniqueKey } from '@/lib/storage'
 import { ensureMediaObjectFromStorageKey } from '@/lib/media/service'
 import {
+  applyImportedAssetUrlMap,
   parseDirectorProject,
   serializeDirectorProject,
   validateDirectorProjectSize,
   type DirectorProject,
+  type DirectorImportedAsset,
 } from '@/lib/director-desk/schema'
 import { computePhotographyRulesPatch } from '@/lib/director-desk/photography-rules'
 
@@ -34,6 +36,7 @@ interface IncomingSnapshotImage {
 
 const MAX_SHOTS = 8
 const MAX_DATAURL_BYTES = 5 * 1024 * 1024
+const MAX_ASSET_DATAURL_BYTES = 25 * 1024 * 1024
 
 function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } | null {
   if (typeof dataUrl !== 'string') return null
@@ -89,6 +92,54 @@ function validateSnapshotImage(raw: unknown): IncomingSnapshotImage | null {
   return {
     snapshotId: input.snapshotId,
     imageDataUrl: input.imageDataUrl,
+  }
+}
+
+function getAssetFileExtension(asset: DirectorImportedAsset): string {
+  const match = /\.([a-z0-9]+)$/i.exec(asset.fileName)
+  if (match?.[1]) return match[1].toLowerCase()
+  if (asset.sourceType === 'image') return 'jpg'
+  return 'bin'
+}
+
+async function uploadImportedAssetDataUrls(project: DirectorProject, panelId: string) {
+  if (!project.importedAssets?.length) {
+    return {
+      project,
+      uploadedAssets: [] as Array<{ assetId: string; url: string }>,
+      failedCount: 0,
+    }
+  }
+
+  let failedCount = 0
+  const uploadedAssets: Array<{ assetId: string; url: string }> = []
+  const importedAssets = await Promise.all(project.importedAssets.map(async (asset) => {
+    if (!asset.url.startsWith('data:')) return asset
+    try {
+      const parsed = parseDataUrl(asset.url)
+      if (!parsed || parsed.buffer.length > MAX_ASSET_DATAURL_BYTES) {
+        failedCount++
+        return asset
+      }
+      const key = generateUniqueKey(`director-assets-${panelId}`, getAssetFileExtension(asset))
+      await uploadObject(parsed.buffer, key, undefined, parsed.mime || 'application/octet-stream')
+      await ensureMediaObjectFromStorageKey(key, {
+        mimeType: parsed.mime || 'application/octet-stream',
+        sizeBytes: parsed.buffer.length,
+      })
+      uploadedAssets.push({ assetId: asset.id, url: key })
+      return { ...asset, url: key }
+    } catch (error) {
+      console.error('[director-desk] imported asset upload failed:', error)
+      failedCount++
+      return asset
+    }
+  }))
+
+  return {
+    project: { ...project, importedAssets },
+    uploadedAssets,
+    failedCount,
   }
 }
 
@@ -164,13 +215,17 @@ export const POST = apiHandler(async (
   }
   const videoRatio = panel.storyboard.episode.novelPromotionProject.videoRatio ?? '9:16'
 
-	  const uploadedSnapshotImages: Array<{ snapshotId: string; imageUrl: string }> = []
-	  let snapshotImageFailed = 0
-	  const snapshotImageById = new Map(snapshotImages.map((item) => [item.snapshotId, item.imageDataUrl]))
-	  const projectWithSnapshotImages: DirectorProject = parsedProject.directorSnapshots?.length
-	    ? {
-	        ...parsedProject,
-	        directorSnapshots: await Promise.all(parsedProject.directorSnapshots.map(async (snapshot) => {
+  const uploadedSnapshotImages: Array<{ snapshotId: string; imageUrl: string }> = []
+  let snapshotImageFailed = 0
+  const importedAssetUpload = await uploadImportedAssetDataUrls(parsedProject, panelId)
+  const importedAssetFailed = importedAssetUpload.failedCount
+  const importedAssetUrlById = new Map(importedAssetUpload.uploadedAssets.map((asset) => [asset.assetId, asset.url]))
+  const projectWithUploadedAssetUrls = applyImportedAssetUrlMap(importedAssetUpload.project, importedAssetUrlById)
+  const snapshotImageById = new Map(snapshotImages.map((item) => [item.snapshotId, item.imageDataUrl]))
+  const projectWithSnapshotImages: DirectorProject = projectWithUploadedAssetUrls.directorSnapshots?.length
+    ? {
+        ...projectWithUploadedAssetUrls,
+        directorSnapshots: await Promise.all(projectWithUploadedAssetUrls.directorSnapshots.map(async (snapshot) => {
 	          if (snapshot.imageUrl) return snapshot
 	          const imageDataUrl = snapshotImageById.get(snapshot.id)
 	          if (!imageDataUrl) return snapshot
@@ -196,7 +251,7 @@ export const POST = apiHandler(async (
 	          }
 	        })),
 	      }
-	    : parsedProject
+    : projectWithUploadedAssetUrls
 	
 	  const serializedLayout = serializeDirectorProject(projectWithSnapshotImages)
 	  if (!validateDirectorProjectSize(serializedLayout)) {
@@ -384,10 +439,12 @@ export const POST = apiHandler(async (
 	  if (totalNew > 0 && newSucceeded === 0) warning = 'all_screenshots_failed'
 	  else if (newFailed > 0) warning = 'some_screenshots_failed'
 	  if (!warning && snapshotImageFailed > 0) warning = 'some_snapshot_images_failed'
+	  if (!warning && importedAssetFailed > 0) warning = 'some_imported_assets_failed'
 	
 	  return NextResponse.json({
 	    success: true,
 	    ...(warning ? { warning } : {}),
 	    ...(uploadedSnapshotImages.length > 0 ? { snapshotImages: uploadedSnapshotImages } : {}),
+	    ...(importedAssetUpload.uploadedAssets.length > 0 ? { importedAssets: importedAssetUpload.uploadedAssets } : {}),
 	  })
 })

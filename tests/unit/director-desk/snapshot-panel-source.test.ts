@@ -14,7 +14,12 @@ describe('director desk snapshot panel storyboard boards', () => {
     expect(source).toContain('boardEditor')
     expect(source).toContain('saveDirectorStoryboardBoard')
     expect(source).toContain('moveBoardAsset')
+    expect(source).toContain('updateBoardItemLayout')
     expect(source).toContain('toggleBoardAsset')
+    expect(source).toContain('note: boardEditor.note')
+    expect(source).toContain('items: boardEditor.assetIds.map')
+    expect(source).toContain('分镜板备注')
+    expect(source).toContain('布局参数')
     expect(source).toContain('选择分镜资产')
     expect(source).toContain('上移')
     expect(source).toContain('下移')
@@ -28,5 +33,12 @@ describe('director desk snapshot panel storyboard boards', () => {
     expect(source).toContain('removeDirectorStoryboardBoard')
     expect(source).toContain('编辑')
     expect(source).toContain('删除')
+  })
+
+  it('renders the latest saved snapshot state after save updates urls', () => {
+    const source = readSource('src/app/[locale]/workspace/[projectId]/director-desk/editor/panels/SnapshotPanel.tsx')
+
+    expect(source).toContain('const snapshotForRender = useDirectorStore.getState().project.directorSnapshots?.find')
+    expect(source).toContain('snapshot: snapshotForRender')
   })
 })

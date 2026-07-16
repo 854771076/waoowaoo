@@ -73,6 +73,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
   const referenceKindLabel = (kind: string) => {
     if (kind === 'source') return t('panelCard.videoReference.source')
     if (kind === 'lastFrame') return t('panelCard.videoReference.lastFrame')
+    if (kind === 'gridFrame') return '高清分镜'
     if (kind === 'character') return t('panelCard.videoReference.character')
     if (kind === 'characterSheet') return t('panelCard.videoReference.characterSheet')
     if (kind === 'location') return t('panelCard.videoReference.location')
@@ -82,11 +83,14 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
     choices: [],
     selectedIds: new Set<string>(),
     selectedImages: [],
+    maxSelectedCount: 9,
     includeCharacterSheet: false,
     setIncludeCharacterSheet: () => undefined,
     toggleChoice: () => undefined,
   }
   const showVideoReferenceSelector = resolvedVideoReference.choices.length > 0
+  const selectedReferenceCount = resolvedVideoReference.selectedIds.size
+  const isReferenceLimitReached = selectedReferenceCount >= resolvedVideoReference.maxSelectedCount
 
   return (
     <div className="p-4 space-y-2">
@@ -181,40 +185,49 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                     <span>{t('panelCard.videoReference.characterSheetMode')}</span>
                   </label>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {resolvedVideoReference.choices.map((choice) => {
-                    const checked = choice.required || resolvedVideoReference.selectedIds.has(choice.id)
-                    const displayImageUrl = toDisplayImageUrl(choice.url)
-                    return (
-                      <label
-                        key={choice.id}
-                        className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] ${checked
-                            ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
-                            : 'border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] text-[var(--glass-text-tertiary)]'
-                          }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={choice.required}
-                          onChange={() => resolvedVideoReference.toggleChoice(choice.id)}
-                          className="h-3 w-3"
-                        />
-                        {displayImageUrl && (
-                          <MediaImageWithLoading
-                            src={displayImageUrl}
-                            alt=""
-                            containerClassName="h-6 w-6 flex-shrink-0 rounded"
-                            className="h-full w-full object-cover"
-                            showLoadingIndicator={false}
+                <div className="mb-1.5 text-[10px] text-[var(--glass-text-tertiary)]">
+                  已选 {selectedReferenceCount} / {resolvedVideoReference.maxSelectedCount}，视频参考图最多 {resolvedVideoReference.maxSelectedCount} 张
+                </div>
+                <div className="max-h-32 overflow-y-auto pr-1">
+                  <div className="flex flex-wrap gap-1.5">
+                    {resolvedVideoReference.choices.map((choice) => {
+                      const checked = choice.required || resolvedVideoReference.selectedIds.has(choice.id)
+                      const disabledByLimit = !checked && isReferenceLimitReached
+                      const displayImageUrl = toDisplayImageUrl(choice.url)
+                      return (
+                        <label
+                          key={choice.id}
+                          className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] ${disabledByLimit
+                              ? 'cursor-not-allowed opacity-50'
+                              : ''
+                            } ${checked
+                              ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
+                              : 'border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] text-[var(--glass-text-tertiary)]'
+                            }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={choice.required || disabledByLimit}
+                            onChange={() => resolvedVideoReference.toggleChoice(choice.id)}
+                            className="h-3 w-3"
                           />
-                        )}
-                        <span className="truncate">
-                          {referenceKindLabel(choice.kind)}: {choice.label}
-                        </span>
-                      </label>
-                    )
-                  })}
+                          {displayImageUrl && (
+                            <MediaImageWithLoading
+                              src={displayImageUrl}
+                              alt=""
+                              containerClassName="h-6 w-6 flex-shrink-0 rounded"
+                              className="h-full w-full object-cover"
+                              showLoadingIndicator={false}
+                            />
+                          )}
+                          <span className="truncate">
+                            {referenceKindLabel(choice.kind)}: {choice.label}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             )}

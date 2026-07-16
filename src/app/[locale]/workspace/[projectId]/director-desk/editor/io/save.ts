@@ -1,6 +1,6 @@
 'use client'
 
-import { serializeDirectorProject } from '@/lib/director-desk/schema'
+import { applyImportedAssetUrlMap, serializeDirectorProject } from '@/lib/director-desk/schema'
 import { captureCameraScreenshot } from './screenshot'
 import { useDirectorStore } from '../store/directorStore'
 import { collectBoundShotsForSave, getActiveCameraSnapshot } from '../store/directorSelectors'
@@ -24,6 +24,11 @@ interface SaveDirectorDeskOptions {
 interface SnapshotImageUploadResult {
   snapshotId: string
   imageUrl: string
+}
+
+interface ImportedAssetUploadResult {
+  assetId: string
+  url: string
 }
 
 export async function saveDirectorDesk(options: SaveDirectorDeskOptions = {}): Promise<{ warning?: string }> {
@@ -52,7 +57,7 @@ export async function saveDirectorDesk(options: SaveDirectorDeskOptions = {}): P
     }
   }
 
-	const state = useDirectorStore.getState()
+  const state = useDirectorStore.getState()
   const snapshotImages = (state.project.directorSnapshots ?? [])
     .filter((snapshot) => snapshot.imageDataUrl && !snapshot.imageUrl)
     .map((snapshot) => ({
@@ -77,16 +82,19 @@ export async function saveDirectorDesk(options: SaveDirectorDeskOptions = {}): P
   const data = await response.json().catch(() => null) as {
     warning?: string
     snapshotImages?: SnapshotImageUploadResult[]
+    importedAssets?: ImportedAssetUploadResult[]
   } | null
-  if (data?.snapshotImages?.length) {
-    const imageUrlBySnapshotId = new Map(data.snapshotImages.map((item) => [item.snapshotId, item.imageUrl]))
-    const nextProject = {
+  if (data?.snapshotImages?.length || data?.importedAssets?.length) {
+    const imageUrlBySnapshotId = new Map((data.snapshotImages ?? []).map((item) => [item.snapshotId, item.imageUrl]))
+    const importedAssetUrlById = new Map((data.importedAssets ?? []).map((item) => [item.assetId, item.url]))
+    const projectWithSnapshotImages = {
       ...useDirectorStore.getState().project,
       directorSnapshots: (useDirectorStore.getState().project.directorSnapshots ?? []).map((snapshot) => {
         const imageUrl = imageUrlBySnapshotId.get(snapshot.id)
-        return imageUrl ? { ...snapshot, imageUrl } : snapshot
+        return imageUrl ? { ...snapshot, imageUrl, imageDataUrl: undefined } : snapshot
       }),
     }
+    const nextProject = applyImportedAssetUrlMap(projectWithSnapshotImages, importedAssetUrlById)
     useDirectorStore.setState({ project: nextProject, isDirty: false })
   } else {
     useDirectorStore.setState({ isDirty: false })

@@ -20,8 +20,11 @@ function getPromptForFrame(frame: GridVideoFrame | undefined): string {
   return frame?.videoPrompt || frame?.action || frame?.description || ''
 }
 
-function isEnhancedGridSplitImage(image: { imageUrl?: string | null; originalImageUrl?: string | null }): boolean {
-  return Boolean(image.imageUrl && image.originalImageUrl && image.imageUrl !== image.originalImageUrl)
+function isEnhancedGridSplitImage(image: { imageUrl?: string | null; originalImageUrl?: string | null; enhancedImageUrl?: string | null }): boolean {
+  return Boolean(
+    image.enhancedImageUrl
+    || (image.imageUrl && image.originalImageUrl && image.imageUrl !== image.originalImageUrl),
+  )
 }
 
 export default function GridSplitDialog({
@@ -197,18 +200,31 @@ export default function GridSplitDialog({
                   const frame = framesByIndex.get(image.cellIndex)
                   const prompt = getPromptForFrame(frame)
                   const imageUrl = toDisplayImageUrl(image.imageUrl)
+                  const enhancedImageUrl = toDisplayImageUrl(image.enhancedImageUrl)
                   return (
                     <div key={`${image.cellIndex}-${image.imageUrl}`} className="rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] p-2">
                       <div className="mb-1.5 flex items-center justify-between text-[11px]">
                         <span className="font-medium text-[var(--glass-text-secondary)]">{t('panelCard.gridCellIndex', { index: image.cellIndex })}</span>
                         <span className="text-[var(--glass-text-tertiary)]">{image.panelGridSize}</span>
                       </div>
+                      <div className="mb-1 text-[10px] text-[var(--glass-text-tertiary)]">原裁切</div>
                       <MediaImageWithLoading
                         src={imageUrl || ''}
                         alt={t('panelCard.gridCellIndex', { index: image.cellIndex })}
                         containerClassName="aspect-video w-full rounded border border-[var(--glass-stroke-base)] bg-black"
                         className="h-full w-full object-contain"
                       />
+                      {enhancedImageUrl && (
+                        <div className="mt-2">
+                          <div className="mb-1 text-[10px] text-[var(--glass-tone-info-fg)]">高清结果</div>
+                          <MediaImageWithLoading
+                            src={enhancedImageUrl}
+                            alt={`${t('panelCard.gridCellIndex', { index: image.cellIndex })} ${t('panelCard.enhanceSingleSplitGrid')}`}
+                            containerClassName="aspect-video w-full rounded border border-[var(--glass-stroke-focus)] bg-black"
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleEnhance(image.cellIndex)}

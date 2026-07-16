@@ -13,6 +13,8 @@ export interface GridVideoSourceImage {
   imageUrl: string
   cellIndex: number
   panelGridSize: number
+  originalImageUrl?: string
+  enhancedImageUrl?: string
 }
 
 interface GridSplitMetadata {
@@ -173,11 +175,24 @@ export function extractGridSplitImages(
     return images
       .map((item) => {
         const record = asRecord(item)
-        const imageUrl = typeof record.imageUrl === 'string' ? record.imageUrl.trim() : ''
+        const rawImageUrl = typeof record.imageUrl === 'string' ? record.imageUrl.trim() : ''
+        const rawOriginalImageUrl = pickText(record.originalImageUrl)
+        const rawEnhancedImageUrl = pickText(record.enhancedImageUrl)
+        const legacyEnhancedImageUrl = rawOriginalImageUrl && rawOriginalImageUrl !== rawImageUrl
+          ? rawImageUrl
+          : ''
+        const imageUrl = rawOriginalImageUrl || rawImageUrl
+        const enhancedImageUrl = rawEnhancedImageUrl || legacyEnhancedImageUrl
         const cellIndex = typeof record.cellIndex === 'number' ? Math.floor(record.cellIndex) : 0
         const panelGridSize = typeof record.panelGridSize === 'number' ? Math.floor(record.panelGridSize) : 0
         return imageUrl && cellIndex > 0 && panelGridSize > 1
-          ? { imageUrl, cellIndex, panelGridSize }
+          ? {
+            imageUrl,
+            cellIndex,
+            panelGridSize,
+            ...(rawOriginalImageUrl ? { originalImageUrl: rawOriginalImageUrl } : {}),
+            ...(enhancedImageUrl ? { enhancedImageUrl } : {}),
+          }
           : null
       })
       .filter((item): item is GridVideoSourceImage => item !== null)

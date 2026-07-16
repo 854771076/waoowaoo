@@ -11,9 +11,13 @@ export function DirectorDeskShell() {
   const undo = useDirectorStore((s) => s.undo)
   const redo = useDirectorStore((s) => s.redo)
   const selectedId = useDirectorStore((s) => s.selectedId)
-  const removeObject = useDirectorStore((s) => s.removeObject)
+  const selectedIds = useDirectorStore((s) => s.selectedIds)
+  const removeSelectedObjects = useDirectorStore((s) => s.removeSelectedObjects)
   const setTransformMode = useDirectorStore((s) => s.setTransformMode)
-  const duplicateObject = useDirectorStore((s) => s.duplicateObject)
+  const copySelectedObjects = useDirectorStore((s) => s.copySelectedObjects)
+  const pasteClipboardObjects = useDirectorStore((s) => s.pasteClipboardObjects)
+  const clipboard = useDirectorStore((s) => s.clipboard)
+  const viewportPanelsCollapsed = useDirectorStore((s) => s.viewportPanelsCollapsed)
   const isDirty = useDirectorStore((s) => s.isDirty)
 
   useEffect(() => {
@@ -33,17 +37,18 @@ export function DirectorDeskShell() {
         return
       }
       if (ctrl && e.key.toLowerCase() === 'c' && selectedId) {
-        // simple copy = immediate duplicate (we don't have a paste buffer)
+        e.preventDefault()
+        copySelectedObjects()
         return
       }
-      if (ctrl && e.key.toLowerCase() === 'v' && selectedId) {
+      if (ctrl && e.key.toLowerCase() === 'v' && clipboard.length > 0) {
         e.preventDefault()
-        duplicateObject(selectedId)
+        pasteClipboardObjects()
         return
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedId || selectedIds.length > 0)) {
         e.preventDefault()
-        removeObject(selectedId)
+        removeSelectedObjects()
         return
       }
       if (e.key === 'q' || e.key === 'Q' || e.key === 'w' || e.key === 'W') {
@@ -56,7 +61,7 @@ export function DirectorDeskShell() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [undo, redo, selectedId, removeObject, setTransformMode, duplicateObject])
+  }, [undo, redo, selectedId, selectedIds.length, clipboard.length, removeSelectedObjects, setTransformMode, copySelectedObjects, pasteClipboardObjects])
 
   useEffect(() => {
     if (!isDirty) return
@@ -72,16 +77,20 @@ export function DirectorDeskShell() {
     <div className="flex h-screen w-screen flex-col bg-[#0f1216] text-gray-100">
       <TopBar />
       <div className="flex flex-1 min-h-0">
-        <aside className="w-[220px] shrink-0 overflow-auto border-r border-white/10 p-2">
-          <ObjectTreePanel />
-          <SnapshotPanel />
-        </aside>
+        {!viewportPanelsCollapsed && (
+          <aside className="w-[240px] shrink-0 overflow-auto border-r border-white/10 p-2">
+            <ObjectTreePanel />
+            <SnapshotPanel />
+          </aside>
+        )}
         <main className="relative flex-1 min-w-0">
           <DirectorCanvas />
         </main>
-        <aside className="w-[300px] shrink-0 overflow-auto border-l border-white/10 p-2">
-          <RightPanel />
-        </aside>
+        {!viewportPanelsCollapsed && (
+          <aside className="w-[320px] shrink-0 overflow-auto border-l border-white/10 p-2">
+            <RightPanel />
+          </aside>
+        )}
       </div>
     </div>
   )

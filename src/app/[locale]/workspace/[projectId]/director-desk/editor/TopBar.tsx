@@ -1,19 +1,24 @@
 'use client'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { AppIcon } from '@/components/ui/icons'
 import { useDirectorStore } from './store/directorStore'
 import { getActiveCameraSnapshot } from './store/directorSelectors'
 import { captureCameraScreenshot } from './io/screenshot'
 import { saveDirectorDesk } from './io/save'
+import { downloadProjectJson, parseProjectJson } from './io/projectJson'
 
 export function TopBar() {
   const viewMode = useDirectorStore((s) => s.viewMode)
   const setViewMode = useDirectorStore((s) => s.setViewMode)
   const panelId = useDirectorStore((s) => s.panelId)
   const projectId = useDirectorStore((s) => s.projectId)
+  const project = useDirectorStore((s) => s.project)
   const videoRatio = useDirectorStore((s) => s.videoRatio)
   const reset = useDirectorStore((s) => s.reset)
+  const replaceProject = useDirectorStore((s) => s.replaceProject)
   const isDirty = useDirectorStore((s) => s.isDirty)
   const [saving, setSaving] = useState(false)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const doSave = async (): Promise<boolean> => {
     if (!panelId || !projectId) return false
@@ -77,6 +82,20 @@ export function TopBar() {
     if (ok) window.close()
   }
 
+  const onExportJson = () => {
+    downloadProjectJson(project, `director-desk-${panelId || 'layout'}.json`)
+  }
+
+  const onImportJson = async (file: File) => {
+    try {
+      const text = await file.text()
+      const nextProject = parseProjectJson(text)
+      replaceProject(nextProject)
+    } catch (error) {
+      alert(`导入失败: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   return (
     <div className="flex h-12 shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-4">
       <div className="text-sm font-medium">3D 导演台</div>
@@ -95,6 +114,36 @@ export function TopBar() {
         </button>
       </div>
       <div className="flex-1" />
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={(event) => {
+          const input = event.currentTarget
+          const file = input.files?.[0]
+          if (file) void onImportJson(file)
+          input.value = ''
+        }}
+      />
+      <button
+        onClick={onExportJson}
+        disabled={saving}
+        title="导出导演台 JSON"
+        className="inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-xs text-white/70 hover:bg-white/5 disabled:opacity-40"
+      >
+        <AppIcon name="download" size={13} />
+        导出
+      </button>
+      <button
+        onClick={() => importInputRef.current?.click()}
+        disabled={saving}
+        title="导入导演台 JSON"
+        className="inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-xs text-white/70 hover:bg-white/5 disabled:opacity-40"
+      >
+        <AppIcon name="upload" size={13} />
+        导入
+      </button>
       <button
         onClick={onReset}
         disabled={saving}

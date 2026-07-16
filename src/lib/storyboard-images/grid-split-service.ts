@@ -149,9 +149,11 @@ function parseGridContext(gridGenerationContextJson: string | null | undefined):
 }
 
 function isEnhancedGridSplitImage(image: GridVideoSourceImage): boolean {
+  const enhancedImageUrl = pickText(asRecord(image).enhancedImageUrl)
   const originalImageUrl = pickText(asRecord(image).originalImageUrl)
   const imageUrl = pickText(image.imageUrl)
-  return !!originalImageUrl
+  return !!enhancedImageUrl
+    || !!originalImageUrl
     || imageUrl.startsWith('images/grid-video-source-enhanced-')
     || imageUrl.includes('/grid-video-source-enhanced-')
 }
@@ -186,6 +188,7 @@ function updateGridContextWithEnhancedImages(params: {
   modelId: string
 }): string {
   const context = parseGridContext(params.gridGenerationContextJson)
+  const enhancedCount = params.enhancedImages.filter((image) => pickText(asRecord(image).enhancedImageUrl)).length
   return JSON.stringify({
     ...context,
     gridSplitImages: params.enhancedImages,
@@ -194,7 +197,7 @@ function updateGridContextWithEnhancedImages(params: {
       source: 'grid_split_image_enhance',
       modelId: params.modelId,
       enhancedAt: new Date().toISOString(),
-      enhancedCount: params.enhancedImages.length,
+      enhancedCount,
     },
   }, null, 2)
 }
@@ -221,7 +224,13 @@ function mergeEnhancedImagesIntoGridContext(params: {
   const enhancedImages = baseImages.map((image) => params.enhancedByIndex.get(image.cellIndex) || image)
   const enhancedFrames = baseFrames.map((frame) => {
     const enhancedImage = enhancedImages.find((image) => image.cellIndex === frame.cellIndex)
-    return enhancedImage ? { ...frame, imageUrl: enhancedImage.imageUrl } : frame
+    return enhancedImage
+      ? {
+        ...frame,
+        imageUrl: enhancedImage.imageUrl,
+        enhancedImageUrl: enhancedImage.enhancedImageUrl || undefined,
+      }
+      : frame
   })
   const gridGenerationContext = updateGridContextWithEnhancedImages({
     gridGenerationContextJson: params.gridGenerationContextJson,
@@ -423,10 +432,12 @@ export async function enhanceGridSplitImagesForPanel(
       'grid-video-source-enhanced',
       `${params.panel.id}-${image.cellIndex}`,
     )
+    const originalImageUrl = pickText(asRecord(image).originalImageUrl) || image.imageUrl
     enhancedByIndex.set(image.cellIndex, {
       ...image,
-      imageUrl: enhancedUrl,
-      originalImageUrl: pickText(asRecord(image).originalImageUrl) || image.imageUrl,
+      imageUrl: originalImageUrl,
+      originalImageUrl,
+      enhancedImageUrl: enhancedUrl,
     } as GridVideoSourceImage)
     enhancedCount += 1
     completed += 1

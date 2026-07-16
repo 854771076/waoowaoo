@@ -14,6 +14,7 @@ import { usePanelLipSync } from './hooks/usePanelLipSync'
 import {
   buildVideoReferenceImageChoices,
   getDefaultSelectedVideoReferenceImageIds,
+  MAX_VIDEO_REFERENCE_IMAGES,
   resolveSelectedVideoReferenceImages,
 } from '@/lib/novel-promotion/video-reference-images'
 
@@ -125,7 +126,8 @@ export function useVideoPanelActions({
     includeLastFrame: isLinked && !!nextPanel?.imageUrl,
     includeCharacterSheet,
     directorStoryboardBoardId,
-  }), [characters, directorStoryboardBoardId, includeCharacterSheet, isLinked, locations, nextPanel, panel])
+    gridVideoSource: gridVideoSourceState.value,
+  }), [characters, directorStoryboardBoardId, gridVideoSourceState.value, includeCharacterSheet, isLinked, locations, nextPanel, panel])
   const defaultReferenceIds = useMemo(
     () => getDefaultSelectedVideoReferenceImageIds(referenceChoices),
     [referenceChoices],
@@ -156,7 +158,7 @@ export function useVideoPanelActions({
       const choice = referenceChoices.find((item) => item.id === choiceId)
       if (!choice || choice.required) return next
       if (next.has(choiceId)) next.delete(choiceId)
-      else next.add(choiceId)
+      else if (next.size < MAX_VIDEO_REFERENCE_IMAGES) next.add(choiceId)
       for (const requiredChoice of referenceChoices) {
         if (requiredChoice.required) next.add(requiredChoice.id)
       }
@@ -174,7 +176,7 @@ export function useVideoPanelActions({
           continue
         }
         if (choice.kind !== 'characterSheet') continue
-        if (selected) next.add(choice.id)
+        if (selected && next.size < MAX_VIDEO_REFERENCE_IMAGES) next.add(choice.id)
         else next.delete(choice.id)
       }
       return next
@@ -278,6 +280,7 @@ export function useVideoPanelActions({
       choices: referenceChoices,
       selectedIds: selectedReferenceIds,
       selectedImages: selectedReferenceImages,
+      maxSelectedCount: MAX_VIDEO_REFERENCE_IMAGES,
       includeCharacterSheet,
       setIncludeCharacterSheet: setCharacterSheetSelected,
       toggleChoice: toggleReferenceChoice,

@@ -3,8 +3,22 @@
  * In-memory only: persists via save API; undo/redo capped at 50.
  */
 import { create } from 'zustand'
-import type { DirectorProject, DirectorObject, DirectorCamera, DirectorSceneSettings, DirectorSnapshot, DirectorStoryboardAsset, DirectorStoryboardBoard } from '@/lib/director-desk/schema'
+import type {
+  DirectorProject,
+  DirectorObject,
+  DirectorCamera,
+  DirectorSceneSettings,
+  DirectorSnapshot,
+  DirectorStoryboardAsset,
+  DirectorStoryboardBoard,
+  DirectorStoryboardBoardItem,
+  GeometryPrimitiveType,
+  DirectorImportedAsset,
+  DirectorImportedAssetKind,
+  PanoramaProjectionMode,
+} from '@/lib/director-desk/schema'
 import { createDefaultDirectorProject } from '@/lib/director-desk/schema'
+import { getDirectorObjectFocusTarget } from '@/lib/director-desk/camera-target'
 
 interface LoadedPanel {
   directorLayout: unknown
@@ -40,14 +54,28 @@ export interface ViewportCameraSnapshot {
   target: [number, number, number]
 }
 
+export interface ImportedAssetInput {
+  kind: DirectorImportedAssetKind
+  name: string
+  fileName: string
+  url: string
+  addToScene?: boolean
+  projectionMode?: PanoramaProjectionMode
+}
+
 interface DirectorState {
   project: DirectorProject
   selectedId: string | null
+  selectedIds: string[]
   viewMode: 'director' | 'camera'
   transformMode: 'translate' | 'rotate' | 'scale'
+  viewportPanelsCollapsed: boolean
+  viewportRuleOfThirdsEnabled: boolean
   isDirty: boolean
   history: DirectorProject[]
   future: DirectorProject[]
+  clipboard: DirectorObject[]
+  clipboardPasteCount: number
   panelId: string
   projectId: string
   videoRatio: string
@@ -58,20 +86,41 @@ interface DirectorState {
 
   load: (project: DirectorProject, panelId: string, projectId: string, videoRatio: string, boundShots?: Array<{cameraId:string;name:string;isActive:boolean;imageUrl:string;note?:string;fov:number;pos:[number,number,number];target:[number,number,number]}>) => void
   reset: () => void
+  replaceProject: (project: DirectorProject) => void
   select: (id: string | null) => void
+  toggleObjectSelection: (id: string) => void
   setViewMode: (m: 'director' | 'camera') => void
   /** Silent: set viewMode without pushing undo history (used for temporary capture view switches). */
   setViewModeSilent: (m: 'director' | 'camera') => void
   setTransformMode: (m: 'translate' | 'rotate' | 'scale') => void
+  setViewportPanelsCollapsed: (collapsed: boolean) => void
+  toggleViewportPanelsCollapsed: () => void
+  setViewportRuleOfThirdsEnabled: (enabled: boolean) => void
   setSceneField: <K extends keyof DirectorSceneSettings>(k: K, v: DirectorSceneSettings[K]) => void
   setObjectField: <K extends keyof DirectorObject>(id: string, k: K, v: DirectorObject[K]) => void
   setObjectTransform: (id: string, t: DirectorObject['transform']) => void
+  setObjectRotation: (id: string, rotation: [number, number, number]) => void
+  resetObjectTransform: (id: string) => void
   addObject: (partial: Partial<DirectorObject> & { kind: DirectorObject['kind']; name: string }) => string
+  addGeometryPrimitive: (geometryType: GeometryPrimitiveType) => string
+  addImportedAsset: (input: ImportedAssetInput) => string
+  setImportedAssetField: <K extends keyof DirectorImportedAsset>(assetId: string, k: K, v: DirectorImportedAsset[K]) => void
+  addImportedModelInstance: (assetId: string) => string | null
+  removeImportedAsset: (assetId: string) => void
   duplicateObject: (id: string) => string | null
   removeObject: (id: string) => void
+  removeSelectedObjects: () => void
+  setSelectedObjectsVisibility: (visible: boolean) => void
+  setSelectedObjectsLocked: (locked: boolean) => void
+  copySelectedObjects: () => void
+  pasteClipboardObjects: () => void
   addCamera: (partial?: Partial<DirectorCamera>) => string
+  addCameraFromViewport: () => string | null
+  duplicateCamera: (id: string) => string | null
   removeCamera: (id: string) => void
   setCameraField: <K extends keyof DirectorCamera>(id: string, k: K, v: DirectorCamera[K]) => void
+  setCameraTargetObject: (cameraId: string, objectId: string | null) => void
+  updateCameraFromViewport: (cameraId: string) => void
   setActiveCamera: (id: string) => void
   /** Silent: set active camera without pushing undo history (used for temporary capture switches). */
   setActiveCameraSilent: (id: string) => void
@@ -81,14 +130,18 @@ interface DirectorState {
   setDirectorSnapshotName: (snapshotId: string, name: string) => void
   setDirectorSnapshotNote: (snapshotId: string, note: string) => void
   removeDirectorSnapshot: (snapshotId: string) => void
-  createDirectorStoryboardBoard: (input?: { name?: string; assetIds?: string[] }) => string | null
-  saveDirectorStoryboardBoard: (input: { boardId?: string; name?: string; assetIds: string[] }) => string | null
+  createDirectorStoryboardBoard: (input?: { name?: string; note?: string; assetIds?: string[]; items?: DirectorStoryboardBoardItem[] }) => string | null
+  saveDirectorStoryboardBoard: (input: { boardId?: string; name?: string; note?: string; assetIds: string[]; items?: DirectorStoryboardBoardItem[] }) => string | null
   removeDirectorStoryboardBoard: (boardId: string) => void
   toggleCaptureBound: (cameraId: string, captureId: string) => void
   toggleCaptureActive: (cameraId: string, captureId: string) => void
   setCaptureName: (cameraId: string, captureId: string, name: string) => void
   setCaptureNote: (cameraId: string, captureId: string, note: string) => void
   removeCameraCapture: (cameraId: string, captureId: string) => void
+  restoreCameraCapturePose: (cameraId: string, captureId: string) => void
+  createCameraFromCapturePose: (cameraId: string, captureId: string) => string | null
+  bindAllCapturesForCamera: (cameraId: string) => void
+  unbindAllCapturesForCamera: (cameraId: string) => void
   bindAllCaptures: () => void
   clearBoundCaptures: () => void
   hydrateBoundShots: (shots: Array<{id?:string;cameraId:string;name:string;isActive:boolean;imageUrl:string;imageMediaId?:string|null;note?:string;fov?:number;pos?:[number,number,number];target?:[number,number,number]}>) => void
@@ -117,10 +170,33 @@ function createSnapshotProject(project: DirectorProject): DirectorProject {
   return snapshotProject
 }
 
+function clearCameraTargetsForObjects(project: DirectorProject, removedObjectIds: Set<string>): void {
+  for (const camera of project.cameras) {
+    if (camera.targetMode === 'object' && camera.targetObjectId && removedObjectIds.has(camera.targetObjectId)) {
+      camera.targetMode = 'manual'
+      camera.targetObjectId = null
+    }
+  }
+}
+
+function removeImportedAssetReferences(project: DirectorProject, assetId: string): Set<string> {
+  project.importedAssets = (project.importedAssets ?? []).filter((item) => item.id !== assetId)
+  if (project.scene.panoramaAssetId === assetId) {
+    project.scene.panoramaAssetId = null
+  }
+  const removedObjectIds = new Set(project.objects.filter((object) => object.assetRefId === assetId).map((object) => object.id))
+  project.objects = project.objects.filter((object) => object.assetRefId !== assetId)
+  clearCameraTargetsForObjects(project, removedObjectIds)
+  for (const snapshot of project.directorSnapshots ?? []) {
+    removeImportedAssetReferences(snapshot.project, assetId)
+  }
+  return removedObjectIds
+}
+
 function buildDirectorStoryboardBoard(
   assets: DirectorStoryboardAsset[],
   boards: DirectorStoryboardBoard[],
-  input: { boardId?: string; name?: string; assetIds: string[] },
+  input: { boardId?: string; name?: string; note?: string; assetIds: string[]; items?: DirectorStoryboardBoardItem[] },
 ): DirectorStoryboardBoard | null {
   const requestedIds = input.assetIds.length ? new Set(input.assetIds) : null
   if (!requestedIds) return null
@@ -130,32 +206,91 @@ function buildDirectorStoryboardBoard(
   if (selectedAssets.length === 0) return null
   const existing = input.boardId ? boards.find((board) => board.id === input.boardId) : null
   const boardId = existing?.id ?? uid('director-board')
+  const inputItemsByAssetId = new Map((input.items ?? []).map((item) => [item.assetId, item]))
+  const existingItemsByAssetId = new Map((existing?.items ?? []).map((item) => [item.assetId, item]))
   return {
     id: boardId,
     name: input.name?.trim() || existing?.name || `导演台分镜板 ${boards.length + 1}`,
     createdAt: existing?.createdAt ?? Date.now(),
     coverImageUrl: selectedAssets[0].imageUrl,
     assetIds: selectedAssets.map((asset) => asset.id),
-    items: selectedAssets.map((asset, index) => ({
-      assetId: asset.id,
-      x: asset.layout.x,
-      y: asset.layout.y + index * 0.08,
-      width: asset.layout.width,
-      height: asset.layout.height,
-      rotation: asset.layout.rotation,
-    })),
-    note: existing?.note,
+    items: selectedAssets.map((asset, index) => {
+      const item = inputItemsByAssetId.get(asset.id) ?? existingItemsByAssetId.get(asset.id)
+      return item
+        ? {
+            assetId: asset.id,
+            x: item.x,
+            y: item.y,
+            width: item.width,
+            height: item.height,
+            rotation: item.rotation,
+          }
+        : {
+            assetId: asset.id,
+            x: asset.layout.x,
+            y: asset.layout.y + index * 0.08,
+            width: asset.layout.width,
+            height: asset.layout.height,
+            rotation: asset.layout.rotation,
+          }
+    }),
+    note: input.note?.trim() || undefined,
   }
+}
+
+function findNextImportedAssetId(assets: DirectorImportedAsset[]): string {
+  const existing = new Set(assets.map((asset) => asset.id))
+  for (let index = assets.length + 1; index < assets.length + 1000; index++) {
+    const id = `asset-${index}`
+    if (!existing.has(id)) return id
+  }
+  return uid('asset')
+}
+
+function createImportedModelObject(asset: DirectorImportedAsset, objectId: string, name: string): DirectorObject {
+  return {
+    id: objectId,
+    kind: 'prop',
+    name,
+    refId: null,
+    visible: true,
+    locked: false,
+    color: '#8FB7FF',
+    mode: 'mannequin',
+    assetRefId: asset.id,
+    transform: {
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+    },
+  }
+}
+
+function getImportedModelBaseName(asset: DirectorImportedAsset): string {
+  return asset.name || asset.fileName.replace(/\.(fbx|obj|glb|gltf)$/i, '')
+}
+
+function getCapturePose(capture: CameraCapture | undefined): ViewportCameraSnapshot | null {
+  const fov = capture?.capturedFov ?? capture?.persistedFov
+  const position = capture?.capturedPosition ?? capture?.persistedPos
+  const target = capture?.capturedTarget ?? capture?.persistedTarget
+  if (!capture || typeof fov !== 'number' || !position || !target) return null
+  return { fov, position, target }
 }
 
 export const useDirectorStore = create<DirectorState>((set, get) => ({
   project: createDefaultDirectorProject(),
   selectedId: null,
+  selectedIds: [],
   viewMode: 'director',
   transformMode: 'translate',
+  viewportPanelsCollapsed: false,
+  viewportRuleOfThirdsEnabled: true,
   isDirty: false,
   history: [],
   future: [],
+  clipboard: [],
+  clipboardPasteCount: 0,
   panelId: '',
   projectId: '',
   videoRatio: '9:16',
@@ -199,6 +334,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       history: [],
       future: [],
       selectedId: null,
+      selectedIds: [],
       viewMode: 'director',
       cameraCaptures,
     })
@@ -242,7 +378,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
         proj.scene.backdropImageUrl = data.panel.location.imageUrl
       }
       set({
-        project: proj, history: [], future: [], isDirty: false, selectedId: null, viewMode: 'director',
+        project: proj, history: [], future: [], isDirty: false, selectedId: null, selectedIds: [], viewMode: 'director',
         cameraCaptures: buildCapturesFromShots(data.panel.directorShots ?? []),
       })
     } catch (e) {
@@ -250,15 +386,41 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     }
   },
 
-  select(id) { set({ selectedId: id }) },
+  replaceProject(project) {
+    set({
+      ...pushHistory(get(), clone(project)),
+      selectedId: null,
+      selectedIds: [],
+      viewMode: 'director',
+      cameraCaptures: {},
+      clipboard: [],
+      clipboardPasteCount: 0,
+    })
+  },
+
+  select(id) { set({ selectedId: id, selectedIds: id ? [id] : [] }) },
+  toggleObjectSelection(id) {
+    const { selectedIds } = get()
+    const nextIds = selectedIds.includes(id)
+      ? selectedIds.filter((item) => item !== id)
+      : [...selectedIds, id]
+    set({ selectedIds: nextIds, selectedId: nextIds[nextIds.length - 1] ?? null })
+  },
   setViewMode(m) { set({ viewMode: m }) },
   setViewModeSilent(m) { set({ viewMode: m }) },
   setTransformMode(m) { set({ transformMode: m }) },
+  setViewportPanelsCollapsed(collapsed) { set({ viewportPanelsCollapsed: collapsed }) },
+  toggleViewportPanelsCollapsed() { set({ viewportPanelsCollapsed: !get().viewportPanelsCollapsed }) },
+  setViewportRuleOfThirdsEnabled(enabled) { set({ viewportRuleOfThirdsEnabled: enabled }) },
   setGlCanvas(canvas) { set({ glCanvas: canvas }) },
   setViewportCamera(camera) { set({ viewportCamera: camera }) },
 
   setSceneField(k, v) {
     const { project } = get()
+    if (k === 'panoramaAssetId' && v) {
+      const exists = project.importedAssets?.some((asset) => asset.id === v && asset.kind === 'panorama')
+      if (!exists) return
+    }
     const next = clone(project)
     next.scene[k] = v
     set(pushHistory(get(), next))
@@ -279,7 +441,29 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const o = next.objects.find(x => x.id === id)
     if (!o) return
     o.transform = t
+    for (const camera of next.cameras) {
+      if (camera.targetMode === 'object' && camera.targetObjectId === id) {
+        camera.target = getDirectorObjectFocusTarget(o)
+      }
+    }
     set(pushHistory(get(), next))
+  },
+
+  setObjectRotation(id, rotation) {
+    const object = get().project.objects.find(item => item.id === id)
+    if (!object) return
+    get().setObjectTransform(id, {
+      ...object.transform,
+      rotation,
+    })
+  },
+
+  resetObjectTransform(id) {
+    get().setObjectTransform(id, {
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+    })
   },
 
   addObject(partial) {
@@ -303,8 +487,104 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     }
     next.objects.push(newObj)
     set(pushHistory(get(), next))
-    set({ selectedId: id })
+    set({ selectedId: id, selectedIds: [id] })
     return id
+  },
+
+  addGeometryPrimitive(geometryType) {
+    const labelMap: Record<GeometryPrimitiveType, string> = {
+      box: '立方体',
+      sphere: '球体',
+      cylinder: '圆柱体',
+      torus: '环状体',
+      cone: '圆锥',
+      pyramid: '棱锥',
+    }
+    return get().addObject({
+      kind: 'prop',
+      name: labelMap[geometryType],
+      refId: null,
+      color: '#8FB7FF',
+      mode: 'mannequin',
+      geometryType,
+      transform: {
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+      },
+    })
+  },
+
+  addImportedAsset(input) {
+    const { project } = get()
+    const next = clone(project)
+    const importedAssets = [...(next.importedAssets ?? [])]
+    const assetId = findNextImportedAssetId(importedAssets)
+    const asset: DirectorImportedAsset = {
+      id: assetId,
+      kind: input.kind,
+      sourceType: input.kind === 'panorama' ? 'image' : 'model',
+      fileName: input.fileName,
+      name: input.name,
+      url: input.url,
+      projectionMode: input.projectionMode,
+    }
+    importedAssets.push(asset)
+    next.importedAssets = importedAssets
+
+    if (input.kind === 'panorama') {
+      next.scene.panoramaAssetId = assetId
+      next.scene.panoramaRadius = next.scene.panoramaRadius ?? 60
+      next.scene.panoramaYaw = next.scene.panoramaYaw ?? 0
+      set({ ...pushHistory(get(), next), selectedId: null, selectedIds: [] })
+      return assetId
+    }
+
+    if (input.addToScene !== false) {
+      const objectId = uid('prop')
+      next.objects.push(createImportedModelObject(asset, objectId, getImportedModelBaseName(asset)))
+      set({ ...pushHistory(get(), next), selectedId: objectId, selectedIds: [objectId] })
+      return assetId
+    }
+
+    set(pushHistory(get(), next))
+    return assetId
+  },
+
+  setImportedAssetField(assetId, k, v) {
+    const { project } = get()
+    const next = clone(project)
+    const asset = next.importedAssets?.find((item) => item.id === assetId)
+    if (!asset) return
+    ;(asset as Record<keyof DirectorImportedAsset, unknown>)[k] = v
+    set(pushHistory(get(), next))
+  },
+
+  addImportedModelInstance(assetId) {
+    const { project } = get()
+    const asset = project.importedAssets?.find((item) => item.id === assetId && item.kind === 'model')
+    if (!asset) return null
+    const next = clone(project)
+    const objectId = uid('prop')
+    const baseName = getImportedModelBaseName(asset)
+    const existingCount = next.objects.filter((object) => object.assetRefId === assetId).length
+    next.objects.push(createImportedModelObject(asset, objectId, existingCount === 0 ? baseName : `${baseName} ${existingCount + 1}`))
+    set({ ...pushHistory(get(), next), selectedId: objectId, selectedIds: [objectId] })
+    return objectId
+  },
+
+  removeImportedAsset(assetId) {
+    const { project, selectedId, selectedIds } = get()
+    const next = clone(project)
+    const asset = next.importedAssets?.find((item) => item.id === assetId)
+    if (!asset) return
+    const removedObjectIds = removeImportedAssetReferences(next, assetId)
+    const nextSelectedIds = selectedIds.filter((id) => !removedObjectIds.has(id))
+    set({
+      ...pushHistory(get(), next),
+      selectedId: selectedId && removedObjectIds.has(selectedId) ? nextSelectedIds[nextSelectedIds.length - 1] ?? null : selectedId,
+      selectedIds: nextSelectedIds,
+    })
   },
 
   duplicateObject(id) {
@@ -324,15 +604,109 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     }
     next.objects.push(copy)
     set(pushHistory(get(), next))
-    set({ selectedId: newId })
+    set({ selectedId: newId, selectedIds: [newId] })
     return newId
   },
 
   removeObject(id) {
-    const { project, selectedId } = get()
+    const { project, selectedId, selectedIds } = get()
     const next = clone(project)
     next.objects = next.objects.filter(o => o.id !== id)
-    set({ ...pushHistory(get(), next), selectedId: selectedId === id ? null : selectedId })
+    clearCameraTargetsForObjects(next, new Set([id]))
+    const nextSelectedIds = selectedIds.filter((item) => item !== id)
+    set({
+      ...pushHistory(get(), next),
+      selectedId: selectedId === id ? nextSelectedIds[nextSelectedIds.length - 1] ?? null : selectedId,
+      selectedIds: nextSelectedIds,
+    })
+  },
+
+  removeSelectedObjects() {
+    const { project, selectedId, selectedIds } = get()
+    const ids = new Set(selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : [])
+    if (ids.size === 0) return
+    const objectIds = new Set(project.objects.filter((object) => ids.has(object.id)).map((object) => object.id))
+    if (objectIds.size === 0) {
+      if (selectedId && project.cameras.some((camera) => camera.id === selectedId)) {
+        get().removeCamera(selectedId)
+      }
+      return
+    }
+    const next = clone(project)
+    next.objects = next.objects.filter((object) => !objectIds.has(object.id))
+    clearCameraTargetsForObjects(next, objectIds)
+    set({ ...pushHistory(get(), next), selectedId: null, selectedIds: [] })
+  },
+
+  setSelectedObjectsVisibility(visible) {
+    const { project, selectedId, selectedIds } = get()
+    const ids = new Set(selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : [])
+    if (ids.size === 0) return
+    const next = clone(project)
+    let changed = false
+    for (const object of next.objects) {
+      if (!ids.has(object.id) || object.visible === visible) continue
+      object.visible = visible
+      changed = true
+    }
+    if (!changed) return
+    set(pushHistory(get(), next))
+  },
+
+  setSelectedObjectsLocked(locked) {
+    const { project, selectedId, selectedIds } = get()
+    const ids = new Set(selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : [])
+    if (ids.size === 0) return
+    const next = clone(project)
+    let changed = false
+    for (const object of next.objects) {
+      if (!ids.has(object.id) || object.locked === locked) continue
+      object.locked = locked
+      changed = true
+    }
+    if (!changed) return
+    set(pushHistory(get(), next))
+  },
+
+  copySelectedObjects() {
+    const { project, selectedId, selectedIds } = get()
+    const ids = selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : []
+    const clipboard = ids
+      .map((id) => project.objects.find((object) => object.id === id))
+      .filter((object): object is DirectorObject => !!object)
+      .map((object) => clone(object))
+    set({ clipboard, clipboardPasteCount: 0 })
+  },
+
+  pasteClipboardObjects() {
+    const { project, clipboard, clipboardPasteCount } = get()
+    if (clipboard.length === 0) return
+    const next = clone(project)
+    const offset = 0.6 * (clipboardPasteCount + 1)
+    const pastedIds: string[] = []
+    for (const source of clipboard) {
+      const id = uid(source.kind)
+      pastedIds.push(id)
+      next.objects.push({
+        ...clone(source),
+        id,
+        name: `${source.name} 副本`,
+        transform: {
+          ...source.transform,
+          position: [
+            source.transform.position[0] + offset,
+            source.transform.position[1],
+            source.transform.position[2] + offset,
+          ],
+        },
+      })
+    }
+    set({
+      ...pushHistory(get(), next),
+      selectedId: pastedIds[pastedIds.length - 1] ?? null,
+      selectedIds: pastedIds,
+      clipboardPasteCount: clipboardPasteCount + 1,
+    })
   },
 
   addCamera(partial) {
@@ -345,21 +719,55 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       fov: partial?.fov ?? 50,
       position: partial?.position ?? [0, 1.55, 5.4],
       target: partial?.target ?? [0, 1.05, 0],
+      targetMode: partial?.targetMode ?? 'manual',
+      targetObjectId: partial?.targetObjectId ?? null,
       visible: true,
     }
     next.cameras.push(newCam)
     set(pushHistory(get(), next))
-    set({ selectedId: id })
+    set({ selectedId: id, selectedIds: [id] })
     return id
   },
 
-  removeCamera(id) {
+  addCameraFromViewport() {
+    const { viewportCamera } = get()
+    if (!viewportCamera) return null
+    return get().addCamera({
+      fov: viewportCamera.fov,
+      position: viewportCamera.position,
+      target: viewportCamera.target,
+      targetMode: 'manual',
+      targetObjectId: null,
+    })
+  },
+
+  duplicateCamera(id) {
     const { project } = get()
+    const source = project.cameras.find(camera => camera.id === id)
+    if (!source) return null
+    const next = clone(project)
+    const copyId = uid('cam')
+    next.cameras.push({
+      ...clone(source),
+      id: copyId,
+      name: `${source.name} 副本`,
+      targetMode: 'manual',
+      targetObjectId: null,
+    })
+    set(pushHistory(get(), next))
+    set({ selectedId: copyId, selectedIds: [copyId] })
+    return copyId
+  },
+
+  removeCamera(id) {
+    const { project, cameraCaptures } = get()
     if (project.cameras.length <= 1) return
     const next = clone(project)
     next.cameras = next.cameras.filter(c => c.id !== id)
     if (next.activeCameraId === id) next.activeCameraId = next.cameras[0].id
-    set(pushHistory(get(), next))
+    const nextCameraCaptures = { ...cameraCaptures }
+    delete nextCameraCaptures[id]
+    set({ ...pushHistory(get(), next), selectedId: null, selectedIds: [], cameraCaptures: nextCameraCaptures })
   },
 
   setCameraField(id, k, v) {
@@ -368,6 +776,43 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const c = next.cameras.find(x => x.id === id)
     if (!c) return
     ;(c as Record<keyof DirectorCamera, unknown>)[k] = v
+    if (k === 'target') {
+      c.targetMode = 'manual'
+      c.targetObjectId = null
+    }
+    set(pushHistory(get(), next))
+  },
+
+  setCameraTargetObject(cameraId, objectId) {
+    const { project } = get()
+    const next = clone(project)
+    const camera = next.cameras.find(x => x.id === cameraId)
+    if (!camera) return
+    if (!objectId) {
+      camera.targetMode = 'manual'
+      camera.targetObjectId = null
+      set(pushHistory(get(), next))
+      return
+    }
+    const object = next.objects.find(x => x.id === objectId)
+    if (!object) return
+    camera.targetMode = 'object'
+    camera.targetObjectId = object.id
+    camera.target = getDirectorObjectFocusTarget(object)
+    set(pushHistory(get(), next))
+  },
+
+  updateCameraFromViewport(cameraId) {
+    const { project, viewportCamera } = get()
+    if (!viewportCamera) return
+    const next = clone(project)
+    const camera = next.cameras.find(x => x.id === cameraId)
+    if (!camera) return
+    camera.fov = viewportCamera.fov
+    camera.position = viewportCamera.position
+    camera.target = viewportCamera.target
+    camera.targetMode = 'manual'
+    camera.targetObjectId = null
     set(pushHistory(get(), next))
   },
 
@@ -446,7 +891,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
   },
 
   restoreDirectorSnapshot(snapshotId) {
-    const { project } = get()
+    const { project, cameraCaptures } = get()
     const snapshot = project.directorSnapshots?.find(item => item.id === snapshotId)
     if (!snapshot) return
     const snapshots = project.directorSnapshots ?? []
@@ -472,7 +917,12 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
       directorStoryboardAssets: project.directorStoryboardAssets,
       directorStoryboardBoards: project.directorStoryboardBoards,
     }
-    set({ ...pushHistory(get(), next), selectedId: null, viewMode: 'director' })
+    const cameraIds = new Set(next.cameras.map(camera => camera.id))
+    const nextCameraCaptures: Record<string, CameraCapture[]> = {}
+    for (const [cameraId, captures] of Object.entries(cameraCaptures)) {
+      if (cameraIds.has(cameraId)) nextCameraCaptures[cameraId] = captures
+    }
+    set({ ...pushHistory(get(), next), selectedId: null, selectedIds: [], viewMode: 'director', cameraCaptures: nextCameraCaptures })
   },
 
   setDirectorSnapshotName(snapshotId, name) {
@@ -502,6 +952,8 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const assets = project.directorStoryboardAssets ?? []
     return get().saveDirectorStoryboardBoard({
       name: input?.name,
+      note: input?.note,
+      items: input?.items,
       assetIds: input?.assetIds?.length ? input.assetIds : assets.map((asset) => asset.id),
     })
   },
@@ -578,6 +1030,63 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     set({ cameraCaptures: { ...cameraCaptures, [cameraId]: list }, isDirty: true })
   },
 
+  restoreCameraCapturePose(cameraId, captureId) {
+    const { project, cameraCaptures } = get()
+    const capture = (cameraCaptures[cameraId] ?? []).find(c => c.id === captureId)
+    const pose = getCapturePose(capture)
+    if (!pose) return
+    const next = clone(project)
+    const camera = next.cameras.find(c => c.id === cameraId)
+    if (!camera) return
+    camera.fov = pose.fov
+    camera.position = pose.position
+    camera.target = pose.target
+    camera.targetMode = 'manual'
+    camera.targetObjectId = null
+    set(pushHistory(get(), next))
+  },
+
+  createCameraFromCapturePose(cameraId, captureId) {
+    const { cameraCaptures } = get()
+    const capture = (cameraCaptures[cameraId] ?? []).find(c => c.id === captureId)
+    const pose = getCapturePose(capture)
+    if (!capture || !pose) return null
+    return get().addCamera({
+      name: `${capture.name || '截图'} 机位`,
+      fov: pose.fov,
+      position: pose.position,
+      target: pose.target,
+      targetMode: 'manual',
+      targetObjectId: null,
+    })
+  },
+
+  bindAllCapturesForCamera(cameraId) {
+    const { cameraCaptures } = get()
+    const list = cameraCaptures[cameraId] ?? []
+    if (list.length === 0 || list.every(c => c.isBound)) return
+    set({
+      cameraCaptures: {
+        ...cameraCaptures,
+        [cameraId]: list.map(c => ({ ...c, isBound: true })),
+      },
+      isDirty: true,
+    })
+  },
+
+  unbindAllCapturesForCamera(cameraId) {
+    const { cameraCaptures } = get()
+    const list = cameraCaptures[cameraId] ?? []
+    if (list.length === 0 || !list.some(c => c.isBound)) return
+    set({
+      cameraCaptures: {
+        ...cameraCaptures,
+        [cameraId]: list.map(c => ({ ...c, isBound: false })),
+      },
+      isDirty: true,
+    })
+  },
+
   bindAllCaptures() {
     const { cameraCaptures } = get()
     const next: Record<string, CameraCapture[]> = {}
@@ -591,7 +1100,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => ({
     const { cameraCaptures } = get()
     const next: Record<string, CameraCapture[]> = {}
     for (const [cId, caps] of Object.entries(cameraCaptures)) {
-      next[cId] = caps.filter(c => !!c.persistedShotId).map(c => ({ ...c, isBound: false }))
+      next[cId] = caps.map(c => ({ ...c, isBound: false }))
     }
     set({ cameraCaptures: next })
   },

@@ -55,7 +55,7 @@ export function ViewportOverlays() {
       new THREE.Vector3().copy(tr).addScaledVector(up, -(hHalf * 4) / 3),
     ].map(toArr) as [number, number, number][]
     return { frame, v1, v2, h1, h2 }
-  }, [videoRatio, camera, camera.matrixWorld])
+  }, [videoRatio, camera])
 
   return (
     <group>

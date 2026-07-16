@@ -90,10 +90,37 @@ export type DirectorRenderMode = 'billboard' | 'mannequin';
 
 export type DirectorObjectKind = 'character' | 'prop' | 'crowd';
 
+export type DirectorImportedAssetKind = 'model' | 'panorama';
+export type DirectorImportedAssetSourceType = 'model' | 'image';
+export type PanoramaProjectionMode = 'equirectangular' | 'backdrop';
+export type DirectorCameraTargetMode = 'manual' | 'object';
+
+export const GEOMETRY_PRIMITIVE_OPTIONS = [
+  { type: 'box', label: '立方体' },
+  { type: 'sphere', label: '球体' },
+  { type: 'cylinder', label: '圆柱体' },
+  { type: 'torus', label: '环状体' },
+  { type: 'cone', label: '圆锥' },
+  { type: 'pyramid', label: '棱锥' },
+] as const;
+
+export type GeometryPrimitiveType = (typeof GEOMETRY_PRIMITIVE_OPTIONS)[number]['type'];
+
 export interface DirectorTransform {
   position: [number, number, number];
   rotation: [number, number, number];
   scale: [number, number, number];
+}
+
+export interface DirectorImportedAsset {
+  id: string;
+  kind: DirectorImportedAssetKind;
+  sourceType: DirectorImportedAssetSourceType;
+  fileName: string;
+  name: string;
+  /** data URL at import time; storage key after save/load */
+  url: string;
+  projectionMode?: PanoramaProjectionMode;
 }
 
 export interface DirectorObject {
@@ -109,6 +136,8 @@ export interface DirectorObject {
   transform: DirectorTransform;
   /** not persisted; resolved at load time */
   imageUrl?: string | null;
+  geometryType?: GeometryPrimitiveType;
+  assetRefId?: string;
   // character-specific
   bodyType?: BodyTypeId;
   posePresetId?: PosePresetId;
@@ -126,6 +155,8 @@ export interface DirectorCamera {
   fov: number;
   position: [number, number, number];
   target: [number, number, number];
+  targetMode?: DirectorCameraTargetMode;
+  targetObjectId?: string | null;
   visible?: boolean;
 }
 
@@ -188,12 +219,17 @@ export interface DirectorSceneSettings {
   backgroundColor: string;
   showGround: boolean;
   groundOpacity: number;
+  ambientLightIntensity: number;
+  directionalLightIntensity: number;
   showLabels: boolean;
   showGrid: boolean;
   /** 背景图 MediaObject.id */
   backdropAssetId: string | null;
   backdropOpacity: number;
   backdropYaw: number;
+  panoramaAssetId?: string | null;
+  panoramaRadius?: number;
+  panoramaYaw?: number;
   /** not persisted; resolved at load time */
   backdropImageUrl?: string | null;
 }
@@ -204,6 +240,7 @@ export interface DirectorProject {
   objects: DirectorObject[];
   cameras: DirectorCamera[];
   activeCameraId: string;
+  importedAssets?: DirectorImportedAsset[];
   directorSnapshots?: DirectorSnapshot[];
   directorStoryboardAssets?: DirectorStoryboardAsset[];
   directorStoryboardBoards?: DirectorStoryboardBoard[];
@@ -245,6 +282,26 @@ function isObjectKind(v: unknown): v is DirectorObjectKind {
   return v === 'character' || v === 'prop' || v === 'crowd';
 }
 
+function isGeometryPrimitiveType(v: unknown): v is GeometryPrimitiveType {
+  return typeof v === 'string' && GEOMETRY_PRIMITIVE_OPTIONS.some((item) => item.type === v);
+}
+
+function isImportedAssetKind(v: unknown): v is DirectorImportedAssetKind {
+  return v === 'model' || v === 'panorama';
+}
+
+function isImportedAssetSourceType(v: unknown): v is DirectorImportedAssetSourceType {
+  return v === 'model' || v === 'image';
+}
+
+function isPanoramaProjectionMode(v: unknown): v is PanoramaProjectionMode {
+  return v === 'equirectangular' || v === 'backdrop';
+}
+
+function isCameraTargetMode(v: unknown): v is DirectorCameraTargetMode {
+  return v === 'manual' || v === 'object';
+}
+
 function isBodyTypeId(v: unknown): v is BodyTypeId {
   return typeof v === 'string' && (BODY_TYPE_IDS as readonly string[]).includes(v);
 }
@@ -266,11 +323,16 @@ export function createDefaultDirectorProject(): DirectorProject {
       backgroundColor: '#1a1d23',
       showGround: true,
       groundOpacity: 0.8,
+      ambientLightIntensity: 0.6,
+      directionalLightIntensity: 1,
       showLabels: true,
       showGrid: true,
       backdropAssetId: null,
       backdropOpacity: 0.6,
       backdropYaw: 0,
+      panoramaAssetId: null,
+      panoramaRadius: 60,
+      panoramaYaw: 0,
       backdropImageUrl: null,
     },
     objects: [],
@@ -281,6 +343,8 @@ export function createDefaultDirectorProject(): DirectorProject {
         fov: 50,
         position: [0, 1.55, 5.4],
         target: [0, 1.05, 0],
+        targetMode: 'manual',
+        targetObjectId: null,
         visible: true,
       },
     ],
@@ -305,6 +369,14 @@ function parseScene(input: unknown): DirectorSceneSettings | null {
     typeof input.showLabels === 'boolean' ? input.showLabels : def.showLabels;
   const showGrid =
     typeof input.showGrid === 'boolean' ? input.showGrid : def.showGrid;
+  const ambientLightIntensity =
+    typeof input.ambientLightIntensity === 'number' && Number.isFinite(input.ambientLightIntensity)
+      ? input.ambientLightIntensity
+      : def.ambientLightIntensity;
+  const directionalLightIntensity =
+    typeof input.directionalLightIntensity === 'number' && Number.isFinite(input.directionalLightIntensity)
+      ? input.directionalLightIntensity
+      : def.directionalLightIntensity;
   const backdropAssetId =
     typeof input.backdropAssetId === 'string' ? input.backdropAssetId : null;
   const backdropOpacity =
@@ -320,13 +392,44 @@ function parseScene(input: unknown): DirectorSceneSettings | null {
     backgroundColor,
     showGround,
     groundOpacity,
+    ambientLightIntensity,
+    directionalLightIntensity,
     showLabels,
     showGrid,
     backdropAssetId,
     backdropOpacity,
     backdropYaw,
+    panoramaAssetId: typeof input.panoramaAssetId === 'string' ? input.panoramaAssetId : null,
+    panoramaRadius: typeof input.panoramaRadius === 'number' && Number.isFinite(input.panoramaRadius)
+      ? input.panoramaRadius
+      : def.panoramaRadius,
+    panoramaYaw: typeof input.panoramaYaw === 'number' && Number.isFinite(input.panoramaYaw)
+      ? input.panoramaYaw
+      : def.panoramaYaw,
     backdropImageUrl: null,
   };
+}
+
+function parseImportedAsset(input: unknown): DirectorImportedAsset | null {
+  if (!isRecord(input)) return null;
+  if (typeof input.id !== 'string' || !input.id) return null;
+  if (!isImportedAssetKind(input.kind)) return null;
+  if (!isImportedAssetSourceType(input.sourceType)) return null;
+  if (typeof input.fileName !== 'string' || !input.fileName) return null;
+  if (typeof input.name !== 'string') return null;
+  if (typeof input.url !== 'string' || !input.url) return null;
+  const asset: DirectorImportedAsset = {
+    id: input.id,
+    kind: input.kind,
+    sourceType: input.sourceType,
+    fileName: input.fileName,
+    name: input.name,
+    url: input.url,
+  };
+  if (isPanoramaProjectionMode(input.projectionMode)) {
+    asset.projectionMode = input.projectionMode;
+  }
+  return asset;
 }
 
 function parseObject(input: unknown): DirectorObject | null {
@@ -360,6 +463,12 @@ function parseObject(input: unknown): DirectorObject | null {
   };
 
   if (isBodyTypeId(input.bodyType)) obj.bodyType = input.bodyType;
+  if (input.kind === 'prop' && isGeometryPrimitiveType(input.geometryType)) {
+    obj.geometryType = input.geometryType;
+  }
+  if (input.kind === 'prop' && typeof input.assetRefId === 'string' && input.assetRefId) {
+    obj.assetRefId = input.assetRefId;
+  }
   if (isPosePresetId(input.posePresetId)) obj.posePresetId = input.posePresetId;
   if (isRecord(input.poseControls)) {
     const controls: Record<string, number> = {};
@@ -404,8 +513,14 @@ function parseCamera(input: unknown): DirectorCamera | null {
     fov: input.fov,
     position: input.position,
     target: input.target,
+    targetMode: isCameraTargetMode(input.targetMode) ? input.targetMode : 'manual',
+    targetObjectId: typeof input.targetObjectId === 'string' ? input.targetObjectId : null,
     visible: typeof input.visible === 'boolean' ? input.visible : true,
   };
+  if (cam.targetMode !== 'object') {
+    cam.targetMode = 'manual';
+    cam.targetObjectId = null;
+  }
   return cam;
 }
 
@@ -538,6 +653,32 @@ export function parseDirectorProject(json: unknown): DirectorProject | null {
   }
 
   const directorSnapshots: DirectorSnapshot[] = [];
+  const importedAssets: DirectorImportedAsset[] = [];
+  if (Array.isArray(json.importedAssets)) {
+    for (const raw of json.importedAssets) {
+      const parsed = parseImportedAsset(raw);
+      if (!parsed) return null;
+      importedAssets.push(parsed);
+    }
+  }
+  const importedAssetIds = new Set(importedAssets.map((asset) => asset.id));
+  if (scene.panoramaAssetId && !importedAssetIds.has(scene.panoramaAssetId)) {
+    scene.panoramaAssetId = null;
+  }
+  for (const object of objects) {
+    if (object.assetRefId && !importedAssetIds.has(object.assetRefId)) {
+      delete object.assetRefId;
+    }
+  }
+
+  const objectIds = new Set(objects.map((object) => object.id));
+  for (const camera of cameras) {
+    if (camera.targetMode === 'object' && (!camera.targetObjectId || !objectIds.has(camera.targetObjectId))) {
+      camera.targetMode = 'manual';
+      camera.targetObjectId = null;
+    }
+  }
+
   if (Array.isArray(json.directorSnapshots)) {
     for (const raw of json.directorSnapshots) {
       const parsed = parseSnapshot(raw);
@@ -571,6 +712,7 @@ export function parseDirectorProject(json: unknown): DirectorProject | null {
     objects,
     cameras,
     activeCameraId: json.activeCameraId,
+    ...(importedAssets.length > 0 ? { importedAssets } : {}),
     ...(directorSnapshots.length > 0 ? { directorSnapshots } : {}),
     ...(directorStoryboardAssets.length > 0 ? { directorStoryboardAssets } : {}),
     ...(directorStoryboardBoards.length > 0 ? { directorStoryboardBoards } : {}),
@@ -583,6 +725,9 @@ function stripDirectorProjectForPersistence(p: DirectorProject, includeSnapshots
     scene: { ...p.scene },
     objects: p.objects.map((o) => ({ ...o })),
     cameras: p.cameras.map((c) => ({ ...c })),
+    ...(p.importedAssets
+      ? { importedAssets: p.importedAssets.map((asset) => ({ ...asset })) }
+      : {}),
     ...(p.directorStoryboardAssets
       ? { directorStoryboardAssets: p.directorStoryboardAssets.map((asset) => ({ ...asset, layout: { ...asset.layout } })) }
       : {}),
@@ -613,6 +758,9 @@ function stripDirectorProjectForPersistence(p: DirectorProject, includeSnapshots
   if (stripped.directorSnapshots?.length === 0) {
     delete stripped.directorSnapshots;
   }
+  if (stripped.importedAssets?.length === 0) {
+    delete stripped.importedAssets;
+  }
   if (stripped.directorStoryboardAssets?.length === 0) {
     delete stripped.directorStoryboardAssets;
   }
@@ -625,4 +773,23 @@ function stripDirectorProjectForPersistence(p: DirectorProject, includeSnapshots
 export function serializeDirectorProject(p: DirectorProject): string {
   const stripped = stripDirectorProjectForPersistence(p);
   return JSON.stringify(stripped);
+}
+
+export function applyImportedAssetUrlMap(project: DirectorProject, urlByAssetId: ReadonlyMap<string, string>): DirectorProject {
+  const nextImportedAssets = project.importedAssets?.map((asset) => {
+    const uploadedUrl = urlByAssetId.get(asset.id);
+    return uploadedUrl && uploadedUrl !== asset.url ? { ...asset, url: uploadedUrl } : asset;
+  });
+  const nextSnapshots = project.directorSnapshots?.map((snapshot) => {
+    const nextSnapshotProject = applyImportedAssetUrlMap(snapshot.project, urlByAssetId);
+    return nextSnapshotProject === snapshot.project ? snapshot : { ...snapshot, project: nextSnapshotProject };
+  });
+  const importedAssetsChanged = !!nextImportedAssets && nextImportedAssets.some((asset, index) => asset !== project.importedAssets?.[index]);
+  const snapshotsChanged = !!nextSnapshots && nextSnapshots.some((snapshot, index) => snapshot !== project.directorSnapshots?.[index]);
+  if (!importedAssetsChanged && !snapshotsChanged) return project;
+  return {
+    ...project,
+    ...(nextImportedAssets ? { importedAssets: nextImportedAssets } : {}),
+    ...(nextSnapshots ? { directorSnapshots: nextSnapshots } : {}),
+  };
 }

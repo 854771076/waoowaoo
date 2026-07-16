@@ -13,6 +13,7 @@ import {
   resolveLipSyncVideoSource,
   resolveVideoSourceFromGeneration,
   toSignedUrlIfCos,
+  uploadImageSourceToCos,
   uploadVideoSourceToCos,
 } from './utils'
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
@@ -41,6 +42,7 @@ type VideoOptionValue = string | number | boolean
 type VideoOptionMap = Record<string, VideoOptionValue>
 type VideoGenerationMode = 'normal' | 'firstlastframe' | 'director_storyboard'
 type PanelRecord = NonNullable<Awaited<ReturnType<typeof prisma.novelPromotionPanel.findUnique>>>
+const MAX_VIDEO_REFERENCE_IMAGES = 9
 
 function toDurationMs(value: number | null | undefined): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined
@@ -97,6 +99,47 @@ function resolveDirectorStoryboardBoardImages(panel: PanelRecord, boardId: unkno
 
 function isStarRouterVideoModel(modelKey: string): boolean {
   return parseModelKeyStrict(modelKey)?.provider === 'starrouter'
+}
+
+function isDataUrl(value: string): boolean {
+  return value.startsWith('data:')
+}
+
+function isHttpUrl(value: string): boolean {
+  return value.startsWith('http://') || value.startsWith('https://')
+}
+
+async function resolveVideoImageInputForGeneration(params: {
+  input: string
+  useFetchableUrl: boolean
+  panelId: string
+  targetSuffix: string
+}): Promise<string> {
+  if (!params.useFetchableUrl) {
+    return await normalizeToBase64ForGeneration(params.input)
+  }
+  const input = params.input.trim()
+  if (!input) {
+    throw new Error('VIDEO_IMAGE_INPUT_REQUIRED')
+  }
+  if (isDataUrl(input)) {
+    const storageKey = await uploadImageSourceToCos(
+      input,
+      'video-source-image',
+      `${params.panelId}-${params.targetSuffix}`,
+    )
+    const signedUrl = toSignedUrlIfCos(storageKey, 3600)
+    if (!signedUrl) {
+      throw new Error('VIDEO_IMAGE_INPUT_UPLOAD_FAILED')
+    }
+    return signedUrl
+  }
+  if (isHttpUrl(input)) return input
+  const signedUrl = toSignedUrlIfCos(input, 3600)
+  if (!signedUrl) {
+    throw new Error('VIDEO_IMAGE_INPUT_URL_INVALID')
+  }
+  return signedUrl
 }
 
 async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number) {
@@ -394,26 +437,51 @@ async function generateVideoForPanel(
     }
   }
 
-  const normalizeVideoImage = normalizeToBase64ForGeneration
-  const sourceImageInput = await normalizeVideoImage(sourceImageUrl)
+  const usesStarRouterVideoProvider = isStarRouterVideoModel(model)
+  const sourceImageInput = await resolveVideoImageInputForGeneration({
+    input: usesStarRouterVideoProvider
+      ? (sourceImageStorageKeyOrUrl || sourceImageUrl)
+      : sourceImageUrl,
+    useFetchableUrl: usesStarRouterVideoProvider,
+    panelId: panel.id,
+    targetSuffix: 'source',
+  })
   const sourceReferenceImages = videoSourceImageStorageKeyOrUrls.length > 0
     ? videoSourceImageStorageKeyOrUrls
     : [sourceImageStorageKeyOrUrl].filter((image): image is string => typeof image === 'string' && !!image)
   const requestedReferenceImages = extractVideoReferenceImages(payload)
+  // 新前端会显式传入用户勾选的参考图；旧请求没有选择数据时再回退到源图/拆分帧。
+  const referenceImagesForGeneration = requestedReferenceImages.length > 0
+    ? requestedReferenceImages
+    : sourceReferenceImages
+  const uniqueReferenceImages = referenceImagesForGeneration
+    .filter((image, index, all) => !!image && all.indexOf(image) === index)
+    .slice(0, MAX_VIDEO_REFERENCE_IMAGES)
+    .map((image, referenceIndex) => ({ image, referenceIndex }))
   const videoReferenceImages = await Promise.all(
-    [...sourceReferenceImages, ...requestedReferenceImages]
-      .filter((image, index, all) => !!image && all.indexOf(image) === index)
-      .map(async (image) => {
-      const signedUrl = toSignedUrlIfCos(image, 3600)
-      if (!signedUrl) return null
-      return normalizeVideoImage(signedUrl)
+    uniqueReferenceImages.map(async ({ image, referenceIndex }) => {
+      const input = usesStarRouterVideoProvider ? image : toSignedUrlIfCos(image, 3600)
+      if (!input) return null
+      return await resolveVideoImageInputForGeneration({
+        input,
+        useFetchableUrl: usesStarRouterVideoProvider,
+        panelId: panel.id,
+        targetSuffix: `ref-${referenceIndex}`,
+      })
     }),
   )
   const normalizedVideoReferenceImages = videoReferenceImages.filter((image): image is string => !!image)
   const lastFrameImageUrl = toSignedUrlIfCos(lastFrameImageStorageKeyOrUrl, 3600)
-  const usesStarRouterMultiImageReference = isStarRouterVideoModel(model) && normalizedVideoReferenceImages.length > 1
+  const usesStarRouterMultiImageReference = usesStarRouterVideoProvider && normalizedVideoReferenceImages.length > 1
   const lastFrameImageInput = lastFrameImageUrl && !usesStarRouterMultiImageReference
-    ? await normalizeVideoImage(lastFrameImageUrl)
+    ? await resolveVideoImageInputForGeneration({
+        input: usesStarRouterVideoProvider
+          ? (lastFrameImageStorageKeyOrUrl || lastFrameImageUrl)
+          : lastFrameImageUrl,
+        useFetchableUrl: usesStarRouterVideoProvider,
+        panelId: panel.id,
+        targetSuffix: 'last-frame',
+      })
     : undefined
 
   // 面板上持久化的时长（LLM 分析 / 用户手动编辑 / 宫格重写产出）优先于

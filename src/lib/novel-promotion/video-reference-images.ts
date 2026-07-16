@@ -1,7 +1,9 @@
 import type { Character, CharacterAppearance, Location } from '@/types/project'
 import type { VideoPanel } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
 
-export type VideoReferenceImageKind = 'source' | 'lastFrame' | 'character' | 'characterSheet' | 'location'
+export const MAX_VIDEO_REFERENCE_IMAGES = 9
+
+export type VideoReferenceImageKind = 'source' | 'lastFrame' | 'gridFrame' | 'character' | 'characterSheet' | 'location'
 
 export interface VideoReferenceImageChoice {
   id: string
@@ -14,13 +16,14 @@ export interface VideoReferenceImageChoice {
 }
 
 interface BuildVideoReferenceImageChoicesParams {
-  panel: Pick<VideoPanel, 'imageUrl' | 'textPanel' | 'directorStoryboardBoards'>
+  panel: Pick<VideoPanel, 'imageUrl' | 'imageLayout' | 'textPanel' | 'gridSplitImages' | 'gridVideoFrames' | 'directorStoryboardBoards'>
   nextPanel?: Pick<VideoPanel, 'imageUrl'> | null
   characters: Character[]
   locations: Location[]
   includeLastFrame?: boolean
   includeCharacterSheet?: boolean
   directorStoryboardBoardId?: string
+  gridVideoSource?: 'split' | 'original' | 'director_storyboard'
   characterImagesPerPerson?: number
 }
 
@@ -149,6 +152,37 @@ function collectLocationImages(location: Location) {
   return images
 }
 
+function collectGridFrameChoices(panel: BuildVideoReferenceImageChoicesParams['panel']): VideoReferenceImageChoice[] {
+  if (panel.imageLayout !== 'grid') return []
+  const frameSources = (panel.gridVideoFrames?.length || 0) > 0
+    ? panel.gridVideoFrames || []
+    : panel.gridSplitImages || []
+  const choices: VideoReferenceImageChoice[] = []
+  for (const item of frameSources) {
+    const cellIndex = typeof item.cellIndex === 'number' ? Math.floor(item.cellIndex) : 0
+    if (cellIndex <= 0) continue
+    const enhancedImageUrl = normalizeText(item.enhancedImageUrl)
+    const imageUrl = enhancedImageUrl || normalizeText(item.imageUrl)
+    if (!imageUrl || choices.some((choice) => choice.url === imageUrl)) continue
+    choices.push({
+      id: `grid-frame:${cellIndex}`,
+      kind: 'gridFrame',
+      url: imageUrl,
+      label: enhancedImageUrl ? `高清分镜 ${cellIndex}` : `分镜格 ${cellIndex}`,
+      required: false,
+      selectedByDefault: choices.length < MAX_VIDEO_REFERENCE_IMAGES,
+    })
+  }
+  return choices.sort((left, right) => {
+    const leftIndex = Number(left.id.split(':')[1] || 0)
+    const rightIndex = Number(right.id.split(':')[1] || 0)
+    return leftIndex - rightIndex
+  }).map((choice, index) => ({
+    ...choice,
+    selectedByDefault: index < MAX_VIDEO_REFERENCE_IMAGES,
+  }))
+}
+
 function locationMatchesPanelName(location: Location, panelName: string): boolean {
   const normalizedPanelLocation = normalizeComparableName(panelName)
   const normalizedLocationName = normalizeComparableName(location.name)
@@ -166,32 +200,48 @@ export function buildVideoReferenceImageChoices({
   includeLastFrame = false,
   includeCharacterSheet = false,
   directorStoryboardBoardId,
+  gridVideoSource = 'original',
   characterImagesPerPerson = 2,
 }: BuildVideoReferenceImageChoicesParams): VideoReferenceImageChoice[] {
   const choices: VideoReferenceImageChoice[] = []
   const sourceUrl = normalizeText(panel.imageUrl)
-  if (sourceUrl) {
+  const isSplitGridVideo = panel.imageLayout === 'grid' && gridVideoSource === 'split'
+  const isOriginalGridVideo = panel.imageLayout === 'grid' && gridVideoSource === 'original'
+  const isDirectorStoryboardVideo = gridVideoSource === 'director_storyboard'
+  if (isSplitGridVideo) {
+    choices.push(...collectGridFrameChoices(panel))
+  }
+  const directorStoryboardBoards = panel.directorStoryboardBoards ?? []
+  const selectedDirectorBoard = directorStoryboardBoards.find((board) => board.id === directorStoryboardBoardId)
+    || directorStoryboardBoards[0]
+  const directorSourceUrl = normalizeText(selectedDirectorBoard?.coverImageUrl)
+  if (isDirectorStoryboardVideo && selectedDirectorBoard && directorSourceUrl) {
+    choices.push({
+      id: `source:director-storyboard:${selectedDirectorBoard.id}`,
+      kind: 'source',
+      url: directorSourceUrl,
+      label: selectedDirectorBoard.name || '导演分镜图',
+      required: true,
+      selectedByDefault: true,
+    })
+  } else if (sourceUrl) {
     choices.push({
       id: 'source',
       kind: 'source',
       url: sourceUrl,
       label: '视频源图',
-      required: true,
-      selectedByDefault: true,
+      required: !isSplitGridVideo,
+      selectedByDefault: isOriginalGridVideo || !isSplitGridVideo,
     })
   } else {
-    const directorStoryboardBoards = panel.directorStoryboardBoards ?? []
-    const selectedDirectorBoard = directorStoryboardBoards.find((board) => board.id === directorStoryboardBoardId)
-      || directorStoryboardBoards[0]
-    const directorSourceUrl = normalizeText(selectedDirectorBoard?.coverImageUrl)
     if (selectedDirectorBoard && directorSourceUrl) {
       choices.push({
         id: `source:director-storyboard:${selectedDirectorBoard.id}`,
         kind: 'source',
         url: directorSourceUrl,
         label: selectedDirectorBoard.name || '导演分镜图',
-        required: true,
-        selectedByDefault: true,
+        required: isDirectorStoryboardVideo || !sourceUrl,
+        selectedByDefault: isDirectorStoryboardVideo || !sourceUrl,
       })
     }
   }
@@ -231,7 +281,7 @@ export function buildVideoReferenceImageChoices({
           url,
           label: character.name,
           required: false,
-          selectedByDefault: matched && defaultUrls.has(url) && index === 0,
+          selectedByDefault: !isOriginalGridVideo && !isSplitGridVideo && !isDirectorStoryboardVideo && matched && defaultUrls.has(url) && index === 0,
           ownerId: character.id,
         })
       })
@@ -245,7 +295,7 @@ export function buildVideoReferenceImageChoices({
           url,
           label: `${character.name} 三视图`,
           required: false,
-          selectedByDefault: matched && includeCharacterSheet && index === 0,
+          selectedByDefault: !isOriginalGridVideo && !isSplitGridVideo && !isDirectorStoryboardVideo && matched && includeCharacterSheet && index === 0,
           ownerId: character.id,
         })
       })
@@ -269,7 +319,7 @@ export function buildVideoReferenceImageChoices({
           url: image.imageUrl,
           label: location.name,
           required: false,
-          selectedByDefault: matched && selectedImage?.imageUrl === image.imageUrl,
+          selectedByDefault: !isOriginalGridVideo && !isSplitGridVideo && !isDirectorStoryboardVideo && matched && selectedImage?.imageUrl === image.imageUrl,
           ownerId: location.id,
         })
       })
@@ -280,7 +330,14 @@ export function buildVideoReferenceImageChoices({
 }
 
 export function getDefaultSelectedVideoReferenceImageIds(choices: VideoReferenceImageChoice[]): Set<string> {
-  return new Set(choices.filter((choice) => choice.required || choice.selectedByDefault).map((choice) => choice.id))
+  const ids = new Set<string>()
+  for (const choice of choices) {
+    if (!choice.required && !choice.selectedByDefault) continue
+    if (!choice.required && ids.size >= MAX_VIDEO_REFERENCE_IMAGES) continue
+    ids.add(choice.id)
+    if (ids.size >= MAX_VIDEO_REFERENCE_IMAGES) break
+  }
+  return ids
 }
 
 export function resolveSelectedVideoReferenceImages(
@@ -291,6 +348,7 @@ export function resolveSelectedVideoReferenceImages(
   for (const choice of choices) {
     if (!choice.required && !selectedIds.has(choice.id)) continue
     pushUniqueUrl(urls, choice.url)
+    if (urls.length >= MAX_VIDEO_REFERENCE_IMAGES) break
   }
   return urls
 }

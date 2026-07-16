@@ -7,6 +7,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useDirectorStore } from '../store/directorStore'
 import { useActiveCamera } from '../store/directorSelectors'
 import { SceneRoot } from './SceneRoot'
+import { ViewportToolbar } from './ViewportToolbar'
 
 function CameraRig() {
   const setGlCanvas = useDirectorStore((s) => s.setGlCanvas)
@@ -69,18 +70,21 @@ function CameraFromActive({ cam }: { cam: { position: [number, number, number]; 
 
 export function DirectorCanvas() {
   return (
-    <Canvas
-      shadows={false}
-      dpr={[1, 2]}
-      gl={{ antialias: true, preserveDrawingBuffer: true }}
-      style={{ background: '#1a1d23' }}
-    >
-      <color attach="background" args={['#1a1d23']} />
-      <CameraRig />
-      <SceneRoot />
-      <GizmoHelper alignment="top-right" margin={[80, 80]}>
-        <GizmoViewport axisColors={['#E56C5B', '#6CDB7A', '#7AA7FF']} labelColor="white" />
-      </GizmoHelper>
-    </Canvas>
+    <div className="relative h-full w-full">
+      <Canvas
+        shadows={false}
+        dpr={[1, 2]}
+        gl={{ antialias: true, preserveDrawingBuffer: true }}
+        style={{ background: '#1a1d23' }}
+      >
+        <color attach="background" args={['#1a1d23']} />
+        <CameraRig />
+        <SceneRoot />
+        <GizmoHelper alignment="top-right" margin={[80, 80]}>
+          <GizmoViewport axisColors={['#E56C5B', '#6CDB7A', '#7AA7FF']} labelColor="white" />
+        </GizmoHelper>
+      </Canvas>
+      <ViewportToolbar />
+    </div>
   )
 }

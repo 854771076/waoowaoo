@@ -68,6 +68,20 @@ function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function isTransientFetchError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') return true
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('fetch failed') ||
+    message.includes('network') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout') ||
+    message.includes('enotfound') ||
+    message.includes('eai_again')
+  )
+}
+
 function readOptionalPositiveInteger(value: unknown, fieldName: string): number | undefined {
   if (value === undefined) return undefined
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
@@ -378,6 +392,10 @@ export async function generateStarRouterImage(params: StarRouterImageGeneratePar
     // AbortSignal.timeout 触发会抛 TimeoutError；统一成稳定错误码方便上游重试与日志归类
     if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
       throw new Error(`STARSTONE_IMAGE_SUBMIT_TIMEOUT(${STARSTONE_IMAGE_FETCH_TIMEOUT_MS}ms)`)
+    }
+    if (isTransientFetchError(err)) {
+      const message = err instanceof Error ? err.message : 'network error'
+      throw new Error(`STARSTONE_IMAGE_SUBMIT_NETWORK_ERROR: ${message}`)
     }
     throw err
   }

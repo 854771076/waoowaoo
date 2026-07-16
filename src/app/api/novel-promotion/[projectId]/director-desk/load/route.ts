@@ -7,7 +7,7 @@ import {
   parsePanelCharacterReferences,
   findCharacterByName,
 } from '@/lib/workers/handlers/image-task-handler-shared'
-import { parseDirectorProject } from '@/lib/director-desk/schema'
+import { parseDirectorProject, type DirectorProject } from '@/lib/director-desk/schema'
 import {
   assembleLocationDescription,
   findLocationAsset,
@@ -27,8 +27,31 @@ function parseJsonUnknown(value: string | null | undefined): unknown {
 function toSignedIfKey(keyOrUrl: string | null | undefined): string | null {
   if (!keyOrUrl) return null
   return keyOrUrl.startsWith('images/') || keyOrUrl.startsWith('voice/') || keyOrUrl.startsWith('video/')
+    || keyOrUrl.startsWith('director-assets-')
     ? getSignedUrl(keyOrUrl, 24 * 3600)
     : keyOrUrl
+}
+
+export function attachSignedImportedAssetUrls(project: DirectorProject | null): DirectorProject | null {
+  if (!project) return project
+  const importedAssets = project.importedAssets?.map((asset) => ({
+    ...asset,
+    url: toSignedIfKey(asset.url) ?? asset.url,
+  }))
+  const directorSnapshots = project.directorSnapshots?.map((snapshot) => {
+    const snapshotProject = attachSignedImportedAssetUrls(snapshot.project)
+    return snapshotProject && snapshotProject !== snapshot.project
+      ? { ...snapshot, project: snapshotProject }
+      : snapshot
+  })
+  const importedAssetsChanged = !!importedAssets && importedAssets.some((asset, index) => asset.url !== project.importedAssets?.[index]?.url)
+  const snapshotsChanged = !!directorSnapshots && directorSnapshots.some((snapshot, index) => snapshot !== project.directorSnapshots?.[index])
+  if (!importedAssetsChanged && !snapshotsChanged) return project
+  return {
+    ...project,
+    ...(importedAssets ? { importedAssets } : {}),
+    ...(directorSnapshots ? { directorSnapshots } : {}),
+  }
 }
 
 function parseJsonStringArray(value: string | null | undefined): string[] {
@@ -192,7 +215,7 @@ export const GET = apiHandler(async (
     }
   }
 
-  const directorLayout = parseDirectorProject(parseJsonUnknown(panel.directorLayout))
+  const directorLayout = attachSignedImportedAssetUrls(parseDirectorProject(parseJsonUnknown(panel.directorLayout)))
 
   const directorShotsData = directorShots.map((s) => ({
     id: s.id,

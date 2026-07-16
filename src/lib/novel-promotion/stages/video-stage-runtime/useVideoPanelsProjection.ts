@@ -59,11 +59,22 @@ function parseGridGenerationContext(value: unknown): {
       gridSplitImages: splitImages
         .map((item) => {
           const record = asRecord(item)
-          const imageUrl = pickText(record.imageUrl)
+          const rawImageUrl = pickText(record.imageUrl)
+          const originalImageUrl = pickText(record.originalImageUrl)
+          const explicitEnhancedImageUrl = pickText(record.enhancedImageUrl)
+          const legacyEnhancedImageUrl = originalImageUrl && originalImageUrl !== rawImageUrl ? rawImageUrl : ''
+          const imageUrl = originalImageUrl || rawImageUrl
+          const enhancedImageUrl = explicitEnhancedImageUrl || legacyEnhancedImageUrl
           const cellIndex = typeof record.cellIndex === 'number' ? Math.floor(record.cellIndex) : 0
           const panelGridSize = typeof record.panelGridSize === 'number' ? Math.floor(record.panelGridSize) : 0
           return imageUrl && cellIndex > 0 && panelGridSize > 1
-            ? { imageUrl, cellIndex, panelGridSize }
+            ? {
+              imageUrl,
+              cellIndex,
+              panelGridSize,
+              ...(originalImageUrl ? { originalImageUrl } : {}),
+              ...(enhancedImageUrl ? { enhancedImageUrl } : {}),
+            }
             : null
         })
         .filter((item): item is GridSplitImage => item !== null)
@@ -71,13 +82,17 @@ function parseGridGenerationContext(value: unknown): {
       gridVideoFrames: frames
         .map((item): GridVideoFrame | null => {
           const record = asRecord(item)
-          const imageUrl = pickText(record.imageUrl)
+          const rawImageUrl = pickText(record.imageUrl)
+          const originalImageUrl = pickText(record.originalImageUrl)
+          const imageUrl = originalImageUrl || rawImageUrl
+          const enhancedImageUrl = pickText(record.enhancedImageUrl)
           const videoPrompt = pickText(record.videoPrompt)
           const cellIndex = typeof record.cellIndex === 'number' ? Math.floor(record.cellIndex) : 0
           return imageUrl && videoPrompt && cellIndex > 0
             ? {
               cellIndex,
               imageUrl,
+              enhancedImageUrl: enhancedImageUrl || undefined,
               videoPrompt,
               imagePrompt: pickText(record.imagePrompt) || undefined,
               action: pickText(record.action) || undefined,

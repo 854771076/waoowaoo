@@ -3,6 +3,7 @@ import type { GridVideoSourceImage } from './grid-split'
 export interface GridVideoFrame {
   cellIndex: number
   imageUrl: string
+  enhancedImageUrl?: string
   imagePrompt?: string
   videoPrompt: string
   action?: string
@@ -42,6 +43,29 @@ function extractGridCells(context: Record<string, unknown>): Map<number, Record<
   return result
 }
 
+function extractSplitImagesByIndex(context: Record<string, unknown>): Map<number, { imageUrl: string; enhancedImageUrl?: string }> {
+  const images = context.gridSplitImages
+  const result = new Map<number, { imageUrl: string; enhancedImageUrl?: string }>()
+  if (!Array.isArray(images)) return result
+  for (const item of images) {
+    const record = asRecord(item)
+    const rawImageUrl = pickText(record.imageUrl)
+    const originalImageUrl = pickText(record.originalImageUrl)
+    const explicitEnhancedImageUrl = pickText(record.enhancedImageUrl)
+    const legacyEnhancedImageUrl = originalImageUrl && originalImageUrl !== rawImageUrl ? rawImageUrl : ''
+    const imageUrl = originalImageUrl || rawImageUrl
+    const enhancedImageUrl = explicitEnhancedImageUrl || legacyEnhancedImageUrl
+    const cellIndex = typeof record.cellIndex === 'number' ? Math.floor(record.cellIndex) : 0
+    if (cellIndex > 0 && imageUrl) {
+      result.set(cellIndex, {
+        imageUrl,
+        enhancedImageUrl: enhancedImageUrl || undefined,
+      })
+    }
+  }
+  return result
+}
+
 export function buildGridVideoFrames(
   gridGenerationContextJson: string | null | undefined,
   images: GridVideoSourceImage[],
@@ -57,6 +81,7 @@ export function buildGridVideoFrames(
       return {
         cellIndex: image.cellIndex,
         imageUrl: image.imageUrl,
+        enhancedImageUrl: image.enhancedImageUrl || undefined,
         imagePrompt: pickText(cell.imagePrompt) || undefined,
         videoPrompt,
         action: pickText(cell.action) || undefined,
@@ -82,18 +107,22 @@ export function buildGridVideoFramesContext(
 
 export function extractGridVideoFrames(gridGenerationContextJson: string | null | undefined): GridVideoFrame[] {
   const context = parseContext(gridGenerationContextJson)
+  const splitImagesByIndex = extractSplitImagesByIndex(context)
   const frames = context.gridVideoFrames
   if (!Array.isArray(frames)) return []
   const result: GridVideoFrame[] = []
   for (const frame of frames) {
     const record = asRecord(frame)
     const cellIndex = typeof record.cellIndex === 'number' ? Math.floor(record.cellIndex) : 0
-    const imageUrl = pickText(record.imageUrl)
+    const splitImage = splitImagesByIndex.get(cellIndex)
+    const imageUrl = splitImage?.imageUrl || pickText(record.originalImageUrl) || pickText(record.imageUrl)
+    const enhancedImageUrl = pickText(record.enhancedImageUrl) || splitImage?.enhancedImageUrl || ''
     const videoPrompt = pickText(record.videoPrompt)
     if (cellIndex <= 0 || !imageUrl || !videoPrompt) continue
     result.push({
       cellIndex,
       imageUrl,
+      enhancedImageUrl: enhancedImageUrl || undefined,
       imagePrompt: pickText(record.imagePrompt) || undefined,
       videoPrompt,
       action: pickText(record.action) || undefined,

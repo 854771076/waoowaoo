@@ -55,11 +55,14 @@ export interface GridSplitImage {
   imageUrl: string
   cellIndex: number
   panelGridSize: number
+  originalImageUrl?: string
+  enhancedImageUrl?: string
 }
 
 export interface GridVideoFrame {
   cellIndex: number
   imageUrl: string
+  enhancedImageUrl?: string
   imagePrompt?: string
   videoPrompt: string
   action?: string

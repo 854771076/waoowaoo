@@ -33,6 +33,7 @@ const utilsMock = vi.hoisted(() => ({
   resolveLipSyncVideoSource: vi.fn(async () => 'https://provider.example/lipsync.mp4'),
   resolveVideoSourceFromGeneration: vi.fn<(...args: unknown[]) => Promise<{ url: string; actualVideoTokens?: number; downloadHeaders?: Record<string, string> }>>(async () => ({ url: 'https://provider.example/video.mp4' })),
   toSignedUrlIfCos: vi.fn((url: string | null) => (url ? `https://signed.example/${url}` : null)),
+  uploadImageSourceToCos: vi.fn(async (_source: string, _prefix: string, targetId: string) => `images/${targetId}.png`),
   uploadVideoSourceToCos: vi.fn(async () => 'cos/lip-sync/video.mp4'),
 }))
 const configServiceMock = vi.hoisted(() => ({
@@ -393,7 +394,108 @@ describe('worker video processor behavior', () => {
     )
   })
 
-  it('VIDEO_PANEL: StarRouter 视频使用 base64 data URL', async () => {
+  it('VIDEO_PANEL: 显式选择超过 9 张参考图时按用户顺序截断到 9 张', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    const gridFrames = Array.from({ length: 9 }, (_, index) => ({
+      cellIndex: index + 1,
+      imageUrl: `cos/split-${index + 1}.png`,
+      videoPrompt: `格 ${index + 1}`,
+    }))
+    const gridContext = JSON.stringify({
+      gridMetadata: { panelGridSize: 9 },
+      gridVideoFrames: gridFrames,
+    })
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({
+      imageLayout: 'grid',
+      gridGenerationContext: gridContext,
+    }))
+    gridSplitMock.ensureGridSplitImagesForPanel.mockResolvedValueOnce({
+      images: gridFrames.map((frame) => ({
+        cellIndex: frame.cellIndex,
+        panelGridSize: 9,
+        imageUrl: frame.imageUrl,
+      })),
+      gridGenerationContext: gridContext,
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        imageLayout: 'grid',
+        gridVideoSource: 'split',
+        videoReferenceImages: [
+          ...gridFrames.map((frame) => frame.imageUrl),
+          'cos/character-1.png',
+          'cos/character-2.png',
+          'cos/location-1.png',
+        ],
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({
+          videoReferenceImages: gridFrames.map((frame) => `https://signed.example/${frame.imageUrl}`),
+        }),
+      }),
+    )
+  })
+
+  it('VIDEO_PANEL: 新前端已传用户选择参考图时不再隐式追加拆分格参考图', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    const gridFrames = Array.from({ length: 9 }, (_, index) => ({
+      cellIndex: index + 1,
+      imageUrl: `cos/split-${index + 1}.png`,
+      videoPrompt: `格 ${index + 1}`,
+    }))
+    const gridContext = JSON.stringify({
+      gridMetadata: { panelGridSize: 9 },
+      gridVideoFrames: gridFrames,
+    })
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({
+      imageLayout: 'grid',
+      gridGenerationContext: gridContext,
+    }))
+    gridSplitMock.ensureGridSplitImagesForPanel.mockResolvedValueOnce({
+      images: gridFrames.map((frame) => ({
+        cellIndex: frame.cellIndex,
+        panelGridSize: 9,
+        imageUrl: frame.imageUrl,
+      })),
+      gridGenerationContext: gridContext,
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        imageLayout: 'grid',
+        gridVideoSource: 'split',
+        videoReferenceImages: ['cos/character-1.png'],
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({
+          videoReferenceImages: ['https://signed.example/cos/character-1.png'],
+        }),
+      }),
+    )
+  })
+
+  it('VIDEO_PANEL: StarRouter 视频使用可公网拉取的签名 URL', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
     modelConfigMock.parseModelKeyStrict.mockReturnValue({ provider: 'starrouter' })
@@ -412,12 +514,44 @@ describe('worker video processor behavior', () => {
     expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        imageUrl: 'data:image/png;base64,aHR0cHM6Ly9zaWduZWQuZXhhbXBsZS9jb3MvcGFuZWwtaW1hZ2UucG5n',
+        imageUrl: 'https://signed.example/cos/panel-image.png',
         options: expect.objectContaining({
           videoReferenceImages: [
-            'data:image/png;base64,aHR0cHM6Ly9zaWduZWQuZXhhbXBsZS9jb3MvcGFuZWwtaW1hZ2UucG5n',
-            'data:image/png;base64,aHR0cHM6Ly9zaWduZWQuZXhhbXBsZS9jb3Mvc291cmNlLnBuZw==',
-            'data:image/png;base64,aHR0cHM6Ly9zaWduZWQuZXhhbXBsZS9jb3MvY2hhcmFjdGVyLnBuZw==',
+            'https://signed.example/cos/source.png',
+            'https://signed.example/cos/character.png',
+          ],
+        }),
+      }),
+    )
+    expect(outboundImageMock.normalizeToBase64ForGeneration).not.toHaveBeenCalled()
+  })
+
+  it('VIDEO_PANEL: StarRouter 视频会先上传 base64 参考图再传公网 URL', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelConfigMock.parseModelKeyStrict.mockReturnValue({ provider: 'starrouter' })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'starrouter::dreamina-seedance-2-0-fast-260128',
+        videoReferenceImages: ['data:image/png;base64,AAAA'],
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.uploadImageSourceToCos).toHaveBeenCalledWith(
+      'data:image/png;base64,AAAA',
+      'video-source-image',
+      'panel-1-ref-0',
+    )
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({
+          videoReferenceImages: [
+            'https://signed.example/images/panel-1-ref-0.png',
           ],
         }),
       }),

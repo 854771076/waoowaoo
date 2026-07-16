@@ -65,6 +65,37 @@ describe('grid video frames', () => {
     })
   })
 
+  it('keeps legacy enhanced split images separate from original frame image urls', () => {
+    const contextJson = JSON.stringify({
+      gridSplitImages: [
+        {
+          cellIndex: 1,
+          imageUrl: 'images/grid-video-source-enhanced-panel-1-1.jpg',
+          originalImageUrl: 'images/cell-1.jpg',
+          panelGridSize: 2,
+        },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', panelGridSize: 2 },
+      ],
+      gridVideoFrames: [
+        { cellIndex: 1, imageUrl: 'images/grid-video-source-enhanced-panel-1-1.jpg', videoPrompt: 'frame 1' },
+        { cellIndex: 2, imageUrl: 'images/cell-2.jpg', videoPrompt: 'frame 2' },
+      ],
+    })
+
+    expect(extractGridVideoFrames(contextJson)).toEqual([
+      expect.objectContaining({
+        cellIndex: 1,
+        imageUrl: 'images/cell-1.jpg',
+        enhancedImageUrl: 'images/grid-video-source-enhanced-panel-1-1.jpg',
+      }),
+      expect.objectContaining({
+        cellIndex: 2,
+        imageUrl: 'images/cell-2.jpg',
+        enhancedImageUrl: undefined,
+      }),
+    ])
+  })
+
   it('uses grid first-last-frame only when model supports it and both frame images exist', () => {
     expect(shouldUseGridFirstLastFrame({
       supportsFirstLastFrame: true,

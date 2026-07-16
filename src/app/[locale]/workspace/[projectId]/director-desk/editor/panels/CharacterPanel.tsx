@@ -61,6 +61,7 @@ function TripletInput({
 export function CharacterPanel({ object }: { object: DirectorObject }) {
   const setObjectField = useDirectorStore((s) => s.setObjectField)
   const setObjectTransform = useDirectorStore((s) => s.setObjectTransform)
+  const resetObjectTransform = useDirectorStore((s) => s.resetObjectTransform)
   const removeObject = useDirectorStore((s) => s.removeObject)
   const duplicateObject = useDirectorStore((s) => s.duplicateObject)
   const [tab, setTab] = useState<'props' | 'pose'>('props')
@@ -155,6 +156,12 @@ export function CharacterPanel({ object }: { object: DirectorObject }) {
               className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs hover:bg-white/10"
             >
               复制
+            </button>
+            <button
+              onClick={() => resetObjectTransform(object.id)}
+              className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs hover:bg-white/10"
+            >
+              重置变换
             </button>
             <button
               onClick={() => removeObject(object.id)}

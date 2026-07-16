@@ -1,6 +1,7 @@
 'use client'
 import { useDirectorStore } from '../store/directorStore'
-import type { DirectorObject } from '@/lib/director-desk/schema'
+import { GEOMETRY_PRIMITIVE_OPTIONS } from '@/lib/director-desk/schema'
+import type { DirectorObject, GeometryPrimitiveType } from '@/lib/director-desk/schema'
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -40,7 +41,10 @@ function Triplet({ value, onChange }: { value: [number, number, number]; onChang
 export function PropPanel({ object }: { object: DirectorObject }) {
   const setObjectField = useDirectorStore((s) => s.setObjectField)
   const setObjectTransform = useDirectorStore((s) => s.setObjectTransform)
+  const setObjectRotation = useDirectorStore((s) => s.setObjectRotation)
+  const resetObjectTransform = useDirectorStore((s) => s.resetObjectTransform)
   const removeObject = useDirectorStore((s) => s.removeObject)
+  const duplicateObject = useDirectorStore((s) => s.duplicateObject)
 
   return (
     <div className="flex flex-col gap-3 text-xs text-white/80">
@@ -54,6 +58,9 @@ export function PropPanel({ object }: { object: DirectorObject }) {
       </Row>
       <Row label="位置">
         <Triplet value={object.transform.position} onChange={(v) => setObjectTransform(object.id, { ...object.transform, position: v })} />
+      </Row>
+      <Row label="旋转">
+        <Triplet value={object.transform.rotation} onChange={(v) => setObjectRotation(object.id, v)} />
       </Row>
       <Row label="缩放">
         <input
@@ -77,12 +84,41 @@ export function PropPanel({ object }: { object: DirectorObject }) {
           className="h-6 w-full cursor-pointer rounded border border-white/10 bg-transparent"
         />
       </Row>
-      <button
-        onClick={() => removeObject(object.id)}
-        className="mt-2 rounded border border-red-400/30 bg-red-500/15 px-2 py-1 text-xs text-red-300 hover:bg-red-500/25"
-      >
-        删除
-      </button>
+      {object.geometryType && (
+        <Row label="形状">
+          <select
+            value={object.geometryType}
+            onChange={(e) => setObjectField(object.id, 'geometryType', e.target.value as GeometryPrimitiveType)}
+            className="w-full rounded border border-white/10 bg-white/5 px-1.5 py-1 text-xs outline-none focus:border-white/30"
+          >
+            {GEOMETRY_PRIMITIVE_OPTIONS.map((option) => (
+              <option key={option.type} value={option.type} className="text-black">
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </Row>
+      )}
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => duplicateObject(object.id)}
+          className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs hover:bg-white/10"
+        >
+          复制
+        </button>
+        <button
+          onClick={() => resetObjectTransform(object.id)}
+          className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs hover:bg-white/10"
+        >
+          重置变换
+        </button>
+        <button
+          onClick={() => removeObject(object.id)}
+          className="rounded border border-red-400/30 bg-red-500/15 px-2 py-1 text-xs text-red-300 hover:bg-red-500/25"
+        >
+          删除
+        </button>
+      </div>
     </div>
   )
 }

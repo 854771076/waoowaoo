@@ -332,4 +332,62 @@ describe('VideoPanelCardBody', () => {
     expect(onGenerateVideo.mock.calls[0][8]).toBe('director_storyboard')
     expect(onGenerateVideo.mock.calls[0][10]).toBe('board-1')
   })
+
+  it('disables unselected video reference images after selecting 9 items', () => {
+    const choices = Array.from({ length: 10 }, (_, index) => ({
+      id: `grid-frame:${index + 1}`,
+      kind: 'gridFrame' as const,
+      url: `images/grid-${index + 1}.png`,
+      label: `分镜格 ${index + 1}`,
+      required: false,
+      selectedByDefault: index < 9,
+    }))
+    const runtime = createRuntime({
+      videoReference: {
+        choices,
+        selectedIds: new Set(choices.slice(0, 9).map((choice) => choice.id)),
+        selectedImages: choices.slice(0, 9).map((choice) => choice.url),
+        maxSelectedCount: 9,
+        includeCharacterSheet: false,
+        setIncludeCharacterSheet: () => undefined,
+        toggleChoice: () => undefined,
+      },
+    })
+
+    render(React.createElement(VideoPanelCardBody, { runtime }))
+
+    expect(screen.getByText('已选 9 / 9，视频参考图最多 9 张')).toBeTruthy()
+    expect(screen.getByLabelText('高清分镜: 分镜格 10')).toHaveProperty('disabled', true)
+    expect(screen.getByLabelText('高清分镜: 分镜格 1')).toHaveProperty('disabled', false)
+  })
+
+  it('keeps the video reference selector scrollable when many choices are rendered', () => {
+    const choices = Array.from({ length: 12 }, (_, index) => ({
+      id: `grid-frame:${index + 1}`,
+      kind: 'gridFrame' as const,
+      url: `images/grid-${index + 1}.png`,
+      label: `分镜格 ${index + 1}`,
+      required: false,
+      selectedByDefault: index < 9,
+    }))
+
+    const markup = renderToStaticMarkup(
+      React.createElement(VideoPanelCardBody, {
+        runtime: createRuntime({
+          videoReference: {
+            choices,
+            selectedIds: new Set(choices.slice(0, 9).map((choice) => choice.id)),
+            selectedImages: choices.slice(0, 9).map((choice) => choice.url),
+            maxSelectedCount: 9,
+            includeCharacterSheet: false,
+            setIncludeCharacterSheet: () => undefined,
+            toggleChoice: () => undefined,
+          },
+        }),
+      }),
+    )
+
+    expect(markup).toContain('max-h-32')
+    expect(markup).toContain('overflow-y-auto')
+  })
 })

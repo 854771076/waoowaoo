@@ -203,10 +203,18 @@ describe('ensureGridSplitImagesForPanel', () => {
       }),
     )
     expect(result.images.map((image) => image.imageUrl)).toEqual([
+      'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(result.images.map((image) => image.enhancedImageUrl)).toEqual([
       'images/panel-3-1.jpg',
       'images/panel-3-2.jpg',
     ])
     expect(result.frames.map((frame) => frame.imageUrl)).toEqual([
+      'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(result.frames.map((frame) => frame.enhancedImageUrl)).toEqual([
       'images/panel-3-1.jpg',
       'images/panel-3-2.jpg',
     ])
@@ -257,10 +265,18 @@ describe('ensureGridSplitImagesForPanel', () => {
     expect(result.enhancedCount).toBe(1)
     expect(result.images.map((image) => image.imageUrl)).toEqual([
       'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(result.images.map((image) => image.enhancedImageUrl || null)).toEqual([
+      null,
       'images/panel-4-2.jpg',
     ])
     expect(result.frames.map((frame) => frame.imageUrl)).toEqual([
       'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(result.frames.map((frame) => frame.enhancedImageUrl || null)).toEqual([
+      null,
       'images/panel-4-2.jpg',
     ])
     expect(onProgress).toHaveBeenCalledWith({ completed: 1, total: 1, cellIndex: 2 })
@@ -343,16 +359,24 @@ describe('ensureGridSplitImagesForPanel', () => {
 
     const persisted = JSON.parse(updateManyPanelMock.mock.calls.at(-1)?.[0].data.gridGenerationContext)
     expect(persisted.gridSplitImages.map((image: { imageUrl: string }) => image.imageUrl)).toEqual([
+      'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(persisted.gridSplitImages.map((image: { enhancedImageUrl?: string }) => image.enhancedImageUrl)).toEqual([
       'images/enhanced-cell-1.jpg',
       'images/panel-merge-2.jpg',
     ])
     expect(persisted.gridVideoFrames.map((frame: { imageUrl: string }) => frame.imageUrl)).toEqual([
+      'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(persisted.gridVideoFrames.map((frame: { enhancedImageUrl?: string }) => frame.enhancedImageUrl)).toEqual([
       'images/enhanced-cell-1.jpg',
       'images/panel-merge-2.jpg',
     ])
     expect(result.images.map((image) => image.imageUrl)).toEqual([
-      'images/enhanced-cell-1.jpg',
-      'images/panel-merge-2.jpg',
+      'images/cell-1.jpg',
+      'images/cell-2.jpg',
     ])
   })
 
@@ -409,6 +433,10 @@ describe('ensureGridSplitImagesForPanel', () => {
     expect(updateManyPanelMock).toHaveBeenCalledTimes(2)
     const persisted = JSON.parse(updateManyPanelMock.mock.calls.at(-1)?.[0].data.gridGenerationContext)
     expect(persisted.gridSplitImages.map((image: { imageUrl: string }) => image.imageUrl)).toEqual([
+      'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(persisted.gridSplitImages.map((image: { enhancedImageUrl?: string }) => image.enhancedImageUrl)).toEqual([
       'images/enhanced-cell-1.jpg',
       'images/panel-retry-2.jpg',
     ])
@@ -457,10 +485,18 @@ describe('ensureGridSplitImagesForPanel', () => {
     )
     expect(result.enhancedCount).toBe(1)
     expect(result.images.map((image) => image.imageUrl)).toEqual([
+      'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(result.images.map((image) => image.enhancedImageUrl || null)).toEqual([
       'images/grid-video-source-enhanced-panel-5-1.jpg',
       'images/panel-5-2.jpg',
     ])
     expect(result.frames.map((frame) => frame.imageUrl)).toEqual([
+      'images/cell-1.jpg',
+      'images/cell-2.jpg',
+    ])
+    expect(result.frames.map((frame) => frame.enhancedImageUrl || null)).toEqual([
       'images/grid-video-source-enhanced-panel-5-1.jpg',
       'images/panel-5-2.jpg',
     ])

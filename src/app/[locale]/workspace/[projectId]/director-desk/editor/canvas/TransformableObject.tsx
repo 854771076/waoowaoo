@@ -19,12 +19,15 @@ export function TransformableObject({ objectId, transform, locked, kind, mode, c
   const groupRef = useRef<THREE.Group>(null!)
   const draggingRef = useRef(false)
   const selectedId = useDirectorStore((s) => s.selectedId)
+  const selectedIds = useDirectorStore((s) => s.selectedIds)
   const transformMode = useDirectorStore((s) => s.transformMode)
   const setObjectTransform = useDirectorStore((s) => s.setObjectTransform)
   const select = useDirectorStore((s) => s.select)
+  const toggleObjectSelection = useDirectorStore((s) => s.toggleObjectSelection)
   const { controls: sceneControls } = useThree() as { controls: { enabled: boolean } | null }
 
   const isSelected = selectedId === objectId
+  const isMultiSelected = selectedIds.includes(objectId)
 
   useEffect(() => {
     // Skip sync while the user is mid-drag — avoids fighting TransformControls.
@@ -64,10 +67,20 @@ export function TransformableObject({ objectId, transform, locked, kind, mode, c
       ref={groupRef}
       onClick={(e) => {
         e.stopPropagation()
+        if (e.nativeEvent.metaKey || e.nativeEvent.ctrlKey || e.nativeEvent.shiftKey) {
+          toggleObjectSelection(objectId)
+          return
+        }
         select(objectId)
       }}
     >
       {children}
+      {isMultiSelected && !isSelected && (
+        <mesh>
+          <boxGeometry args={[1.15, 1.15, 1.15]} />
+          <meshBasicMaterial color="#7AA7FF" wireframe transparent opacity={0.5} />
+        </mesh>
+      )}
     </group>
   )
 

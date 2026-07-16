@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildVideoReferenceImageChoices,
+  getDefaultSelectedVideoReferenceImageIds,
   resolveSelectedVideoReferenceImages,
 } from '@/lib/novel-promotion/video-reference-images'
 import type { Character, Location } from '@/types/project'
@@ -157,6 +158,43 @@ describe('video reference image selection', () => {
     })
   })
 
+  it('uses the selected director storyboard board by default when director storyboard video source is selected', () => {
+    const choices = buildVideoReferenceImageChoices({
+      panel: {
+        imageUrl: 'images/panel-source.png',
+        directorStoryboardBoards: [
+          {
+            id: 'board-1',
+            name: '导演分镜图',
+            createdAt: 1,
+            coverImageUrl: 'images/director-board.png',
+            assetIds: [],
+            items: [],
+          },
+        ],
+        textPanel: {
+          panel_number: 3,
+          shot_type: '近景',
+          description: '阿青回头',
+          characters: ['阿青'],
+          location: '竹院',
+        },
+      },
+      characters,
+      locations,
+      gridVideoSource: 'director_storyboard',
+    })
+
+    expect(choices[0]).toMatchObject({
+      id: 'source:director-storyboard:board-1',
+      kind: 'source',
+      url: 'images/director-board.png',
+      required: true,
+      selectedByDefault: true,
+    })
+    expect(getDefaultSelectedVideoReferenceImageIds(choices)).toEqual(new Set(['source:director-storyboard:board-1']))
+  })
+
   it('returns only required and user-selected images in stable order', () => {
     const choices = buildVideoReferenceImageChoices({
       panel: {
@@ -238,5 +276,85 @@ describe('video reference image selection', () => {
     expect(fallbackSheet?.selectedByDefault).toBe(false)
     expect(fallbackLocation?.selectedByDefault).toBe(false)
     expect(choices.some((choice) => choice.id === 'character:char-other:appearance-other:0')).toBe(true)
+  })
+
+  it('adds enhanced grid frames as default video references before raw assets and caps defaults at 9', () => {
+    const choices = buildVideoReferenceImageChoices({
+      panel: {
+        imageUrl: 'images/source-grid.png',
+        imageLayout: 'grid',
+        gridVideoFrames: Array.from({ length: 10 }, (_, index) => ({
+          cellIndex: index + 1,
+          imageUrl: `images/grid-frame-${index + 1}.png`,
+          enhancedImageUrl: index === 0 ? 'images/grid-frame-1-hd.png' : undefined,
+          videoPrompt: `格 ${index + 1}`,
+        })),
+        textPanel: {
+          panel_number: 1,
+          shot_type: '中景',
+          description: '阿青在竹院回头',
+          characters: ['阿青'],
+          location: '竹院',
+        },
+      },
+      characters,
+      locations,
+      gridVideoSource: 'split',
+    })
+
+    expect(choices.slice(0, 3).map((choice) => [choice.id, choice.kind, choice.url, choice.label, choice.selectedByDefault])).toEqual([
+      ['grid-frame:1', 'gridFrame', 'images/grid-frame-1-hd.png', '高清分镜 1', true],
+      ['grid-frame:2', 'gridFrame', 'images/grid-frame-2.png', '分镜格 2', true],
+      ['grid-frame:3', 'gridFrame', 'images/grid-frame-3.png', '分镜格 3', true],
+    ])
+    const defaultIds = getDefaultSelectedVideoReferenceImageIds(choices)
+    expect(defaultIds.size).toBe(9)
+    expect(defaultIds.has('grid-frame:9')).toBe(true)
+    expect(defaultIds.has('grid-frame:10')).toBe(false)
+    expect(defaultIds.has('source')).toBe(false)
+    expect(defaultIds.has('character:char-hero:appearance-main:0')).toBe(false)
+  })
+
+  it('uses only the original grid image by default when the original grid video source is selected', () => {
+    const choices = buildVideoReferenceImageChoices({
+      panel: {
+        imageUrl: 'images/source-grid.png',
+        imageLayout: 'grid',
+        gridSplitImages: [
+          { cellIndex: 1, panelGridSize: 2, imageUrl: 'images/split-1.png', enhancedImageUrl: 'images/split-1-hd.png' },
+          { cellIndex: 2, panelGridSize: 2, imageUrl: 'images/split-2.png' },
+        ],
+        textPanel: {
+          panel_number: 1,
+          shot_type: '中景',
+          description: '阿青在竹院回头',
+          characters: ['阿青'],
+          location: '竹院',
+        },
+      },
+      characters,
+      locations,
+      gridVideoSource: 'original',
+    })
+
+    expect(getDefaultSelectedVideoReferenceImageIds(choices)).toEqual(new Set(['source']))
+  })
+
+  it('caps resolved selected reference images at 9 even if more ids are selected', () => {
+    const choices = Array.from({ length: 12 }, (_, index) => ({
+      id: `choice-${index + 1}`,
+      kind: 'gridFrame' as const,
+      url: `images/ref-${index + 1}.png`,
+      label: `分镜格 ${index + 1}`,
+      required: false,
+      selectedByDefault: false,
+    }))
+
+    const selected = resolveSelectedVideoReferenceImages(
+      choices,
+      new Set(choices.map((choice) => choice.id)),
+    )
+
+    expect(selected).toEqual(Array.from({ length: 9 }, (_, index) => `images/ref-${index + 1}.png`))
   })
 })
