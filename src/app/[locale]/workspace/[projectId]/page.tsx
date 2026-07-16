@@ -17,7 +17,7 @@ import { resolveSelectedEpisodeId } from './episode-selection'
 import { ModelCapabilityDropdown } from '@/components/ui/config-modals/ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
 import { readConfiguredAnalysisModel, shouldGuideToModelSetup } from '@/lib/workspace/model-setup'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 
 // 有效的stage值
@@ -399,6 +399,17 @@ export default function ProjectDetailPage() {
       {/* 主内容区 - 占满全部宽度 */}
       <main className="flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-8">
+          <div className="mb-4 flex justify-end">
+            <Link
+              href={{
+                pathname: `/workspace/${projectId}/canvas`,
+              }}
+              className="glass-btn-base glass-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+            >
+              <AppIcon name="shuffle" className="w-4 h-4" />
+              节点画布
+            </Link>
+          </div>
           {isGlobalAssetsView && project.novelPromotionData ? (
             // 全局资产视图（确保数据准备好）
             <div>

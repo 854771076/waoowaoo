@@ -1,0 +1,395 @@
+.shell {
+  min-height: 100vh;
+  background: #f4f7fb;
+  color: #162033;
+}
+
+.topbar {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 22px;
+  border-bottom: 1px solid #dfe5ef;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.topbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 760;
+}
+
+.topbar p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #667085;
+}
+
+.topbarActions {
+  display: flex;
+  gap: 10px;
+}
+
+.iconButton,
+.secondaryButton,
+.primaryButton,
+.actionButton {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #cfd7e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #1d2939;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.iconButton {
+  width: 36px;
+}
+
+.secondaryButton,
+.primaryButton {
+  padding: 0 13px;
+}
+
+.primaryButton {
+  border-color: #1f6feb;
+  background: #1f6feb;
+  color: #fff;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.actionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.errorBar,
+.noticeBar {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 22px;
+  border-bottom: 1px solid #ffd1d1;
+  background: #fff1f1;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.noticeBar {
+  border-bottom-color: #b7e4c7;
+  background: #effaf3;
+  color: #147a38;
+}
+
+.workspace {
+  height: calc(100vh - 72px);
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 320px;
+}
+
+.errorBar + .workspace,
+.noticeBar + .workspace {
+  height: calc(100vh - 110px);
+}
+
+.sidebar,
+.inspector {
+  min-width: 0;
+  border-right: 1px solid #dfe5ef;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.inspector {
+  border-right: 0;
+  border-left: 1px solid #dfe5ef;
+  padding: 18px;
+  overflow: auto;
+}
+
+.panelHeader {
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-bottom: 1px solid #e5eaf2;
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.nodeList {
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.nodeListItem {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nodeListItem span {
+  font-size: 13px;
+  font-weight: 660;
+}
+
+.nodeListItem em {
+  font-size: 12px;
+  font-style: normal;
+  color: #667085;
+  white-space: nowrap;
+}
+
+.nodeListItemActive,
+.nodeListItem:hover {
+  border-color: #cbd5e1;
+  background: #f5f8fc;
+}
+
+.canvasStage {
+  position: relative;
+  min-width: 0;
+  background: #eef3f9;
+}
+
+.loadingState,
+.emptyInspector {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #667085;
+  font-size: 13px;
+}
+
+.nodeCard {
+  width: 300px;
+  min-height: 148px;
+  padding: 14px;
+  border: 1px solid #d5dce8;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
+  color: #162033;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nodeSelected {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.14), 0 10px 24px rgba(16, 24, 40, 0.1);
+}
+
+.nodeHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nodeIcon,
+.inspectorIcon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #edf4ff;
+  color: #1f6feb;
+}
+
+.nodeTitleWrap {
+  min-width: 0;
+}
+
+.nodeTitle {
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.nodeStatus {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #667085;
+}
+
+.nodeSummary {
+  min-height: 36px;
+  margin: 12px 0 10px;
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.nodeMetrics,
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nodeMetrics span,
+.metricCard {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f6f8fb;
+  color: #667085;
+  font-size: 11px;
+}
+
+.nodeMetrics strong,
+.metricCard strong {
+  display: block;
+  overflow: hidden;
+  color: #1d2939;
+  font-size: 13px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff;
+  background: #1f6feb;
+}
+
+.status_done .nodeIcon {
+  background: #eaf8ef;
+  color: #16833a;
+}
+
+.status_ready .nodeIcon {
+  background: #fff6e6;
+  color: #b55a00;
+}
+
+.status_running .nodeIcon {
+  background: #edf4ff;
+  color: #1f6feb;
+}
+
+.status_failed .nodeIcon,
+.status_blocked .nodeIcon {
+  background: #fff1f1;
+  color: #b42318;
+}
+
+.status_stale .nodeIcon {
+  background: #f4efff;
+  color: #6840c6;
+}
+
+.inspectorTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inspectorTitle h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 760;
+}
+
+.inspectorTitle p {
+  margin: 3px 0 0;
+  color: #667085;
+  font-size: 12px;
+}
+
+.inspectorSummary {
+  margin: 18px 0;
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.metricGrid {
+  margin-bottom: 16px;
+}
+
+.metricCard {
+  padding: 10px;
+}
+
+.metricCard span {
+  display: block;
+  margin-top: 4px;
+}
+
+.refBox {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #dfe5ef;
+  border-radius: 8px;
+  background: #f9fbfd;
+}
+
+.refBox span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.refBox code {
+  overflow-wrap: anywhere;
+  color: #1d2939;
+  font-size: 12px;
+}
+
+.actionStack {
+  display: grid;
+  gap: 8px;
+}
+
+.actionButton {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 12px;
+}
+
+.actionDisabled {
+  pointer-events: none;
+  opacity: 0.58;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
