@@ -9,10 +9,17 @@ describe('api route contract guard', () => {
   it('allows explicit public and framework-managed exceptions', () => {
     expect(API_HANDLER_ALLOWLIST.has('src/app/api/auth/[...nextauth]/route.ts')).toBe(true)
     expect(PUBLIC_ROUTE_ALLOWLIST.has('src/app/api/system/boot-id/route.ts')).toBe(true)
+    expect(PUBLIC_ROUTE_ALLOWLIST.has('src/app/api/skills/route.ts')).toBe(true)
     expect(
       inspectRouteContract(
         'src/app/api/system/boot-id/route.ts',
         'export async function GET() { return Response.json({ bootId: "x" }) }',
+      ),
+    ).toEqual([])
+    expect(
+      inspectRouteContract(
+        'src/app/api/skills/[skillId]/prompt/route.ts',
+        'export async function GET() { return Response.json({ prompt: "x" }) }',
       ),
     ).toEqual([])
   })

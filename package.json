@@ -2,6 +2,9 @@
   "name": "vvicat",
   "version": "0.4.1",
   "private": true,
+  "bin": {
+    "platform": "./bin/platform.mjs"
+  },
   "engines": {
     "node": ">=18.18.0",
     "npm": ">=9.0.0"
