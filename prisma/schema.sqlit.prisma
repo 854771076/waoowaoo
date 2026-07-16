@@ -360,6 +360,8 @@ model Project {
   user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   promptOverrides    ProjectPromptOverride[]
   usageCosts         UsageCost[]
+  cinemaKnowledgeBindings CinemaKnowledgeBinding[]
+  cinemaKnowledgeTraces   PromptKnowledgeTrace[]
 
   @@index([userId])
   @@map("projects")
@@ -398,6 +400,100 @@ model UsageCost {
   @@map("usage_costs")
 }
 
+model CinemaKnowledgeSource {
+  id                 String                  @id @default(uuid())
+  userId             String
+  sourceType         String                  @default("image")
+  sourceUrl          String?
+  sourceTitle        String?
+  sourceImageMediaId String?
+  rawOcrText         String?
+  extractedJson      String?
+  licenseStatus      String                  @default("unknown")
+  status             String                  @default("draft")
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @default(now()) @updatedAt
+  user               User                    @relation("CinemaKnowledgeSourceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  sourceImage        MediaObject?            @relation("CinemaKnowledgeSourceImage", fields: [sourceImageMediaId], references: [id], onDelete: SetNull)
+  items              CinemaKnowledgeItem[]
+
+  @@index([userId])
+  @@index([sourceImageMediaId])
+  @@index([status])
+  @@map("cinema_knowledge_sources")
+}
+
+model CinemaKnowledgeItem {
+  id              String                    @id @default(uuid())
+  userId          String
+  sourceId        String?
+  title           String
+  category        String
+  definition      String
+  usageRule       String?
+  promptPhrase    String
+  negativePhrase  String?
+  sceneTags       String?
+  shotTags        String?
+  moodTags        String?
+  craftTags       String?
+  priority        Int                       @default(0)
+  enabled         Boolean                   @default(true)
+  reviewStatus    String                    @default("draft")
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @default(now()) @updatedAt
+  user            User                      @relation("CinemaKnowledgeItemOwner", fields: [userId], references: [id], onDelete: Cascade)
+  source          CinemaKnowledgeSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  projectBindings CinemaKnowledgeBinding[]
+
+  @@index([userId, enabled, reviewStatus])
+  @@index([sourceId])
+  @@index([category])
+  @@map("cinema_knowledge_items")
+}
+
+model CinemaKnowledgeBinding {
+  id              String              @id @default(uuid())
+  projectId       String
+  knowledgeItemId String
+  scopeType       String              @default("project")
+  scopeId         String?
+  mode            String              @default("boost")
+  weight          Int                 @default(0)
+  createdByUserId String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @default(now()) @updatedAt
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  knowledgeItem   CinemaKnowledgeItem @relation(fields: [knowledgeItemId], references: [id], onDelete: Cascade)
+  createdBy       User?               @relation("CinemaKnowledgeBindingCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, scopeType, scopeId])
+  @@index([knowledgeItemId])
+  @@index([createdByUserId])
+  @@map("cinema_knowledge_bindings")
+}
+
+model PromptKnowledgeTrace {
+  id                String   @id @default(uuid())
+  projectId         String
+  userId            String?
+  targetType        String
+  targetId          String
+  promptKind        String
+  knowledgeItemIds  String
+  matchedTags       String?
+  finalInjectedText String
+  createdAt         DateTime @default(now())
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user              User?    @relation("PromptKnowledgeTraceUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, targetType, targetId])
+  @@index([userId])
+  @@index([promptKind])
+  @@index([createdAt])
+  @@map("prompt_knowledge_traces")
+}
+
 model User {
   id            String          @id @default(uuid())
   name          String          @unique(map: "User_name_key")
@@ -422,6 +518,10 @@ model User {
   artStylesCreated        ArtStyle[]               @relation("ArtStyleCreatedBy")
   artStylesUpdated        ArtStyle[]               @relation("ArtStyleUpdatedBy")
   storyboardImageVersions StoryboardImageVersion[]
+  cinemaKnowledgeSources  CinemaKnowledgeSource[]  @relation("CinemaKnowledgeSourceOwner")
+  cinemaKnowledgeItems    CinemaKnowledgeItem[]    @relation("CinemaKnowledgeItemOwner")
+  cinemaKnowledgeBindings CinemaKnowledgeBinding[] @relation("CinemaKnowledgeBindingCreatedBy")
+  cinemaKnowledgeTraces   PromptKnowledgeTrace[]   @relation("PromptKnowledgeTraceUser")
 
   // 资产中心
   globalAssetFolders GlobalAssetFolder[]
@@ -972,6 +1072,7 @@ model MediaObject {
   globalVoiceCustomVoices               GlobalVoice[]               @relation("GlobalVoiceCustomVoiceMedia")
   artStylePreviewMedias                 ArtStyle[]                  @relation("ArtStylePreviewMedia")
   storyboardImageVersionMedia           StoryboardImageVersion[]     @relation("StoryboardImageVersionMedia")
+  cinemaKnowledgeSourceImages           CinemaKnowledgeSource[]      @relation("CinemaKnowledgeSourceImage")
 
   @@index([createdAt])
   @@map("media_objects")
